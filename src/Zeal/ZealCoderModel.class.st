@@ -37,12 +37,21 @@ ZealCoderModel >> initializeAddOns: addOns [
 	super initializeAddOns: addOns.
 	addOns addStyler: (GtCoderAstSmaCCParserStyler new smaccStyler: ZealTheme styler).
 	addOns
-		addMainAction: 'Compile to Verse' translated
+		addMainAction: 'Compile' translated
 		icon: BrGlamorousVectorIcons play
 		action: [ :aCoderUIModel :anElement | 
 			| source result |
 			source := aCoderUIModel coderModel currentSourceString.
 			result := ZealCompiler compile: source.
 			result inspect ]
-		id: #zealCompile
+		id: #zealCompile.
+	addOns
+		addMainAction: 'Verse' translated
+		icon: BrGlamorousVectorIcons playinspect
+		action: [ :aCoderUIModel :anElement |
+			| source result |
+			source := aCoderUIModel coderModel currentSourceString.
+			result := ZealCompiler compileToVerse: source.
+			result inspect ]
+		id: #zealVerse
 ]
