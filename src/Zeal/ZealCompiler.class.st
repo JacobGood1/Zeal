@@ -295,30 +295,70 @@ ZealCompiler class >> buildFunctionCall: aListNode [
 		arguments: (exprs allButFirst collect: [:e | self buildExpression: e])
 ]
 
-{ #category : 'building' }
+{ #category : 'special forms' }
 ZealCompiler class >> buildIf: aListNode [
-	| args err clauses elseBody |
+	"Unified if form:
+	 If-style:  (if cond body...) or (if cond1 body1 cond2 body2 :else elseBody)
+	 Let-style: (if [bindings...] body...) — bindings with optional predicates"
+	| exprs firstArg |
+	exprs := aListNode expressions.
+	exprs size < 3 ifTrue: [ ^ self error: 'if requires at least a condition/bindings and a body' source: aListNode ].
+	firstArg := exprs second.
+	
+	"If first arg is a vector [...], it's let-style"
+	(firstArg isKindOf: ZealVectorNode)
+		ifTrue: [ ^ self buildIfLet: aListNode ]
+		ifFalse: [ ^ self buildIfExpr: aListNode ]
+]
+
+{ #category : 'special forms' }
+ZealCompiler class >> buildIfExpr: aListNode [
+	"If-style: (if cond body...) or (if cond1 body1 cond2 body2 :else elseBody)
+	 Without :else — first arg is condition, rest are body expressions.
+	 With :else — pairs of (cond body) before :else, then else body."
+	| args elseIdx clauses elseBody bodyExprs |
 	args := aListNode expressions allButFirst.
-	(err := self requireArgs: 3 from: aListNode expressions forForm: 'if') ifNotNil: [ ^ err ].
-	clauses := OrderedCollection new. elseBody := nil.
-	[ args notEmpty ] whileTrue: [
-		args size < 2 ifTrue: [ elseBody := self buildExpression: args first. args := #() ]
-		ifFalse: [
-			((args first isKindOf: ZealKeywordNode) and: [ args first value value = ':else' ]) ifTrue: [
-				elseBody := self buildExpression: args second. args := #() ]
-			ifFalse: [ clauses add: { self buildExpression: args first. self buildExpression: args second }.
-				args := args allButFirst allButFirst ] ] ].
+	
+	"Find :else position"
+	elseIdx := args detectIndex: [:a | 
+		(a isKindOf: ZealKeywordNode) and: [ a value value = ':else' ]] 
+		ifNone: [ 0 ].
+	
+	elseIdx > 0 ifTrue: [
+		"Has :else — everything before is cond/body pairs, after is else body"
+		| beforeElse afterElse |
+		beforeElse := args copyFrom: 1 to: elseIdx - 1.
+		afterElse := args copyFrom: elseIdx + 1 to: args size.
+		clauses := OrderedCollection new.
+		1 to: beforeElse size by: 2 do: [:i |
+			i + 1 <= beforeElse size ifTrue: [
+				clauses add: { self buildExpression: (beforeElse at: i). self buildExpression: (beforeElse at: i + 1) } ] ].
+		elseBody := afterElse size = 1
+			ifTrue: [ self buildExpression: afterElse first ]
+			ifFalse: [ ZealBlock new body: (afterElse collect: [:e | self buildExpression: e]) ] ]
+	ifFalse: [
+		"No :else — first arg is condition, rest are body"
+		clauses := OrderedCollection new.
+		bodyExprs := args allButFirst collect: [:e | self buildExpression: e].
+		clauses add: { self buildExpression: args first. 
+			bodyExprs size = 1 
+				ifTrue: [ bodyExprs first ] 
+				ifFalse: [ ZealBlock new body: bodyExprs ] }.
+		elseBody := nil ].
+	
 	^ ZealIf new clauses: clauses; elseBody: elseBody
 ]
 
-{ #category : 'building' }
-ZealCompiler class >> buildLet: aListNode [
-	| exprs err parsed |
+{ #category : 'special forms' }
+ZealCompiler class >> buildIfLet: aListNode [
+	"Let-style if: (if [x 10 (> x 2)] body...)
+	 Vector contains bindings and optional predicates."
+	| exprs parsed |
 	exprs := aListNode expressions.
-	(err := self requireArgs: 3 from: exprs forForm: 'let') ifNotNil: [ ^ err ].
-	(err := self requireVector: exprs second forForm: 'let' label: 'bindings') ifNotNil: [ ^ err ].
 	parsed := self parseBindingVectorNode: exprs second.
-	^ ZealLet new bindings: parsed first; predicates: parsed second;
+	^ ZealLet new 
+		bindings: parsed first; 
+		predicates: parsed second;
 		body: (exprs allButFirst allButFirst collect: [:e | self buildExpression: e])
 ]
 
@@ -517,11 +557,12 @@ ZealCompiler class >> compile: aString [
 	^ self buildFromAST: ast
 ]
 
-{ #category : 'compiling' }
+{ #category : 'compiler' }
 ZealCompiler class >> compileToVerse: aString [
 	"Parse Zeal source, build objects, compile to Verse string."
 	| nodes |
 	nodes := self compile: aString.
+	(nodes isKindOf: Collection) ifFalse: [ nodes := { nodes } ].
 	^ String streamContents: [:s |
 		nodes do: [:n | n compileToVerse: s indent: 0 ] separatedBy: [ s cr; cr ] ]
 ]
@@ -662,14 +703,14 @@ ZealCompiler class >> resolveNameNode: aNode [
 		yourself
 ]
 
-{ #category : 'building' }
+{ #category : 'compiler' }
 ZealCompiler class >> specialFormBuilders [
 	^ Dictionary new
 		at: 'def' put: #buildDef:; at: 'var' put: #buildVar:; at: 'set' put: #buildSet:;
 		at: 'defn' put: #buildDefn:; at: 'defstruct' put: #buildDefstruct:;
 		at: 'defenum' put: #buildDefenum:; at: 'defclass' put: #buildDefclass:;
 		at: 'definterface' put: #buildDefinterface:;
-		at: 'if' put: #buildIf:; at: 'let' put: #buildLet:;
+		at: 'if' put: #buildIf:;
 		at: 'for' put: #buildFor:; at: 'loop' put: #buildLoop:;
 		at: 'block' put: #buildBlock:; at: 'do' put: #buildBlock:;
 		at: 'defer' put: #buildDefer:; at: 'case' put: #buildCase:;

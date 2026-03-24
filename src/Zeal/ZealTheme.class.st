@@ -17,7 +17,8 @@ ZealTheme class >> braceColor [
 
 { #category : 'colors' }
 ZealTheme class >> bracketColor [
-	^ Color fromHexString: 'FF9C75'
+	"Bright green for brackets — #50FA7B"
+	^ Color fromHexString: '50FA7B'
 ]
 
 { #category : 'colors' }
@@ -50,6 +51,97 @@ ZealTheme class >> foregroundColor [
 	^ Color fromHexString: 'CDD7DC'
 ]
 
+{ #category : 'highlighting' }
+ZealTheme class >> highlight: aString [
+	"Tokenize and colorize Zeal source, return a BlRopedText with attributes."
+	| text i size |
+	text := aString asRopedText.
+	text foreground: self symbolColor. "default color"
+	i := 1.
+	size := aString size.
+	
+	[ i <= size ] whileTrue: [
+		| ch |
+		ch := aString at: i.
+		
+		"Comments: ; to end of line"
+		ch = $; ifTrue: [
+			| start |
+			start := i.
+			[ i <= size and: [ (aString at: i) ~= Character cr and: [ (aString at: i) ~= Character lf ] ] ] 
+				whileTrue: [ i := i + 1 ].
+			(text from: start to: i - 1) foreground: self commentColor ]
+		
+		"Strings"
+		ifFalse: [ ch = $" ifTrue: [
+			| start |
+			start := i. i := i + 1.
+			[ i <= size and: [ (aString at: i) ~= $" ] ] whileTrue: [ i := i + 1 ].
+			i <= size ifTrue: [ i := i + 1 ]. "past closing quote"
+			(text from: start to: i - 1) foreground: self stringColor ]
+		
+		"Parens"
+		ifFalse: [ ch = $( ifTrue: [ (text from: i to: i) foreground: self parenColor. i := i + 1 ]
+		ifFalse: [ ch = $) ifTrue: [ (text from: i to: i) foreground: self parenColor. i := i + 1 ]
+		
+		"Brackets"
+		ifFalse: [ ch = $[ ifTrue: [ (text from: i to: i) foreground: self bracketColor. i := i + 1 ]
+		ifFalse: [ ch = $] ifTrue: [ (text from: i to: i) foreground: self bracketColor. i := i + 1 ]
+		
+		"Braces"
+		ifFalse: [ ch = ${ ifTrue: [ (text from: i to: i) foreground: self braceColor. i := i + 1 ]
+		ifFalse: [ ch = $} ifTrue: [ (text from: i to: i) foreground: self braceColor. i := i + 1 ]
+		
+		"Numbers"
+		ifFalse: [ (ch isDigit or: [ch = $- and: [i + 1 <= size and: [(aString at: i + 1) isDigit]]]) ifTrue: [
+			| start |
+			start := i. i := i + 1.
+			[ i <= size and: [ (aString at: i) isDigit or: [(aString at: i) = $. or: [(aString at: i) = $x]] ] ] whileTrue: [ i := i + 1 ].
+			(text from: start to: i - 1) foreground: self numberColor ]
+		
+		"Keywords :else, :extends etc"
+		ifFalse: [ ch = $: ifTrue: [
+			| start |
+			start := i. i := i + 1.
+			[ i <= size and: [ (aString at: i) isLetter or: [(aString at: i) = $-] ] ] whileTrue: [ i := i + 1 ].
+			i > (start + 1) ifTrue: [ (text from: start to: i - 1) foreground: self keywordColor ]
+			ifFalse: [ (text from: start to: start) foreground: self operatorColor ] ]
+		
+		"Words: symbols, special forms, operators"
+		ifFalse: [ (ch isLetter or: [ch = $_ or: [ch = $@ or: [ch = $?]]]) ifTrue: [
+			| start word |
+			start := i.
+			[ i <= size and: [ 
+				| c | c := aString at: i.
+				c isLetter or: [c isDigit or: ['_-?!/@' includes: c]] ] ] whileTrue: [ i := i + 1 ].
+			word := aString copyFrom: start to: i - 1.
+			"Check if it has colons (colon chain like name:type:spec)"
+			(i <= size and: [(aString at: i) = $:]) ifTrue: [
+				"Scan the whole colon chain"
+				[ i <= size and: [
+					| c | c := aString at: i.
+					c isLetter or: [c isDigit or: ['_-?!/@:[]' includes: c]] ] ] whileTrue: [ i := i + 1 ].
+				(text from: start to: i - 1) foreground: self colonChainColor ]
+			ifFalse: [
+				(self specialForms includes: word)
+					ifTrue: [ (text from: start to: i - 1) foreground: self specialFormColor ]
+					ifFalse: [ (self operators includes: word)
+						ifTrue: [ (text from: start to: i - 1) foreground: self operatorColor ]
+						ifFalse: [ (text from: start to: i - 1) foreground: self symbolColor ] ] ] ]
+		
+		"Operators: + - * / = < > etc"
+		ifFalse: [ ('+-*/<>=!' includes: ch) ifTrue: [
+			| start |
+			start := i.
+			[ i <= size and: [ '+-*/<>=!' includes: (aString at: i) ] ] whileTrue: [ i := i + 1 ].
+			(text from: start to: i - 1) foreground: self operatorColor ]
+		
+		"Everything else: skip"
+		ifFalse: [ i := i + 1 ] ] ] ] ] ] ] ] ] ] ] ] ].
+	
+	^ text
+]
+
 { #category : 'colors' }
 ZealTheme class >> keywordColor [
 	^ Color fromHexString: '69F0AE'
@@ -62,7 +154,8 @@ ZealTheme class >> numberColor [
 
 { #category : 'colors' }
 ZealTheme class >> operatorColor [
-	^ Color fromHexString: 'FFC19A'
+	"Bright cyan for operators — #8BE9FD"
+	^ Color fromHexString: '8BE9FD'
 ]
 
 { #category : 'language' }
@@ -72,7 +165,8 @@ ZealTheme class >> operators [
 
 { #category : 'colors' }
 ZealTheme class >> parenColor [
-	^ Color fromHexString: 'FFF9B8'
+	"Dimmed purple for parens — #9580FF"
+	^ Color fromHexString: '9580FF'
 ]
 
 { #category : 'colors' }
@@ -124,5 +218,6 @@ ZealTheme class >> styler [
 
 { #category : 'colors' }
 ZealTheme class >> symbolColor [
-	^ Color fromHexString: 'DCDCAA'
+	"Light lilac purple for symbols — #D4AAFF"
+	^ Color fromHexString: 'D4AAFF'
 ]
