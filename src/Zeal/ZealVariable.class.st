@@ -15,7 +15,7 @@ ZealVariable >> compileToVerse: stream indent: level [
 	self isMutable ifTrue: [ stream nextPutAll: 'var ' ].
 	stream nextPutAll: (self toPascalCase: name).
 	self emitSpecifiers: (specifiers select: [:s | ZealColonChainResolver isDeclarationSpecifier: s]) on: stream.
-	type ifNotNil: [ stream nextPut: $:; nextPutAll: type ].
+	type ifNotNil: [ stream nextPut: $:; nextPutAll: (self typeToVerse: type) ].
 	value ifNotNil: [
 		stream nextPutAll: ' = '.
 		value compileToVerse: stream indent: 0 ]
@@ -37,7 +37,8 @@ ZealVariable >> compileToZeal: stream indent: level [
 	stream nextPutAll: '('.
 	stream nextPutAll: (self isMutable ifTrue: ['var '] ifFalse: ['def ']).
 	stream nextPutAll: (self toKebabCase: name).
-	type ifNotNil: [ stream nextPut: $:; nextPutAll: (self toKebabCase: type) ].
+	specifiers do: [:s | stream nextPut: $:; nextPutAll: (self toKebabCase: s) ].
+	type ifNotNil: [ stream nextPut: $:; nextPutAll: (self typeToZeal: type) ].
 	value ifNotNil: [ stream nextPut: $ . value compileToZeal: stream indent: 0 ].
 	stream nextPut: $)
 ]

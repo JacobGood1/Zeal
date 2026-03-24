@@ -127,12 +127,17 @@ ZealClassGenerator class >> generateDef: aZealNode parent: parentClass package: 
 	
 	cls := self ensureClass: className superclass: parentClass trait: trait package: packageName.
 	
+	"Store Zeal source (the actual source language)"
 	cls class compile: ('zealSource
+	^ ' , aZealNode compileToZeal printString) classified: 'zeal'.
+	
+	"Store Verse source (compiled output)"
+	cls class compile: ('verseSource
 	^ ' , aZealNode compileToVerse printString) classified: 'zeal'.
 	
 	cls class compile: 'default
 	| result |
-	result := ZealCompiler fromVerse: self zealSource.
+	result := ZealCompiler compile: self zealSource.
 	(result isKindOf: Collection) ifTrue: [ result := result first ].
 	^ self new zealNode: result' classified: 'instance creation'.
 	
@@ -141,12 +146,9 @@ ZealClassGenerator class >> generateDef: aZealNode parent: parentClass package: 
 
 { #category : 'generating' }
 ZealClassGenerator class >> generateFromProject: aZealProject [
-	"Generate a class hierarchy mirroring the project structure.
-	 Project -> Module -> Namespace -> Definitions (with traits)"
 	| packageName projectClass generated |
 	packageName := 'ZealProject-' , (aZealProject name copyReplaceAll: ' ' with: '').
 	
-	"Create project root class"
 	projectClass := self ensureClass: ('Zeal_' , (self toPascalCase: aZealProject name))
 		superclass: ZealDefinitionClass
 		trait: nil
@@ -161,15 +163,23 @@ ZealClassGenerator class >> generateFromProject: aZealProject [
 			superclass: projectClass
 			trait: TZealModule
 			package: packageName.
+		moduleClass class compile: ('zealSource ^ ''module: ' , mod name , '''') classified: 'zeal'.
+		moduleClass class compile: ('verseSource ^ ''module: ' , mod name , '''') classified: 'zeal'.
 		generated add: moduleClass.
 		
 		mod definitions do: [:ns |
 			(ns isKindOf: ZealModule) ifTrue: [
-				| nsClass |
+				| nsClass zealSrc verseSrc |
 				nsClass := self ensureClass: (moduleClass name , '_' , (self toPascalCase: ns name))
 					superclass: moduleClass
 					trait: TZealNamespace
 					package: packageName.
+				zealSrc := [ ns compileToZeal ] on: Error do: [:e | 'Error: ' , e messageText ].
+				verseSrc := [ ns compileToVerse ] on: Error do: [:e | 'Error: ' , e messageText ].
+				nsClass class compile: ('zealSource
+	^ ' , zealSrc printString) classified: 'zeal'.
+				nsClass class compile: ('verseSource
+	^ ' , verseSrc printString) classified: 'zeal'.
 				generated add: nsClass.
 				
 				ns definitions do: [:def |

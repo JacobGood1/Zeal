@@ -1,15 +1,57 @@
 Class {
 	#name : 'ZealCompiler',
 	#superclass : 'Object',
+	#classInstVars : [
+		'currentResolver'
+	],
 	#category : 'Zeal',
 	#package : 'Zeal'
 }
 
 { #category : 'building' }
+ZealCompiler class >> buildArchetype: aListNode [
+	"(were-cat :console c :name n) -> were_cat{Console := C, Name := N}"
+	| exprs headStr typeName fields i |
+	exprs := aListNode expressions.
+	headStr := exprs first value value.
+	typeName := ZealSymbolRef new name: headStr.
+	fields := OrderedCollection new.
+	i := 2.
+	[ i <= exprs size ] whileTrue: [
+		| kw val |
+		kw := exprs at: i.
+		(kw isKindOf: ZealKeywordNode) ifTrue: [
+			val := (i + 1 <= exprs size) ifTrue: [ self buildExpression: (exprs at: i + 1) ] ifFalse: [ ZealLiteral new value: 'true'; literalType: #boolean ].
+			fields add: (ZealOperator new operator: ':='; operands: { ZealSymbolRef new name: kw value value allButFirst. val }).
+			i := i + 2 ]
+		ifFalse: [ i := i + 1 ] ].
+	^ ZealFunctionCall new functionName: 'archetype'; arguments: {typeName} , fields
+]
+
+{ #category : 'building' }
 ZealCompiler class >> buildAtom: aNode [
-	"Build a ZealLiteral or ZealSymbolRef from an atom node."
 	(aNode isKindOf: ZealSymbolNode) ifTrue: [
-		^ ZealSymbolRef new name: aNode value value ].
+		| sym |
+		sym := aNode value value.
+		(sym indexOf: $/) > 0 ifTrue: [
+			| parts result |
+			parts := sym splitOn: $/.
+			result := ZealSymbolRef new name: parts first.
+			parts allButFirst do: [:p |
+				| recvType |
+				"Use type resolver if available to decide member vs index"
+				recvType := currentResolver ifNotNil: [:r | r typeOfExpression: result].
+				(p allSatisfy: [:ch | ch isDigit]) 
+					ifTrue: [ 
+						"Numeric: always index"
+						result := ZealFunctionCall new functionName: '[]'; arguments: {result. ZealLiteral new value: p; literalType: #integer} ]
+					ifFalse: [ 
+						"Check type: indexable -> [], object -> ."
+						(self isIndexableType: recvType)
+							ifTrue: [ result := ZealFunctionCall new functionName: '[]'; arguments: {result. ZealSymbolRef new name: p} ]
+							ifFalse: [ result := ZealFunctionCall new functionName: '.'; arguments: {result. ZealSymbolRef new name: p} ] ] ].
+			^ result ].
+		^ ZealSymbolRef new name: sym ].
 	(aNode isKindOf: ZealColonChainNode) ifTrue: [
 		^ ZealSymbolRef new name: aNode value value ].
 	(aNode isKindOf: ZealKeywordNode) ifTrue: [
@@ -20,17 +62,32 @@ ZealCompiler class >> buildAtom: aNode [
 		^ ZealLiteral new value: aNode value value; literalType: #float ].
 	(aNode isKindOf: ZealStringLiteralNode) ifTrue: [
 		^ ZealLiteral new value: aNode value value; literalType: #string ].
+	(aNode isKindOf: ZealCharLiteralNode) ifTrue: [
+		^ ZealLiteral new value: aNode value value; literalType: #char ].
 	(aNode isKindOf: ZealHexLiteralNode) ifTrue: [
 		^ ZealLiteral new value: aNode value value; literalType: #hex ].
 	(aNode isKindOf: ZealRangeLiteralNode) ifTrue: [
 		^ ZealLiteral new value: aNode value value; literalType: #range ].
-	"Fallback"
 	^ ZealLiteral new value: aNode value value; literalType: #unknown
 ]
 
 { #category : 'building' }
 ZealCompiler class >> buildBlock: aListNode [
 	^ ZealBlock new body: (aListNode expressions allButFirst collect: [:e | self buildExpression: e])
+]
+
+{ #category : 'building' }
+ZealCompiler class >> buildBody: astExprs [
+	"Build body expressions, flattening any multi-binding results"
+	| body |
+	body := OrderedCollection new.
+	astExprs do: [:e |
+		| built |
+		built := self buildExpression: e.
+		(built isKindOf: OrderedCollection)
+			ifTrue: [ body addAll: built ]
+			ifFalse: [ body add: built ] ].
+	^ body
 ]
 
 { #category : 'building' }
@@ -53,15 +110,27 @@ ZealCompiler class >> buildCase: aListNode [
 
 { #category : 'building' }
 ZealCompiler class >> buildDef: aListNode [
-	| exprs err resolved |
-	exprs := aListNode expressions.
-	(err := self requireArgs: 3 from: exprs forForm: 'def') ifNotNil: [ ^ err ].
-	resolved := self requireNameFrom: exprs forForm: 'def'.
-	(resolved isKindOf: ZealCompileError) ifTrue: [ ^ resolved ].
-	^ ZealVariable new
-		name: (resolved at: #name); type: (resolved at: #type);
-		specifiers: (resolved at: #specifiers); annotations: (resolved at: #annotations);
-		isMutable: false; value: (self buildExpression: exprs third)
+	| exprs results i |
+	exprs := aListNode expressions allButFirst.
+	exprs size < 2 ifTrue: [ ^ self error: 'def requires at least one name/value pair' ].
+	results := OrderedCollection new.
+	i := 1.
+	[ i + 1 <= exprs size ] whileTrue: [
+		| nameNode valueExpr resolved value type |
+		nameNode := exprs at: i.
+		valueExpr := exprs at: i + 1.
+		resolved := self resolveNameNode: nameNode.
+		(resolved isKindOf: ZealCompileError) ifTrue: [ ^ resolved ].
+		value := self buildExpression: valueExpr.
+		type := resolved at: #type.
+		type ifNil: [ type := self inferType: value ].
+		results add: (ZealVariable new
+			name: (resolved at: #name); type: type;
+			specifiers: (resolved at: #specifiers); annotations: (resolved at: #annotations);
+			isMutable: false; value: value).
+		i := i + 2 ].
+	results size = 1 ifTrue: [ ^ results first ].
+	^ results
 ]
 
 { #category : 'building' }
@@ -133,7 +202,7 @@ ZealCompiler class >> buildDefn: aListNode [
 		name: (resolved at: #name); type: (resolved at: #type);
 		specifiers: declSpecs , sigSpecs; annotations: (resolved at: #annotations);
 		effects: sigSpecs;
-		body: (bodyExprs collect: [:e | self buildExpression: e]).
+		body: (self buildBody: bodyExprs).
 	params ifNotNil: [
 		func parameters: (params expressions collect: [:p |
 			| r |
@@ -170,6 +239,25 @@ ZealCompiler class >> buildExpression: aNode [
 	(aNode isKindOf: ZealVectorNode) ifTrue: [ ^ self buildVector: aNode ].
 	(aNode isKindOf: ZealMapNode) ifTrue: [ ^ self buildMap: aNode ].
 	^ self buildAtom: aNode
+]
+
+{ #category : 'building' }
+ZealCompiler class >> buildFailableCall: aListNode [
+	| exprs headStr name args |
+	exprs := aListNode expressions.
+	headStr := exprs first value value.
+	name := headStr allButLast.
+	args := exprs allButFirst collect: [:e | self buildExpression: e ].
+	
+	(name indexOf: $/) > 0 ifTrue: [
+		| parts receiver member memberAccess |
+		parts := name splitOn: $/.
+		receiver := ZealSymbolRef new name: parts first.
+		member := ZealSymbolRef new name: parts second.
+		memberAccess := ZealFunctionCall new functionName: '.'; arguments: {receiver. member}.
+		^ ZealFunctionCall new functionName: '[]'; arguments: {memberAccess} , args ].
+	
+	^ ZealFunctionCall new functionName: '[]'; arguments: {ZealSymbolRef new name: name} , args
 ]
 
 { #category : 'building' }
@@ -244,8 +332,22 @@ ZealCompiler class >> buildList: aListNode [
 	(head isKindOf: ZealSymbolNode) ifTrue: [ headStr := head value value ].
 	(head isKindOf: ZealColonChainNode) ifTrue: [ headStr := (ZealColonChainResolver resolve: head value value) at: #name ].
 	headStr ifNil: [ ^ self buildFunctionCall: aListNode ].
+	
 	self specialFormBuilders at: headStr ifPresent: [:sel | ^ self perform: sel with: aListNode ].
 	(self operators includes: headStr) ifTrue: [ ^ self buildOperator: aListNode ].
+	
+	"? failable suffix: (find? x) or (obj/method? x)"
+	(headStr endsWith: '?') ifTrue: [ ^ self buildFailableCall: aListNode ].
+	
+	"/ prefix: (/length obj) -> member access, (/0 obj) -> index access"
+	(headStr beginsWith: '/') ifTrue: [ ^ self buildPrefixAccess: aListNode ].
+	
+	"/ in middle: (console/print args...) -> member call"
+	(headStr indexOf: $/) > 0 ifTrue: [ ^ self buildMemberCall: aListNode ].
+	
+	"Keyword args: (type-name :field val ...) -> archetype"
+	(exprs size >= 2 and: [(exprs second isKindOf: ZealKeywordNode)]) ifTrue: [ ^ self buildArchetype: aListNode ].
+	
 	^ self buildFunctionCall: aListNode
 ]
 
@@ -259,6 +361,20 @@ ZealCompiler class >> buildMap: aMapNode [
 	^ ZealMap new
 		entries: (aMapNode pairs collect: [:pair |
 			{ self buildExpression: pair key. self buildExpression: pair value } ])
+]
+
+{ #category : 'building' }
+ZealCompiler class >> buildMemberCall: aListNode [
+	| exprs headStr parts receiver member args |
+	exprs := aListNode expressions.
+	headStr := exprs first value value.
+	parts := headStr splitOn: $/.
+	receiver := ZealSymbolRef new name: parts first.
+	member := ZealSymbolRef new name: parts second.
+	args := exprs allButFirst collect: [:e | self buildExpression: e ].
+	^ ZealFunctionCall new 
+		functionName: '.'; 
+		arguments: {receiver. member} , args
 ]
 
 { #category : 'building' }
@@ -289,6 +405,27 @@ ZealCompiler class >> buildOperator: aListNode [
 ]
 
 { #category : 'building' }
+ZealCompiler class >> buildPrefixAccess: aListNode [
+	"(/length obj) -> Obj.Length (member access)
+	 (/0 obj) -> Obj[0] (index access)
+	 (/length obj args...) -> Obj.Length(args...) (member call)"
+	| exprs headStr accessor args obj |
+	exprs := aListNode expressions.
+	headStr := exprs first value value.
+	accessor := headStr allButFirst. "strip leading /"
+	exprs size < 2 ifTrue: [ ^ ZealCompileError new message: accessor , ' requires an object argument' ].
+	obj := self buildExpression: exprs second.
+	args := exprs size > 2 ifTrue: [ (exprs copyFrom: 3 to: exprs size) collect: [:e | self buildExpression: e] ] ifFalse: [ #() ].
+	
+	"Check if accessor is a number (index access)"
+	(accessor allSatisfy: [:ch | ch isDigit]) ifTrue: [
+		^ ZealFunctionCall new functionName: '[]'; arguments: {obj. ZealLiteral new value: accessor; literalType: #integer} , args ].
+	
+	"Member access or member call"
+	^ ZealFunctionCall new functionName: '.'; arguments: {obj. ZealSymbolRef new name: accessor} , args
+]
+
+{ #category : 'building' }
 ZealCompiler class >> buildReturn: aListNode [
 	| exprs |
 	exprs := aListNode expressions.
@@ -297,12 +434,43 @@ ZealCompiler class >> buildReturn: aListNode [
 
 { #category : 'building' }
 ZealCompiler class >> buildSet: aListNode [
-	| exprs err |
+	| exprs err target |
 	exprs := aListNode expressions.
 	(err := self requireArgs: 3 from: exprs forForm: 'set') ifNotNil: [ ^ err ].
 	(exprs second isKindOf: ZealSymbolNode)
 		ifFalse: [ ^ self error: 'set target must be a symbol, got ' , exprs second class name ].
-	^ ZealSet new target: exprs second value value; value: (self buildExpression: exprs third)
+	target := exprs second value value.
+	
+	"Check for compound assignment: (set x += 1) — 4 args"
+	(exprs size >= 4 and: [(#('+=' '-=' '*=') includes: exprs third value value)]) ifTrue: [
+		^ ZealSet new target: target; operator: exprs third value value; value: (self buildExpression: exprs fourth) ].
+	
+	"Simple assignment: (set x value) — 3 args"
+	^ ZealSet new target: target; value: (self buildExpression: exprs third)
+]
+
+{ #category : 'building' }
+ZealCompiler class >> buildStr: aListNode [
+	"(str 'hello ' name ' world') -> string interpolation literal"
+	| parts |
+	parts := aListNode expressions allButFirst collect: [:e | self buildExpression: e ].
+	^ ZealLiteral new 
+		value: (String streamContents: [:s |
+			s nextPut: $".
+			parts do: [:p |
+				((p isKindOf: ZealLiteral) and: [p literalType = #string]) 
+					ifTrue: [ 
+						| inner |
+						inner := p value.
+						(inner first = $" and: [inner last = $"]) ifTrue: [ inner := inner copyFrom: 2 to: inner size - 1 ].
+						s nextPutAll: inner ]
+					ifFalse: [ 
+						s nextPut: ${.
+						s nextPutAll: (ZealCodeGenerator new toPascalCase: 
+							((p isKindOf: ZealSymbolRef) ifTrue: [p name] ifFalse: [p compileToVerse])).
+						s nextPut: $} ] ].
+			s nextPut: $" ]);
+		literalType: #string
 ]
 
 { #category : 'building' }
@@ -312,15 +480,27 @@ ZealCompiler class >> buildUsing: aListNode [
 
 { #category : 'building' }
 ZealCompiler class >> buildVar: aListNode [
-	| exprs err resolved |
-	exprs := aListNode expressions.
-	(err := self requireArgs: 3 from: exprs forForm: 'var') ifNotNil: [ ^ err ].
-	resolved := self requireNameFrom: exprs forForm: 'var'.
-	(resolved isKindOf: ZealCompileError) ifTrue: [ ^ resolved ].
-	^ ZealVariable new
-		name: (resolved at: #name); type: (resolved at: #type);
-		specifiers: (resolved at: #specifiers); annotations: (resolved at: #annotations);
-		isMutable: true; value: (self buildExpression: exprs third)
+	| exprs results i |
+	exprs := aListNode expressions allButFirst.
+	exprs size < 2 ifTrue: [ ^ self error: 'var requires at least one name/value pair' ].
+	results := OrderedCollection new.
+	i := 1.
+	[ i + 1 <= exprs size ] whileTrue: [
+		| nameNode valueExpr resolved value type |
+		nameNode := exprs at: i.
+		valueExpr := exprs at: i + 1.
+		resolved := self resolveNameNode: nameNode.
+		(resolved isKindOf: ZealCompileError) ifTrue: [ ^ resolved ].
+		value := self buildExpression: valueExpr.
+		type := resolved at: #type.
+		type ifNil: [ type := self inferType: value ].
+		results add: (ZealVariable new
+			name: (resolved at: #name); type: type;
+			specifiers: (resolved at: #specifiers); annotations: (resolved at: #annotations);
+			isMutable: true; value: value).
+		i := i + 2 ].
+	results size = 1 ifTrue: [ ^ results first ].
+	^ results
 ]
 
 { #category : 'building' }
@@ -356,6 +536,14 @@ ZealCompiler class >> compileToVerseWithComments: aString [
 		ifFalse: [ ^ nodes compileToVerseWithComments ]
 ]
 
+{ #category : 'accessing' }
+ZealCompiler class >> currentResolver [ ^ currentResolver
+]
+
+{ #category : 'accessing' }
+ZealCompiler class >> currentResolver: aResolver [ currentResolver := aResolver
+]
+
 { #category : 'errors' }
 ZealCompiler class >> error: msg [
 	^ ZealCompileError new message: msg
@@ -375,8 +563,40 @@ ZealCompiler class >> fromVerse: aString [
 ]
 
 { #category : 'building' }
+ZealCompiler class >> inferType: aZealNode [
+	"Quick type inference from a value expression — no project context needed for literals"
+	(aZealNode isKindOf: ZealLiteral) ifTrue: [
+		aZealNode literalType = #integer ifTrue: [ ^ 'int' ].
+		aZealNode literalType = #float ifTrue: [ ^ 'float' ].
+		aZealNode literalType = #string ifTrue: [ ^ 'string' ].
+		aZealNode literalType = #char ifTrue: [ ^ 'char' ].
+		aZealNode literalType = #boolean ifTrue: [ ^ 'logic' ] ].
+	(aZealNode isKindOf: ZealSymbolRef) ifTrue: [
+		(aZealNode name = 'true' or: [aZealNode name = 'false']) ifTrue: [ ^ 'logic' ] ].
+	(aZealNode isKindOf: ZealArray) ifTrue: [
+		aZealNode elements notEmpty ifTrue: [
+			| elemType |
+			elemType := self inferType: aZealNode elements first.
+			elemType ifNotNil: [ ^ '[]' , elemType ] ].
+		^ '[]any' ].
+	(aZealNode isKindOf: ZealOperator) ifTrue: [
+		(#('+' '-' '*' '/') includes: aZealNode operator) ifTrue: [ ^ self inferType: aZealNode operands first ].
+		(#('=' '<>' '<' '>' '<=' '>=' 'and' 'or' 'not') includes: aZealNode operator) ifTrue: [ ^ 'logic' ] ].
+	^ nil
+]
+
+{ #category : 'building' }
+ZealCompiler class >> isIndexableType: aType [
+	aType ifNil: [ ^ false ].
+	(aType beginsWith: '[]') ifTrue: [ ^ true ].
+	(aType beginsWith: '[') ifTrue: [ ^ true ].
+	aType = 'string' ifTrue: [ ^ true ].
+	^ false
+]
+
+{ #category : 'building' }
 ZealCompiler class >> operators [
-	^ ZealTheme operators , #('and' 'or' 'not')
+	^ ZealTheme operators , #('and' 'or' 'not' '?')
 ]
 
 { #category : 'building' }
@@ -455,6 +675,7 @@ ZealCompiler class >> specialFormBuilders [
 		at: 'defer' put: #buildDefer:; at: 'case' put: #buildCase:;
 		at: 'module' put: #buildModule:; at: 'using' put: #buildUsing:;
 		at: 'break' put: #buildBreak:; at: 'return' put: #buildReturn:;
+		at: 'str' put: #buildStr:;
 		yourself
 ]
 

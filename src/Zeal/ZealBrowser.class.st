@@ -155,6 +155,61 @@ ZealBrowser >> childrenOf: item [
 	^ #()
 ]
 
+{ #category : 'actions' }
+ZealBrowser >> compileAndSave: zealEditor forNode: aNode [
+	| zealSource compiled verseSource namespace filePath genClass |
+	zealSource := zealEditor editor text asString.
+	
+	[ compiled := ZealCompiler compile: zealSource ] on: Error do: [:e |
+		self flashEditor: zealEditor color: (Color red alpha: 0.3). ^ self ].
+	
+	"Generate Verse with zeal comment"
+	[ verseSource := compiled compileToVerseWithZealComment: zealSource ] on: Error do: [:e |
+		self flashEditor: zealEditor color: (Color red alpha: 0.3). ^ self ].
+	
+	detailElement childWithId: #verseOutput ifFound: [:ve |
+		ve text: (verseSource asRopedText foreground: ZealTheme foregroundColor) ].
+	
+	aNode rawSource: nil.
+	
+	genClass := self generatedClassFor: aNode.
+	genClass ifNotNil: [
+		genClass class compile: ('zealSource
+	^ ' , zealSource printString) classified: 'zeal'.
+		genClass class compile: ('verseSource
+	^ ' , verseSource printString) classified: 'zeal' ].
+	
+	namespace := aNode module.
+	namespace ifNotNil: [
+		filePath := self verseFilePathFor: namespace.
+		filePath ifNotNil: [ self writeNamespaceToFile: namespace path: filePath ] ].
+	
+	self flashEditor: zealEditor color: (ZealTheme cursorColor alpha: 0.2)
+]
+
+{ #category : 'actions' }
+ZealBrowser >> flashEditor: anEditor color: aColor [
+	"Flash the editor background briefly to indicate success/failure."
+	| original |
+	original := anEditor background.
+	anEditor background: aColor.
+	[ (Delay forMilliseconds: 300) wait.
+	  anEditor enqueueTask: (BlTaskAction new action: [ anEditor background: original ]) ] fork
+]
+
+{ #category : 'detail' }
+ZealBrowser >> generatedClassFor: aNode [
+	"Find the generated Smalltalk class for a ZealNode by matching name"
+	| name |
+	(aNode respondsTo: #name) ifFalse: [ ^ nil ].
+	name := aNode name ifNil: [ ^ nil ].
+	^ Smalltalk allClassesAndTraits 
+		detect: [:c | 
+			(c name beginsWith: 'Zeal_') and: [
+				c name endsWith: '_' , (ZealClassGenerator toPascalCase: name) ] ]
+		ifNone: [ nil ]
+]
+
 { #category : 'initialization' }
 ZealBrowser >> initialize [
 	super initialize.
@@ -191,7 +246,7 @@ ZealBrowser >> project: aZealProject [
 
 { #category : 'detail' }
 ZealBrowser >> selectNode: aNode [
-	| verseText zealText |
+	| verseText zealText generatedClass zealEditor |
 	selectedNode := aNode.
 	detailElement removeChildren.
 	
@@ -199,29 +254,39 @@ ZealBrowser >> selectNode: aNode [
 		aptitude: (BrGlamorousLabelAptitude new foreground: ZealTheme colonChainColor; fontSize: 18; bold);
 		text: (self labelFor: aNode)).
 	
-	"Zeal output"
+	generatedClass := self generatedClassFor: aNode.
+	
+	"Editable Zeal source"
 	detailElement addChild: (BrLabel new
 		aptitude: (BrGlamorousLabelAptitude new foreground: ZealTheme specialFormColor; fontSize: 12);
-		text: 'Zeal:';
+		text: 'Zeal (Ctrl+S to compile & save):';
 		margin: (BlInsets top: 12 left: 0 bottom: 4 right: 0)).
 	
-	zealText := [ aNode compileToZeal ] on: Error do: [:e | 'Error: ' , e messageText ].
-	detailElement addChild: (BrEditor new
+	zealText := generatedClass 
+		ifNotNil: [ generatedClass zealSource ]
+		ifNil: [ [ aNode compileToZeal ] on: Error do: [:e | 'Error: ' , e messageText ] ].
+	
+	zealEditor := BrEditor new
 		aptitude: (BrGlamorousCodeEditorAptitude new);
 		text: (zealText asRopedText foreground: ZealTheme stringColor);
 		background: (ZealTheme backgroundColor darker);
 		constraintsDo: [:c | c horizontal matchParent. c vertical fitContent ];
-		beReadOnlyWithSelection;
 		padding: (BlInsets all: 8);
-		margin: (BlInsets bottom: 8)).
+		margin: (BlInsets bottom: 8).
+	zealEditor addShortcut: (BlShortcutWithAction new 
+		combination: BlKeyCombination primaryS;
+		action: [ self compileAndSave: zealEditor forNode: aNode ]).
+	detailElement addChild: zealEditor.
 	
-	"Verse output"
+	"Read-only Verse output"
 	detailElement addChild: (BrLabel new
 		aptitude: (BrGlamorousLabelAptitude new foreground: ZealTheme commentColor; fontSize: 12);
 		text: 'Verse:';
 		margin: (BlInsets top: 4 left: 0 bottom: 4 right: 0)).
 	
-	verseText := [ aNode compileToVerse ] on: Error do: [:e | 'Error: ' , e messageText ].
+	verseText := generatedClass
+		ifNotNil: [ generatedClass verseSource ]
+		ifNil: [ [ aNode compileToVerse ] on: Error do: [:e | 'Error: ' , e messageText ] ].
 	detailElement addChild: (BrEditor new
 		aptitude: (BrGlamorousCodeEditorAptitude new);
 		text: (verseText asRopedText foreground: ZealTheme foregroundColor);
@@ -229,7 +294,14 @@ ZealBrowser >> selectNode: aNode [
 		constraintsDo: [:c | c horizontal matchParent. c vertical fitContent ];
 		beReadOnlyWithSelection;
 		padding: (BlInsets all: 8);
-		margin: (BlInsets bottom: 12)).
+		margin: (BlInsets bottom: 8);
+		id: #verseOutput).
+	
+	generatedClass ifNotNil: [
+		detailElement addChild: (BrLabel new
+			aptitude: (BrGlamorousLabelAptitude new foreground: ZealTheme commentColor; fontSize: 11);
+			text: 'Smalltalk class: ' , generatedClass name;
+			margin: (BlInsets top: 4)) ].
 	
 	(aNode isKindOf: ZealModule) ifTrue: [ self showModuleDetail: aNode ].
 	(aNode isKindOf: ZealFunction) ifTrue: [ self showFunctionDetail: aNode ].
@@ -291,4 +363,33 @@ ZealBrowser >> showWelcome [
 	detailElement addChild: (BrLabel new
 		aptitude: (BrGlamorousLabelAptitude new foreground: ZealTheme commentColor; fontSize: 16);
 		text: 'Select a definition to view details')
+]
+
+{ #category : 'actions' }
+ZealBrowser >> verseFilePathFor: aNamespace [
+	"Find the .verse file path for a namespace (ZealModule kind: #file)."
+	| dir files |
+	((aNamespace isKindOf: ZealModule) and: [aNamespace kind = #file]) ifFalse: [ ^ nil ].
+	project ifNil: [ ^ nil ].
+	dir := project path asFileReference.
+	files := dir allFiles select: [:f | 
+		f extension = 'verse' and: [f basenameWithoutExtension = aNamespace name] ].
+	files ifEmpty: [ ^ nil ] ifNotEmpty: [ ^ files first fullName ]
+]
+
+{ #category : 'actions' }
+ZealBrowser >> writeNamespaceToFile: aNamespace path: filePath [
+	"Write all definitions in a namespace to the .verse file."
+	| stream |
+	stream := String new writeStream.
+	"Write usings first"
+	aNamespace usings do: [:u |
+		stream nextPutAll: 'using { '; nextPutAll: u path; nextPutAll: ' }'.
+		stream cr ].
+	aNamespace usings notEmpty ifTrue: [ stream cr ].
+	"Write each definition's verse source"
+	aNamespace definitions do: [:d |
+		d compileToVerse: stream indent: 0.
+		stream cr; cr ].
+	filePath asFileReference writeStreamDo: [:ws | ws nextPutAll: stream contents ]
 ]

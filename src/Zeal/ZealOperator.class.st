@@ -18,14 +18,30 @@ ZealOperator >> compileToVerse: stream indent: level [
 		stream nextPut: $-. operands first compileToVerse: stream indent: 0. ^ self ].
 	(operator = '?' and: [ operands size = 1 ]) ifTrue: [
 		operands first compileToVerse: stream indent: 0. stream nextPut: $?. ^ self ].
+	operator = '..' ifTrue: [
+		operands first compileToVerse: stream indent: 0.
+		stream nextPutAll: '..'.
+		operands second compileToVerse: stream indent: 0. ^ self ].
+	"No parens — Verse handles precedence natively"
 	operands first compileToVerse: stream indent: 0.
-	stream nextPutAll: ' '; nextPutAll: operator; nextPutAll: ' '.
-	operands second compileToVerse: stream indent: 0
+	operands allButFirst do: [:o |
+		stream nextPutAll: ' '; nextPutAll: operator; nextPutAll: ' '.
+		o compileToVerse: stream indent: 0 ]
 ]
 
 { #category : 'compiling' }
 ZealOperator >> compileToZeal: stream indent: level [
 	self emitIndent: level on: stream.
+	operator = 'not' ifTrue: [
+		stream nextPutAll: '(not '. operands first compileToZeal: stream indent: 0. stream nextPut: $). ^ self ].
+	(operator = '-' and: [ operands size = 1 ]) ifTrue: [
+		stream nextPut: $-. operands first compileToZeal: stream indent: 0. ^ self ].
+	(operator = '?' and: [ operands size = 1 ]) ifTrue: [
+		stream nextPutAll: '(? '. operands first compileToZeal: stream indent: 0. stream nextPut: $). ^ self ].
+	operator = '..' ifTrue: [
+		operands first compileToZeal: stream indent: 0.
+		stream nextPutAll: '..'.
+		operands second compileToZeal: stream indent: 0. ^ self ].
 	stream nextPutAll: '(' , operator.
 	operands do: [:o | stream nextPut: $ . o compileToZeal: stream indent: 0 ].
 	stream nextPut: $)

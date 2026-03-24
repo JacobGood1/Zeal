@@ -25,12 +25,13 @@ ZealField >> compileToVerse: stream indent: level [
 { #category : 'compiling' }
 ZealField >> compileToZeal: stream indent: level [
 	self emitIndent: level on: stream.
-	self isMutable 
-		ifTrue: [ stream nextPutAll: '(var '; nextPutAll: (self toKebabCase: name) ]
-		ifFalse: [ stream nextPut: $[; nextPutAll: (self toKebabCase: name) ].
-	type ifNotNil: [ stream nextPut: $:; nextPutAll: (self toKebabCase: type) ].
+	stream nextPutAll: '('.
+	stream nextPutAll: (self isMutable ifTrue: ['var '] ifFalse: ['def ']).
+	stream nextPutAll: (self toKebabCase: name).
+	specifiers do: [:s | stream nextPut: $:; nextPutAll: (self toKebabCase: s) ].
+	type ifNotNil: [ stream nextPut: $:; nextPutAll: (self typeToZeal: type) ].
 	defaultValue ifNotNil: [ stream nextPut: $ . defaultValue compileToZeal: stream indent: 0 ].
-	self isMutable ifTrue: [ stream nextPut: $) ] ifFalse: [ stream nextPut: $] ]
+	stream nextPut: $)
 ]
 
 { #category : 'accessing' }

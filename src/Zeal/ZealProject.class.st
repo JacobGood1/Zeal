@@ -40,6 +40,39 @@ ZealProject >> exportTo: aFolderPath [
 		self exportModule: mod to: modDir ]
 ]
 
+{ #category : 'scanning' }
+ZealProject >> extractRawChunks: codeLines [
+	"Split code lines into chunks per top-level definition.
+	 Each chunk starts at a non-empty, non-comment line at indent 0.
+	 Comments before a definition are included in its chunk."
+	| chunks current hasCode |
+	chunks := OrderedCollection new.
+	current := OrderedCollection new.
+	hasCode := false.
+	codeLines do: [:line |
+		| trimmed |
+		trimmed := line trimBoth.
+		trimmed isEmpty ifTrue: [
+			current add: line ]
+		ifFalse: [ (trimmed first = $#) ifTrue: [
+			"Comment: if we have code already, start a new chunk"
+			hasCode ifTrue: [
+				chunks add: ((String with: Character lf) join: current) trimBoth.
+				current := OrderedCollection new.
+				hasCode := false ].
+			current add: line ]
+		ifFalse: [
+			((VersePreprocessor indentOf: line) = 0 and: [hasCode]) ifTrue: [
+				chunks add: ((String with: Character lf) join: current) trimBoth.
+				current := OrderedCollection new.
+				hasCode := false ].
+			current add: line.
+			hasCode := true ] ] ].
+	current notEmpty ifTrue: [ 
+		chunks add: ((String with: Character lf) join: current) trimBoth ].
+	^ chunks reject: [:c | c isEmpty]
+]
+
 { #category : 'generating' }
 ZealProject >> generateClasses [
 	"Generate Smalltalk classes for all top-level definitions. Returns the generated classes."
@@ -88,7 +121,7 @@ ZealProject >> isTopLevelDef: aNode [
 
 { #category : 'scanning' }
 ZealProject >> loadVerseFile: aFileRef into: aModule [
-	| source lines codeLines preprocessed parsed nodes inUsingBlock |
+	| source lines codeLines preprocessed parsed nodes inUsingBlock rawChunks |
 	source := aFileRef contents.
 	lines := source lines.
 	codeLines := OrderedCollection new.
@@ -111,7 +144,9 @@ ZealProject >> loadVerseFile: aFileRef into: aModule [
 			ifFalse: [ inUsingBlock := false. codeLines add: line ] ]
 		ifFalse: [ codeLines add: line ] ] ] ].
 	
-	preprocessed := VersePreprocessor process: (Character cr join: codeLines).
+	rawChunks := self extractRawChunks: codeLines.
+	
+	preprocessed := VersePreprocessor process: ((String with: Character lf) join: codeLines).
 	[ parsed := VersePP2Grammar new parse: preprocessed.
 	  (parsed isKindOf: PP2Failure) 
 		ifTrue: [ aModule definitions add: (ZealCompileError new message: 'Parse failed: ' , parsed message) ]
@@ -120,10 +155,18 @@ ZealProject >> loadVerseFile: aFileRef into: aModule [
 			(nodes isKindOf: Collection)
 				ifTrue: [ nodes do: [:n |
 					(self isTopLevelDef: n) ifTrue: [
-						n parent: aModule. aModule definitions add: n ] ] ]
+						n parent: aModule.
+						"Match raw source by name"
+						(n respondsTo: #name) ifTrue: [
+							rawChunks do: [:chunk |
+								(chunk includesSubstring: (n name ifNil: [''])) ifTrue: [ 
+									n rawSource ifNil: [ n rawSource: chunk ] ] ] ].
+						aModule definitions add: n ] ] ]
 				ifFalse: [ 
 					(self isTopLevelDef: nodes) ifTrue: [
-						nodes parent: aModule. aModule definitions add: nodes ] ] ] ]
+						nodes parent: aModule.
+						rawChunks notEmpty ifTrue: [ nodes rawSource: rawChunks first ].
+						aModule definitions add: nodes ] ] ] ]
 	on: Error do: [:e |
 		aModule definitions add: (ZealCompileError new 
 			message: 'Error parsing ' , aFileRef basename , ': ' , e messageText) ]

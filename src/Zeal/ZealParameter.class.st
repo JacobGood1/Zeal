@@ -18,7 +18,7 @@ ZealParameter >> compileToVerse: stream indent: level [
 { #category : 'compiling' }
 ZealParameter >> compileToZeal: stream indent: level [
 	stream nextPutAll: (self toKebabCase: name).
-	type ifNotNil: [ stream nextPut: $:; nextPutAll: (self toKebabCase: type) ]
+	type ifNotNil: [ stream nextPut: $:; nextPutAll: (self typeToZeal: type) ]
 ]
 
 { #category : 'accessing' }

@@ -4,7 +4,8 @@ Class {
 	#instVars : [
 		'parent',
 		'specifiers',
-		'annotations'
+		'annotations',
+		'rawSource'
 	],
 	#category : 'Zeal',
 	#package : 'Zeal'
@@ -20,6 +21,7 @@ ZealNode >> annotations: anArray [ annotations := anArray
 
 { #category : 'compiling' }
 ZealNode >> compileToVerse [
+	rawSource ifNotNil: [ ^ rawSource ].
 	^ String streamContents: [:s | self compileToVerse: s indent: 0 ]
 ]
 
@@ -39,6 +41,17 @@ ZealNode >> compileToVerseWithComments [
 ZealNode >> compileToVerseWithComments: stream indent: level [
 	"Default: emit zeal comment then verse output."
 	self compileToVerse: stream indent: level
+]
+
+{ #category : 'compiling' }
+ZealNode >> compileToVerseWithZealComment: zealSource [
+	"Compile to Verse with multi-line zeal comment block above it."
+	^ String streamContents: [:s |
+		s nextPutAll: '# start-zeal'; cr.
+		zealSource lines do: [:line |
+			s nextPutAll: '# '; nextPutAll: line; cr ].
+		s nextPutAll: '# end-zeal'; cr.
+		self compileToVerse: s indent: 0 ]
 ]
 
 { #category : 'compiling' }
@@ -114,6 +127,14 @@ ZealNode >> printOn: aStream [
 ]
 
 { #category : 'accessing' }
+ZealNode >> rawSource [ ^ rawSource
+]
+
+{ #category : 'accessing' }
+ZealNode >> rawSource: s [ rawSource := s
+]
+
+{ #category : 'accessing' }
 ZealNode >> specifiers [ ^ specifiers
 ]
 
@@ -148,4 +169,22 @@ ZealNode >> toPascalCase: aString [
 { #category : 'naming' }
 ZealNode >> toSnakeCase: aString [
 	^ aString copyReplaceAll: '-' with: '_'
+]
+
+{ #category : 'naming' }
+ZealNode >> typeToVerse: aTypeString [
+	"Convert Zeal type to Verse type: int? -> ?int"
+	aTypeString ifNil: [ ^ nil ].
+	(aTypeString endsWith: '?') ifTrue: [ 
+		^ '?' , aTypeString allButLast ].
+	^ aTypeString
+]
+
+{ #category : 'naming' }
+ZealNode >> typeToZeal: aTypeString [
+	"Convert Verse type to Zeal type: ?int -> int?, []int -> []int"
+	aTypeString ifNil: [ ^ nil ].
+	(aTypeString beginsWith: '?') ifTrue: [ 
+		^ (self toKebabCase: aTypeString allButFirst) , '?' ].
+	^ self toKebabCase: aTypeString
 ]

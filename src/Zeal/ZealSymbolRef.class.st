@@ -11,11 +11,10 @@ Class {
 { #category : 'compiling' }
 ZealSymbolRef >> compileToVerse: stream indent: level [
 	self emitIndent: level on: stream.
-	(ZealTheme operators includes: name)
-		ifTrue: [ stream nextPutAll: name ]
-		ifFalse: [ name = '_' 
-			ifTrue: [ stream nextPutAll: '_' ]
-			ifFalse: [ stream nextPutAll: (self toPascalCase: name) ] ]
+	(#('true' 'false') includes: name) ifTrue: [ stream nextPutAll: name. ^ self ].
+	(ZealTheme operators includes: name) ifTrue: [ stream nextPutAll: name. ^ self ].
+	name = '_' ifTrue: [ stream nextPutAll: '_'. ^ self ].
+	stream nextPutAll: (self toPascalCase: name)
 ]
 
 { #category : 'compiling' }

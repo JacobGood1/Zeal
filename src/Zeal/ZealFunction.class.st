@@ -54,13 +54,25 @@ ZealFunction >> compileToVerseWithComments: stream indent: level [
 ]
 
 { #category : 'compiling' }
+ZealFunction >> compileToVerseWithZealComment: stream indent: level zealSource: zealSrc [
+	"Emit a # zeal: comment with the original Zeal source, then the Verse output"
+	self emitIndent: level on: stream.
+	stream nextPutAll: '# zeal: '.
+	zealSrc lines doWithIndex: [:line :i |
+		i > 1 ifTrue: [ stream cr. self emitIndent: level on: stream. stream nextPutAll: '#   ' ].
+		stream nextPutAll: line ].
+	stream cr.
+	self compileToVerse: stream indent: level
+]
+
+{ #category : 'compiling' }
 ZealFunction >> compileToZeal: stream indent: level [
 	| bodyExprs |
 	self emitIndent: level on: stream.
 	stream nextPutAll: '(defn '.
 	stream nextPutAll: (self toKebabCase: name).
 	specifiers do: [:s | stream nextPut: $:; nextPutAll: (self toKebabCase: s) ].
-	type ifNotNil: [ stream nextPut: $:; nextPutAll: (self toKebabCase: type) ].
+	type ifNotNil: [ stream nextPut: $:; nextPutAll: (self typeToZeal: type) ].
 	stream nextPutAll: ' ['.
 	self parameters do: [:p | p compileToZeal: stream indent: 0 ] separatedBy: [ stream nextPut: $  ].
 	stream nextPut: $].

@@ -50,7 +50,7 @@ VerseToZeal class >> convertClass: aNode [
 		converted := [ self convertStatement: s ] on: Error do: [:e | ZealCompileError new message: e messageText ].
 		(converted isKindOf: ZealFunction) ifTrue: [ methods add: converted ]
 		ifFalse: [ (converted isKindOf: ZealVariable) ifTrue: [
-			fields add: (ZealField new name: converted name; type: converted type; defaultValue: converted value; isMutable: converted isMutable) ] ] ].
+			fields add: (ZealField new name: converted name; type: converted type; defaultValue: converted value; isMutable: converted isMutable; specifiers: converted specifiers) ] ] ].
 	cls := ZealClass new
 		name: aNode name value;
 		specifiers: declSpecs;

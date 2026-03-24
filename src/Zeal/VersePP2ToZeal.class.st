@@ -48,7 +48,7 @@ VersePP2ToZeal class >> convertClass: item [
 		conv := self convertItem: s.
 		(conv isKindOf: ZealFunction) ifTrue: [ methods add: conv ]
 		ifFalse: [ (conv isKindOf: ZealVariable) ifTrue: [
-			fields add: (ZealField new name: conv name; type: conv type; defaultValue: conv value; isMutable: conv isMutable) ] ] ].
+			fields add: (ZealField new name: conv name; type: conv type; defaultValue: conv value; isMutable: conv isMutable; specifiers: conv specifiers) ] ] ].
 	cls := ZealClass new name: item second; specifiers: item third asArray;
 		superclass: parentName; fields: fields; methods: methods.
 	fields do: [:f | f parent: cls]. methods do: [:m | m parent: cls].
@@ -67,8 +67,12 @@ VersePP2ToZeal class >> convertCondition: item [
 
 { #category : 'definitions' }
 VersePP2ToZeal class >> convertConst: item [
-	^ ZealVariable new name: item second; type: item third; isMutable: false;
-		value: (item fourth ifNotNil: [:v | self convertExpr: v])
+	"item = {#const. name. type. value} or {#const. name. type. value. specs}"
+	| v |
+	v := ZealVariable new name: item second; type: item third; isMutable: false;
+		value: (item fourth ifNotNil: [:val | self convertExpr: val]).
+	item size >= 5 ifTrue: [ v specifiers: item fifth asArray ].
+	^ v
 ]
 
 { #category : 'expressions' }
@@ -125,7 +129,7 @@ VersePP2ToZeal class >> convertExpr: item [
 	item first = #loop ifTrue: [ ^ ZealLoop new body: (item second collect: [:s | self convertItem: s]) ].
 	item first = #set ifTrue: [ ^ ZealSet new target: item second; operator: item third asString; value: (self convertExpr: item fourth) ].
 	item first = #return ifTrue: [ ^ ZealReturn new value: (self convertExpr: item second) ].
-	item first = #range ifTrue: [ ^ ZealLiteral new value: (self convertExpr: item second) compileToVerse , '..' , (self convertExpr: item third) compileToVerse; literalType: #range ].
+	item first = #range ifTrue: [ ^ ZealOperator new operator: '..'; operands: {self convertExpr: item second. self convertExpr: item third} ].
 	item first = #array ifTrue: [ ^ ZealArray new elements: (item second collect: [:e | self convertExpr: e]) ].
 	item first = #map ifTrue: [ ^ ZealMap new entries: (item second collect: [:e | {self convertExpr: e first. self convertExpr: e second}]) ].
 	item first = #case ifTrue: [ ^ ZealCase new target: (self convertExpr: item second); cases: (item third collect: [:e | {self convertExpr: e first. self convertExpr: e second}]) ].
@@ -174,10 +178,11 @@ VersePP2ToZeal class >> convertFunc: item [
 VersePP2ToZeal class >> convertIfExpr: item [
 	| conds cond body |
 	conds := item second collect: [:c | self convertCondition: c ].
-	cond := conds first.
-	conds allButFirst do: [:c | cond := ZealOperator new operator: 'and'; operands: {cond. c}].
 	body := item third collect: [:s | self convertItem: s].
 	body size = 1 ifTrue: [ body := body first ] ifFalse: [ body := ZealBlock new body: body ].
+	conds size = 1 
+		ifTrue: [ cond := conds first ]
+		ifFalse: [ cond := ZealOperator new operator: ','; operands: conds asArray ].
 	^ ZealIf new clauses: {{cond. body}}; elseBody: (item fourth ifNotNil: [:e | self convertElse: e])
 ]
 

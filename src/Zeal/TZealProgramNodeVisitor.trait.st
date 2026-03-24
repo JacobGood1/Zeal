@@ -7,6 +7,11 @@ Trait {
 }
 
 { #category : 'generated' }
+TZealProgramNodeVisitor >> visitCharLiteral: aCharLiteral [
+	^ self visitProgram: aCharLiteral
+]
+
+{ #category : 'generated' }
 TZealProgramNodeVisitor >> visitColonChain: aColonChain [
 	^ self visitProgram: aColonChain
 ]
