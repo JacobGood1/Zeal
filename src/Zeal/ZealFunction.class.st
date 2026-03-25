@@ -18,7 +18,7 @@ ZealFunction >> body [ ^ body ifNil: [ #() ]
 ZealFunction >> body: anArray [ body := anArray
 ]
 
-{ #category : 'compiling' }
+{ #category : 'verse' }
 ZealFunction >> compileToVerse: stream indent: level [
 	| declSpecs sigSpecs bodyExprs |
 	self emitIndent: level on: stream.
@@ -26,20 +26,25 @@ ZealFunction >> compileToVerse: stream indent: level [
 	sigSpecs := specifiers select: [:s | ZealColonChainResolver isSignatureSpecifier: s].
 	stream nextPutAll: (self toPascalCase: name).
 	self emitSpecifiers: declSpecs on: stream.
-	stream nextPutAll: '('.
+	stream nextPut: $(.
 	self parameters 
 		do: [:p | p compileToVerse: stream indent: 0 ]
 		separatedBy: [ stream nextPutAll: ', ' ].
-	stream nextPutAll: ')'.
+	stream nextPut: $).
 	self emitSpecifiers: sigSpecs on: stream.
 	type ifNotNil: [ stream nextPut: $:; nextPutAll: type ].
-	stream nextPutAll: ' ='.
+	"Abstract method — no body"
+	self body isEmpty ifTrue: [ ^ self ].
+	stream nextPutAll: ' = {'.
 	bodyExprs := self body.
 	(bodyExprs size = 1 and: [ bodyExprs first isKindOf: ZealBlock ]) ifTrue: [
 		bodyExprs := bodyExprs first body ].
 	bodyExprs do: [:expr |
 		stream cr.
-		expr compileToVerse: stream indent: level + 1 ]
+		expr compileToVerse: stream indent: level + 1 ].
+	stream cr.
+	self emitIndent: level on: stream.
+	stream nextPut: $}
 ]
 
 { #category : 'compiling' }
@@ -65,7 +70,7 @@ ZealFunction >> compileToVerseWithZealComment: stream indent: level zealSource: 
 	self compileToVerse: stream indent: level
 ]
 
-{ #category : 'compiling' }
+{ #category : 'zeal' }
 ZealFunction >> compileToZeal: stream indent: level [
 	| bodyExprs |
 	self emitIndent: level on: stream.
@@ -77,6 +82,7 @@ ZealFunction >> compileToZeal: stream indent: level [
 	self parameters do: [:p | p compileToZeal: stream indent: 0 ] separatedBy: [ stream nextPut: $  ].
 	stream nextPut: $].
 	bodyExprs := self body.
+	bodyExprs isEmpty ifTrue: [ stream nextPut: $). ^ self ].
 	(bodyExprs size = 1 and: [ bodyExprs first isKindOf: ZealBlock ]) ifTrue: [
 		bodyExprs := bodyExprs first body ].
 	bodyExprs do: [:e | stream cr. e compileToZeal: stream indent: level + 1 ].

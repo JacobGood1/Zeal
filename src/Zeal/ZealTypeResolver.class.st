@@ -42,31 +42,87 @@ ZealTypeResolver >> cachedType: cacheKey ifAbsent: aBlock [
 ZealTypeResolver >> classCache [ ^ classCache
 ]
 
-{ #category : 'resolving' }
+{ #category : 'lookup' }
 ZealTypeResolver >> findClass: aName [
+	"Find class by name in project and external modules — matches snake_case, kebab-case, or as-is"
+	| kebab snake |
 	classCache at: aName ifPresent: [:v | ^ v].
 	self trackDependency: aName.
 	project ifNil: [ ^ nil ].
+	kebab := aName copyReplaceAll: '_' with: '-'.
+	snake := aName copyReplaceAll: '-' with: '_'.
+	"Search project modules"
 	project modules do: [:mod |
 		mod definitions do: [:ns |
 			(ns isKindOf: ZealModule) ifTrue: [
 				ns definitions do: [:d |
-					(((d isKindOf: ZealClass) or: [d isKindOf: ZealStruct]) and: [d name = aName]) 
-						ifTrue: [ classCache at: aName put: d. ^ d ] ] ] ] ].
+					((d isKindOf: ZealClass) or: [d isKindOf: ZealStruct]) ifTrue: [
+						(d name = aName or: [d name = kebab or: [d name = snake]])
+							ifTrue: [ classCache at: aName put: d. ^ d ] ] ] ] ] ].
+	"Search external modules"
+	project externalModules do: [:mod |
+		mod definitions do: [:d |
+			((d isKindOf: ZealClass) or: [d isKindOf: ZealStruct]) ifTrue: [
+				(d name = aName or: [d name = kebab or: [d name = snake]])
+					ifTrue: [ classCache at: aName put: d. ^ d ] ] ] ].
 	^ nil
 ]
 
-{ #category : 'resolving' }
+{ #category : 'lookup' }
 ZealTypeResolver >> findFunction: aName [
+	"Find function by name in project and external modules — case-insensitive"
 	functionCache at: aName ifPresent: [:v | ^ v].
 	self trackDependency: aName.
 	project ifNil: [ ^ nil ].
+	"Search project modules"
 	project modules do: [:mod |
 		mod definitions do: [:ns |
 			(ns isKindOf: ZealModule) ifTrue: [
 				ns definitions do: [:d |
-					((d isKindOf: ZealFunction) and: [d name = aName]) 
+					((d isKindOf: ZealFunction) and: [d name asLowercase = aName asLowercase]) 
 						ifTrue: [ functionCache at: aName put: d. ^ d ] ] ] ] ].
+	"Search external modules"
+	project externalModules do: [:mod |
+		mod definitions do: [:d |
+			((d isKindOf: ZealFunction) and: [d name asLowercase = aName asLowercase])
+				ifTrue: [ functionCache at: aName put: d. ^ d ] ] ].
+	^ nil
+]
+
+{ #category : 'lookup' }
+ZealTypeResolver >> findMethod: methodName inClass: className [
+	"Find a method by name in a class (searches class and superclasses)"
+	| cls |
+	cls := self findClass: className.
+	[ cls notNil ] whileTrue: [
+		cls methods do: [:m |
+			m name = methodName ifTrue: [ ^ m ] ].
+		cls superclass ifNotNil: [:sc | 
+			cls := self findClass: sc name ]
+		ifNil: [ cls := nil ] ].
+	^ nil
+]
+
+{ #category : 'lookup' }
+ZealTypeResolver >> findMethodAnywhere: methodName [
+	"Find a method by name across all classes in project and external modules — case-insensitive"
+	| lowerName |
+	lowerName := methodName asLowercase.
+	project ifNil: [ ^ nil ].
+	"Search project modules"
+	project modules do: [:mod |
+		mod definitions do: [:ns |
+			(ns respondsTo: #definitions) ifTrue: [
+				ns definitions do: [:d |
+					(d respondsTo: #methods) ifTrue: [
+						d methods do: [:m |
+							m name asLowercase = lowerName ifTrue: [ ^ m ] ] ] ] ] ] ].
+	"Search external modules"
+	project externalModules do: [:mod |
+		mod definitions do: [:d |
+			(d respondsTo: #methods) ifTrue: [
+				d methods do: [:m |
+					m name asLowercase = lowerName ifTrue: [ ^ m ] ] ] ] ].
 	^ nil
 ]
 

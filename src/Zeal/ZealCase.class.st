@@ -17,16 +17,17 @@ ZealCase >> cases [ ^ cases ifNil: [ #() ]
 ZealCase >> cases: a [ cases := a
 ]
 
-{ #category : 'compiling' }
+{ #category : 'verse' }
 ZealCase >> compileToVerse: stream indent: level [
 	stream nextPutAll: 'case('.
 	target compileToVerse: stream indent: level.
-	stream nextPutAll: '):'.
+	stream nextPutAll: ') {'.
 	self cases do: [:pair |
 		stream cr. self emitIndent: level + 1 on: stream.
 		pair first compileToVerse: stream indent: level + 1.
 		stream nextPutAll: ' => '.
-		pair second compileToVerse: stream indent: level + 1 ]
+		pair second compileToVerse: stream indent: level + 1 ].
+	stream cr. self emitIndent: level on: stream. stream nextPut: $}
 ]
 
 { #category : 'accessing' }

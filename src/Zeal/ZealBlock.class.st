@@ -16,11 +16,12 @@ ZealBlock >> body [ ^ body ifNil: [ #() ]
 ZealBlock >> body: a [ body := a
 ]
 
-{ #category : 'compiling' }
+{ #category : 'verse' }
 ZealBlock >> compileToVerse: stream indent: level [
 	self emitIndent: level on: stream.
-	stream nextPutAll: 'block:'.
-	self body do: [:e | stream cr. e compileToVerse: stream indent: level + 1 ]
+	stream nextPutAll: 'block {'.
+	self body do: [:e | stream cr. e compileToVerse: stream indent: level + 1 ].
+	stream cr. self emitIndent: level on: stream. stream nextPut: $}
 ]
 
 { #category : 'compiling' }

@@ -16,10 +16,11 @@ ZealDefer >> body [ ^ body ifNil: [ #() ]
 ZealDefer >> body: a [ body := a
 ]
 
-{ #category : 'compiling' }
+{ #category : 'verse' }
 ZealDefer >> compileToVerse: stream indent: level [
-	stream nextPutAll: 'defer:'.
+	stream nextPutAll: 'defer {'.
 	self body do: [:e |
 		stream cr. self emitIndent: level + 1 on: stream.
-		e compileToVerse: stream indent: level + 1 ]
+		e compileToVerse: stream indent: level + 1 ].
+	stream cr. self emitIndent: level on: stream. stream nextPut: $}
 ]

@@ -16,11 +16,12 @@ ZealLoop >> body [ ^ body ifNil: [ #() ]
 ZealLoop >> body: a [ body := a
 ]
 
-{ #category : 'compiling' }
+{ #category : 'verse' }
 ZealLoop >> compileToVerse: stream indent: level [
 	self emitIndent: level on: stream.
-	stream nextPutAll: 'loop:'.
-	self body do: [:e | stream cr. e compileToVerse: stream indent: level + 1 ]
+	stream nextPutAll: 'loop {'.
+	self body do: [:e | stream cr. e compileToVerse: stream indent: level + 1 ].
+	stream cr. self emitIndent: level on: stream. stream nextPut: $}
 ]
 
 { #category : 'compiling' }

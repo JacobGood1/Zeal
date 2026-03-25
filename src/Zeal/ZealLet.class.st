@@ -26,23 +26,25 @@ ZealLet >> body [ ^ body ifNil: [ #() ]
 ZealLet >> body: a [ body := a
 ]
 
-{ #category : 'compiling' }
+{ #category : 'verse' }
 ZealLet >> compileToVerse: stream indent: level [
 	self predicates isEmpty
-		ifTrue: [ stream nextPutAll: 'block:' ]
-		ifFalse: [ stream nextPutAll: 'if:' ].
+		ifTrue: [ stream nextPutAll: 'block {' ]
+		ifFalse: [ stream nextPutAll: 'if {' ].
 	self bindings do: [:b |
 		stream cr. self emitIndent: level + 1 on: stream.
 		b compileToVerse: stream indent: level + 1 ].
 	self predicates do: [:p |
 		stream cr. self emitIndent: level + 1 on: stream.
 		p compileToVerse: stream indent: level + 1 ].
+	stream cr. self emitIndent: level on: stream. stream nextPut: $}.
 	self predicates isEmpty ifFalse: [
-		stream cr. self emitIndent: level on: stream.
-		stream nextPutAll: 'then:' ].
+		stream nextPutAll: ' then {' ].
 	self body do: [:e |
 		stream cr. self emitIndent: level + 1 on: stream.
-		e compileToVerse: stream indent: level + 1 ]
+		e compileToVerse: stream indent: level + 1 ].
+	self predicates isEmpty ifFalse: [
+		stream cr. self emitIndent: level on: stream. stream nextPut: $} ]
 ]
 
 { #category : 'accessing' }

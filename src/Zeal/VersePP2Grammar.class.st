@@ -116,11 +116,19 @@ Class {
 		'kwCase',
 		'caseExpr',
 		'caseEntries',
-		'caseEntry'
+		'caseEntry',
+		'abstractFuncDef'
 	],
 	#category : 'Zeal',
 	#package : 'Zeal'
 }
+
+{ #category : 'grammar' }
+VersePP2Grammar >> abstractFuncDef [
+	"Abstract method declaration: Name(Params):ReturnType (no = body)"
+	^ identifier trim , specifiers , $( asPParser trim , paramList , whereClause optional , $) asPParser trim , specifiers , ($: asPParser trim , type)
+	  ==> [:n | {#func. n first. n second. (n at: 4). (n at: 7). (n at: 8) second. nil}]
+]
 
 { #category : 'expressions' }
 VersePP2Grammar >> addExpr [
@@ -252,9 +260,9 @@ VersePP2Grammar >> constDef [
 	    ==> [:n | {#const. n first. nil. n third}])
 ]
 
-{ #category : 'definitions' }
+{ #category : 'grammar' }
 VersePP2Grammar >> definition [
-	^ annotatedDef / typeDef / funcDef / varDef / constDef / fieldDecl / usingDef
+	^ annotatedDef / typeDef / funcDef / abstractFuncDef / varDef / constDef / fieldDecl / usingDef
 ]
 
 { #category : 'expressions' }

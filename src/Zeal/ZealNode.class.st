@@ -5,7 +5,8 @@ Class {
 		'parent',
 		'specifiers',
 		'annotations',
-		'rawSource'
+		'rawSource',
+		'generatedClass'
 	],
 	#category : 'Zeal',
 	#package : 'Zeal'
@@ -72,6 +73,16 @@ ZealNode >> emitIndent: level on: stream [
 { #category : 'compiling' }
 ZealNode >> emitSpecifiers: specs on: stream [
 	specs do: [:s | stream nextPutAll: '<', s, '>' ]
+]
+
+{ #category : 'accessing' }
+ZealNode >> generatedClass [
+	^ generatedClass
+]
+
+{ #category : 'accessing' }
+ZealNode >> generatedClass: aClass [
+	generatedClass := aClass
 ]
 
 { #category : 'views' }

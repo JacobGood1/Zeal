@@ -108,11 +108,24 @@ ZealCompiler class >> buildCase: aListNode [
 	^ ZealCase new target: (self buildExpression: exprs second); cases: pairs
 ]
 
-{ #category : 'building' }
+{ #category : 'builders' }
 ZealCompiler class >> buildDef: aListNode [
+	"(def name:type value) or (def name:type) for abstract fields"
 	| exprs results i |
 	exprs := aListNode expressions allButFirst.
-	exprs size < 2 ifTrue: [ ^ self error: 'def requires at least one name/value pair' ].
+	exprs isEmpty ifTrue: [ ^ self error: 'def requires a name' ].
+	
+	"Single arg: abstract field declaration (def name:type)"
+	exprs size = 1 ifTrue: [
+		| resolved |
+		resolved := self resolveNameNode: exprs first.
+		(resolved isKindOf: ZealCompileError) ifTrue: [ ^ resolved ].
+		^ ZealVariable new
+			name: (resolved at: #name); type: (resolved at: #type);
+			specifiers: (resolved at: #specifiers); annotations: (resolved at: #annotations);
+			isMutable: false; value: nil ].
+	
+	"Multiple args: name/value pairs"
 	results := OrderedCollection new.
 	i := 1.
 	[ i + 1 <= exprs size ] whileTrue: [
@@ -129,21 +142,36 @@ ZealCompiler class >> buildDef: aListNode [
 			specifiers: (resolved at: #specifiers); annotations: (resolved at: #annotations);
 			isMutable: false; value: value).
 		i := i + 2 ].
+	"Odd trailing name without value: abstract field"
+	i = exprs size ifTrue: [
+		| resolved |
+		resolved := self resolveNameNode: (exprs at: i).
+		(resolved isKindOf: ZealCompileError) ifFalse: [
+			results add: (ZealVariable new
+				name: (resolved at: #name); type: (resolved at: #type);
+				specifiers: (resolved at: #specifiers); annotations: (resolved at: #annotations);
+				isMutable: false; value: nil) ] ].
 	results size = 1 ifTrue: [ ^ results first ].
 	^ results
 ]
 
-{ #category : 'building' }
+{ #category : 'builders' }
 ZealCompiler class >> buildDefclass: aListNode [
-	| exprs err resolved rest parentName fields methods cls |
+	"(defclass name:specs [parents...] body...)
+	 [parents] is optional — if second arg is a vector, it's the extension list"
+	| exprs err resolved rest parents fields methods cls |
 	exprs := aListNode expressions.
 	(err := self requireArgs: 2 from: exprs forForm: 'defclass') ifNotNil: [ ^ err ].
 	resolved := self requireNameFrom: exprs forForm: 'defclass'.
 	(resolved isKindOf: ZealCompileError) ifTrue: [ ^ resolved ].
-	rest := exprs allButFirst allButFirst. parentName := nil.
-	(rest notEmpty and: [ rest first isKindOf: ZealListNode ]) ifTrue: [
-		rest first expressions isEmpty ifTrue: [ ^ self error: 'defclass ' , (resolved at: #name) , ' parent list is empty' ].
-		parentName := rest first expressions first value value. rest := rest allButFirst ].
+	rest := exprs allButFirst allButFirst. 
+	parents := OrderedCollection new.
+	
+	"Check for [extensions] vector"
+	(rest notEmpty and: [ rest first isKindOf: ZealVectorNode ]) ifTrue: [
+		rest first expressions do: [:e | parents add: e value value ].
+		rest := rest allButFirst ].
+	
 	fields := OrderedCollection new. methods := OrderedCollection new.
 	rest do: [:item | | built |
 		built := self buildExpression: item.
@@ -153,7 +181,9 @@ ZealCompiler class >> buildDefclass: aListNode [
 				ifTrue: [ fields add: (ZealField new name: built name; type: built type; defaultValue: built value; isMutable: built isMutable) ]
 				ifFalse: [ fields add: built ] ] ].
 	cls := ZealClass new name: (resolved at: #name); specifiers: (resolved at: #specifiers);
-		superclass: parentName; fields: fields; methods: methods.
+		superclass: (parents isEmpty ifTrue: [nil] ifFalse: [parents first]);
+		interfaces: (parents size > 1 ifTrue: [parents allButFirst] ifFalse: [#()]);
+		fields: fields; methods: methods.
 	fields do: [:f | f parent: cls]. methods do: [:m | m parent: cls]. ^ cls
 ]
 
@@ -403,8 +433,9 @@ ZealCompiler class >> buildMap: aMapNode [
 			{ self buildExpression: pair key. self buildExpression: pair value } ])
 ]
 
-{ #category : 'building' }
+{ #category : 'builders' }
 ZealCompiler class >> buildMemberCall: aListNode [
+	"(console/print args...) → Console.Print(args...) — always a method CALL"
 	| exprs headStr parts receiver member args |
 	exprs := aListNode expressions.
 	headStr := exprs first value value.
@@ -413,7 +444,7 @@ ZealCompiler class >> buildMemberCall: aListNode [
 	member := ZealSymbolRef new name: parts second.
 	args := exprs allButFirst collect: [:e | self buildExpression: e ].
 	^ ZealFunctionCall new 
-		functionName: '.'; 
+		functionName: '.call'; 
 		arguments: {receiver. member} , args
 ]
 
@@ -518,11 +549,23 @@ ZealCompiler class >> buildUsing: aListNode [
 	^ ZealUsing new path: aListNode expressions second value value
 ]
 
-{ #category : 'building' }
+{ #category : 'builders' }
 ZealCompiler class >> buildVar: aListNode [
+	"(var name:type value) or (var name:type) for abstract fields"
 	| exprs results i |
 	exprs := aListNode expressions allButFirst.
-	exprs size < 2 ifTrue: [ ^ self error: 'var requires at least one name/value pair' ].
+	exprs isEmpty ifTrue: [ ^ self error: 'var requires a name' ].
+	
+	"Single arg: abstract field (var name:type)"
+	exprs size = 1 ifTrue: [
+		| resolved |
+		resolved := self resolveNameNode: exprs first.
+		(resolved isKindOf: ZealCompileError) ifTrue: [ ^ resolved ].
+		^ ZealVariable new
+			name: (resolved at: #name); type: (resolved at: #type);
+			specifiers: (resolved at: #specifiers); annotations: (resolved at: #annotations);
+			isMutable: true; value: nil ].
+	
 	results := OrderedCollection new.
 	i := 1.
 	[ i + 1 <= exprs size ] whileTrue: [
@@ -539,6 +582,15 @@ ZealCompiler class >> buildVar: aListNode [
 			specifiers: (resolved at: #specifiers); annotations: (resolved at: #annotations);
 			isMutable: true; value: value).
 		i := i + 2 ].
+	"Odd trailing name: abstract field"
+	i = exprs size ifTrue: [
+		| resolved |
+		resolved := self resolveNameNode: (exprs at: i).
+		(resolved isKindOf: ZealCompileError) ifFalse: [
+			results add: (ZealVariable new
+				name: (resolved at: #name); type: (resolved at: #type);
+				specifiers: (resolved at: #specifiers); annotations: (resolved at: #annotations);
+				isMutable: true; value: nil) ] ].
 	results size = 1 ifTrue: [ ^ results first ].
 	^ results
 ]

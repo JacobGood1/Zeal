@@ -5,6 +5,52 @@ Class {
 	#package : 'Zeal'
 }
 
+{ #category : 'highlighting' }
+ZealTheme class >> attachExpanders: text source: aString resolver: aResolver browser: aBrowser nested: isNested [
+	"Find function/class/method references and attach inline expanders."
+	| i size |
+	aResolver ifNil: [ ^ self ].
+	
+	i := 1. size := aString size.
+	[ i < size ] whileTrue: [
+		| ch |
+		ch := aString at: i.
+		(ch = $( and: [i + 1 <= size and: [(aString at: i + 1) isLetter]]) ifTrue: [
+			| start end word node |
+			start := i + 1. end := start.
+			[ end <= size and: [
+				| c | c := aString at: end.
+				c isLetter or: [c isDigit or: [c = $- or: [c = $/]]]
+			] ] whileTrue: [ end := end + 1 ].
+			word := aString copyFrom: start to: end - 1.
+			(self specialForms includes: word asLowercase) ifFalse: [
+				node := self resolveExpander: word with: aResolver.
+				node ifNotNil: [
+					(text from: start to: end - 1) attribute: 
+						(ZealExpanderAttribute forNode: node browser: aBrowser nested: isNested) ] ].
+			i := end ]
+		ifFalse: [
+			"Also check bare member access: symbol/method (not after paren)"
+			(ch isLetter and: [i > 1 and: [(aString at: i - 1) isSeparator]]) ifTrue: [
+				| start end word |
+				start := i. end := start.
+				[ end <= size and: [
+					| c | c := aString at: end.
+					c isLetter or: [c isDigit or: [c = $- or: [c = $/]]]
+				] ] whileTrue: [ end := end + 1 ].
+				word := aString copyFrom: start to: end - 1.
+				(word includes: $/) ifTrue: [
+					| node |
+					node := self resolveExpander: word with: aResolver.
+					node ifNotNil: [
+						| methodStart |
+						methodStart := start + (word indexOf: $/).
+						(text from: methodStart to: end - 1) attribute:
+							(ZealExpanderAttribute forNode: node browser: aBrowser nested: isNested) ] ].
+				i := end ]
+			ifFalse: [ i := i + 1 ] ] ]
+]
+
 { #category : 'colors' }
 ZealTheme class >> backgroundColor [
 	^ Color fromHexString: '17171F'
@@ -167,6 +213,33 @@ ZealTheme class >> operators [
 ZealTheme class >> parenColor [
 	"Dimmed purple for parens — #9580FF"
 	^ Color fromHexString: '9580FF'
+]
+
+{ #category : 'highlighting' }
+ZealTheme class >> resolveExpander: word with: aResolver [
+	"Resolve a word to a ZealNode for expanding. Handles:
+	 - function calls: find-all → FindAll
+	 - class constructors: were-cat → were_cat
+	 - member access: obj/method → find method in any class"
+	| node kebab pascal |
+	
+	"Member access: obj/method"
+	(word includes: $/) ifTrue: [
+		| methodPart methodPascal |
+		methodPart := word copyAfterLast: $/.
+		methodPascal := '' join: ((methodPart substrings: '-') collect: [:s | s capitalized]).
+		node := aResolver findMethodAnywhere: methodPascal.
+		^ node ].
+	
+	"Function: kebab-case → PascalCase"
+	kebab := word copyReplaceAll: '/' with: '-'.
+	pascal := '' join: ((kebab substrings: '-') collect: [:s | s capitalized]).
+	node := aResolver findFunction: pascal.
+	node ifNotNil: [ ^ node ].
+	
+	"Class: kebab-case → snake_case"
+	node := aResolver findClass: (word copyReplaceAll: '-' with: '_').
+	^ node
 ]
 
 { #category : 'colors' }

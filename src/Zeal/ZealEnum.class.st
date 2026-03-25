@@ -8,13 +8,14 @@ Class {
 	#package : 'Zeal'
 }
 
-{ #category : 'compiling' }
+{ #category : 'verse' }
 ZealEnum >> compileToVerse: stream indent: level [
 	self emitIndent: level on: stream.
-	stream nextPutAll: (self toSnakeCase: name); nextPutAll: ' := enum:'.
+	stream nextPutAll: (self toSnakeCase: name); nextPutAll: ' := enum {'.
 	self values do: [:v |
 		stream cr. self emitIndent: level + 1 on: stream.
-		stream nextPutAll: (self toPascalCase: v) ]
+		stream nextPutAll: (self toPascalCase: v) ].
+	stream cr. self emitIndent: level on: stream. stream nextPut: $}
 ]
 
 { #category : 'compiling' }

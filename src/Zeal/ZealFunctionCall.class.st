@@ -17,10 +17,11 @@ ZealFunctionCall >> arguments [ ^ arguments ifNil: [ #() ]
 ZealFunctionCall >> arguments: a [ arguments := a
 ]
 
-{ #category : 'compiling' }
+{ #category : 'verse' }
 ZealFunctionCall >> compileToVerse: stream indent: level [
 	self emitIndent: level on: stream.
 	functionName = '.' ifTrue: [
+		"Property access: Obj.Member (no parens)"
 		arguments first compileToVerse: stream indent: 0.
 		stream nextPut: $..
 		arguments size >= 2 ifTrue: [
@@ -31,6 +32,17 @@ ZealFunctionCall >> compileToVerse: stream indent: level [
 					do: [:a | a compileToVerse: stream indent: 0 ]
 					separatedBy: [ stream nextPutAll: ', ' ].
 				stream nextPut: $) ] ]. ^ self ].
+	functionName = '.call' ifTrue: [
+		"Method call: Obj.Member(args...) — always has parens"
+		arguments first compileToVerse: stream indent: 0.
+		stream nextPut: $..
+		arguments second compileToVerse: stream indent: 0.
+		stream nextPut: $(.
+		arguments size > 2 ifTrue: [
+			(arguments copyFrom: 3 to: arguments size)
+				do: [:a | a compileToVerse: stream indent: 0 ]
+				separatedBy: [ stream nextPutAll: ', ' ] ].
+		stream nextPut: $). ^ self ].
 	functionName = '[]' ifTrue: [
 		arguments first compileToVerse: stream indent: 0.
 		stream nextPut: $[.
@@ -57,7 +69,7 @@ ZealFunctionCall >> compileToVerse: stream indent: level [
 	stream nextPut: $)
 ]
 
-{ #category : 'compiling' }
+{ #category : 'zeal' }
 ZealFunctionCall >> compileToZeal: stream indent: level [
 	self emitIndent: level on: stream.
 	functionName = '.' ifTrue: [
@@ -71,6 +83,15 @@ ZealFunctionCall >> compileToZeal: stream indent: level [
 			(arguments copyFrom: 3 to: arguments size) do: [:a | stream nextPut: $ . a compileToZeal: stream indent: 0 ].
 			stream nextPut: $) ].
 		^ self ].
+	functionName = '.call' ifTrue: [
+		"Method call: (obj/method args...)"
+		stream nextPut: $(.
+		arguments first compileToZeal: stream indent: 0.
+		stream nextPut: $/.
+		arguments second compileToZeal: stream indent: 0.
+		arguments size > 2 ifTrue: [
+			(arguments copyFrom: 3 to: arguments size) do: [:a | stream nextPut: $ . a compileToZeal: stream indent: 0 ] ].
+		stream nextPut: $). ^ self ].
 	functionName = '[]' ifTrue: [
 		| recv args isIndex |
 		recv := arguments first.

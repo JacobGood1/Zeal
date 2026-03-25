@@ -26,14 +26,13 @@ ZealFor >> body [ ^ body ifNil: [ #() ]
 ZealFor >> body: a [ body := a
 ]
 
-{ #category : 'compiling' }
+{ #category : 'verse' }
 ZealFor >> compileToVerse: stream indent: level [
 	self emitIndent: level on: stream.
 	stream nextPutAll: 'for('.
 	self bindings 
 		do: [:b | 
 			stream nextPutAll: (self toPascalCase: b name).
-			"Range uses :=, collection uses :"
 			((b value isKindOf: ZealOperator) and: [b value operator = '..'])
 				ifTrue: [ stream nextPutAll: ' := ' ]
 				ifFalse: [ ((b value isKindOf: ZealLiteral) and: [b value literalType = #range])
@@ -42,14 +41,9 @@ ZealFor >> compileToVerse: stream indent: level [
 			b value compileToVerse: stream indent: 0 ]
 		separatedBy: [ stream nextPutAll: ', ' ].
 	self predicates do: [:p | stream nextPutAll: ', '. p compileToVerse: stream indent: 0 ].
-	stream nextPut: $).
-	(level = 0 and: [self body size = 1]) ifTrue: [
-		stream nextPut: ${.
-		self body first compileToVerse: stream indent: 0.
-		stream nextPut: $} ]
-	ifFalse: [
-		stream nextPut: $:.
-		self body do: [:e | stream cr. e compileToVerse: stream indent: level + 1 ] ]
+	stream nextPutAll: ') {'.
+	self body do: [:e | stream cr. e compileToVerse: stream indent: level + 1 ].
+	stream cr. self emitIndent: level on: stream. stream nextPut: $}
 ]
 
 { #category : 'compiling' }

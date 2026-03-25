@@ -11,18 +11,28 @@ Class {
 	#package : 'Zeal'
 }
 
-{ #category : 'compiling' }
+{ #category : 'verse' }
 ZealClass >> compileToVerse: stream indent: level [
-	| declSpecs |
+	| declSpecs allParents |
 	self emitIndent: level on: stream.
 	declSpecs := specifiers select: [:s | ZealColonChainResolver isDeclarationSpecifier: s].
 	stream nextPutAll: (self toSnakeCase: name).
 	self emitSpecifiers: declSpecs on: stream.
 	stream nextPutAll: ' := class'.
-	superclass ifNotNil: [ stream nextPutAll: '('; nextPutAll: (self toSnakeCase: superclass); nextPutAll: ')' ].
-	stream nextPutAll: ':'.
+	allParents := OrderedCollection new.
+	superclass ifNotNil: [ allParents add: (self toSnakeCase: superclass) ].
+	(interfaces notNil and: [interfaces notEmpty]) ifTrue: [
+		interfaces do: [:i | allParents add: (self toSnakeCase: i) ] ].
+	allParents notEmpty ifTrue: [
+		stream nextPut: $(.
+		allParents do: [:p | stream nextPutAll: p] separatedBy: [stream nextPutAll: ', '].
+		stream nextPut: $) ].
+	stream nextPutAll: ' {'.
 	self fields do: [:f | stream cr. f compileToVerse: stream indent: level + 1 ].
-	self methods do: [:m | stream cr. m compileToVerse: stream indent: level + 1 ]
+	self methods do: [:m | stream cr. m compileToVerse: stream indent: level + 1 ].
+	stream cr.
+	self emitIndent: level on: stream.
+	stream nextPut: $}
 ]
 
 { #category : 'compiling' }

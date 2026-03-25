@@ -4,11 +4,74 @@ Class {
 	#instVars : [
 		'name',
 		'path',
-		'modules'
+		'modules',
+		'externalModules'
 	],
 	#category : 'Zeal',
 	#package : 'Zeal'
 }
+
+{ #category : 'scanning' }
+ZealProject >> digestParseLine: stripped into: defs currentClass: currentClass onClassChange: aBlock [
+	"Parse a single line from a digest file"
+	((stripped includesSubstring: ':= module:') or: [stripped beginsWith: 'using']) ifTrue: [ ^ self ].
+	
+	(stripped includesSubstring: ':= class') ifTrue: [
+		| clsName parents cls |
+		clsName := stripped copyUpTo: $ .
+		parents := OrderedCollection new.
+		(stripped includes: $() ifTrue: [
+			| pStr |
+			pStr := (stripped copyAfter: $() copyUpTo: $).
+			(pStr substrings: ',') do: [:p | parents add: p trimBoth ] ].
+		cls := ZealClass new name: clsName;
+			superclass: (parents isEmpty ifTrue: [nil] ifFalse: [parents first]);
+			interfaces: (parents size > 1 ifTrue: [parents allButFirst] ifFalse: [#()]);
+			fields: OrderedCollection new; methods: OrderedCollection new.
+		defs add: cls. aBlock value: cls. ^ self ].
+	
+	(stripped includesSubstring: ':= interface') ifTrue: [
+		| iface |
+		iface := ZealInterface new name: (stripped copyUpTo: $ ); methods: OrderedCollection new.
+		defs add: iface. aBlock value: iface. ^ self ].
+	
+	(stripped includesSubstring: ':= struct') ifTrue: [
+		defs add: (ZealStruct new name: (stripped copyUpTo: $ ); fields: OrderedCollection new).
+		aBlock value: nil. ^ self ].
+	
+	(stripped includesSubstring: ':= enum') ifTrue: [
+		defs add: (ZealEnum new name: (stripped copyUpTo: $ ); values: OrderedCollection new).
+		aBlock value: nil. ^ self ].
+	
+	"Method: Name(Params):ReturnType or Name(Params)<specs>:ReturnType"
+	(currentClass notNil and: [(stripped includes: $() and: [(stripped includesSubstring: ':=') not]]) ifTrue: [
+		| methodName fn sig retType |
+		methodName := (stripped copyUpTo: $() trimBoth.
+		methodName isEmpty ifFalse: [
+			sig := stripped.
+			retType := (sig includesSubstring: ':') 
+				ifTrue: [ ((sig reversed copyUpTo: $:) reversed) trimBoth copyUpTo: $  ]
+				ifFalse: [ 'void' ].
+			fn := ZealFunction new name: methodName; 
+				parameters: OrderedCollection new; body: OrderedCollection new;
+				type: retType.
+			fn rawSource: stripped. "Store original signature"
+			fn parent: currentClass.
+			(currentClass respondsTo: #methods) ifTrue: [ currentClass methods add: fn ] ].
+		^ self ].
+	
+	"Field: Name:Type = external {} or var Name:Type = external {}"
+	(currentClass notNil and: [stripped includes: $:]) ifTrue: [
+		| fieldName fieldType field line |
+		line := stripped.
+		(line beginsWith: 'var ') ifTrue: [ line := line allButFirst: 4 ].
+		fieldName := (line copyUpTo: $:) trimBoth.
+		fieldType := ((line copyAfter: $:) copyUpTo: $ ) trimBoth.
+		(fieldName notEmpty and: [fieldName first isLetter]) ifTrue: [
+			field := ZealField new name: fieldName; type: fieldType.
+			(currentClass respondsTo: #fields) ifTrue: [ currentClass fields add: field ] ].
+		^ self ]
+]
 
 { #category : 'exporting' }
 ZealProject >> exportModule: aModule to: aDir [
@@ -38,6 +101,11 @@ ZealProject >> exportTo: aFolderPath [
 		modDir := root / mod name.
 		modDir ensureCreateDirectory.
 		self exportModule: mod to: modDir ]
+]
+
+{ #category : 'accessing' }
+ZealProject >> externalModules [
+	^ externalModules ifNil: [ externalModules := OrderedCollection new ]
 ]
 
 { #category : 'scanning' }
@@ -120,6 +188,71 @@ ZealProject >> isTopLevelDef: aNode [
 ]
 
 { #category : 'scanning' }
+ZealProject >> loadDigestFile: aFileRef into: aModule [
+	"Parse a .digest.verse file — extracts class/interface/method definitions."
+	| content lines currentClass defs |
+	content := aFileRef contents.
+	lines := content lines.
+	currentClass := nil.
+	defs := OrderedCollection new.
+	
+	lines do: [:rawLine |
+		| stripped |
+		stripped := rawLine trimBoth.
+		(stripped isEmpty or: [stripped beginsWith: '#']) ifFalse: [
+			#('<native>' '<public>' '<private>' '<internal>' '<final>' '<final_super>' '<concrete>' '<abstract>' '<unique>' '<override>' '<epic_internal>') do: [:spec |
+				stripped := stripped copyReplaceAll: spec with: '' ].
+			stripped := stripped trimBoth.
+			self digestParseLine: stripped into: defs currentClass: currentClass onClassChange: [:c | currentClass := c] ] ].
+	
+	aModule definitions: defs asArray
+]
+
+{ #category : 'scanning' }
+ZealProject >> loadFromCache [
+	"Rebuild project tree from generated Smalltalk class hierarchy."
+	| projectClass prefix |
+	prefix := 'Zeal_' , (ZealClassGenerator toPascalCase: name).
+	projectClass := Smalltalk globals at: prefix asSymbol ifAbsent: [ ^ false ].
+	
+	modules := OrderedCollection new.
+	
+	"Module classes are direct subclasses of project class"
+	(Smalltalk allClassesAndTraits select: [:c | c superclass == projectClass]) do: [:modClass |
+		| mod modName namespaces |
+		modName := self pascalToSnake: (modClass name allButFirst: prefix size + 1).
+		mod := ZealModule new name: modName; kind: #folder.
+		namespaces := OrderedCollection new.
+		
+		"Namespace classes are subclasses of module class"
+		(Smalltalk allClassesAndTraits select: [:c | c superclass == modClass]) do: [:nsClass |
+			| ns nsName defs |
+			nsName := self pascalToSnake: (nsClass name allButFirst: modClass name size + 1).
+			ns := ZealModule new name: nsName; kind: #file.
+			defs := OrderedCollection new.
+			
+			"Definition classes are subclasses of namespace class"
+			(Smalltalk allClassesAndTraits select: [:c | c superclass == nsClass]) do: [:defClass |
+				| zealSource compiled |
+				zealSource := [defClass zealSource] on: Error do: [nil].
+				zealSource ifNotNil: [
+					[ compiled := ZealCompiler compile: zealSource.
+					  compiled := (compiled isKindOf: Collection) ifTrue: [compiled first] ifFalse: [compiled].
+					  compiled generatedClass: defClass.
+					  defs add: compiled ]
+					on: Error do: [ ] ] ].
+			
+			ns definitions: defs asArray.
+			namespaces add: ns ].
+		
+		mod definitions: namespaces asArray.
+		modules add: mod ].
+	
+	self scanExternalModules.
+	^ modules notEmpty
+]
+
+{ #category : 'scanning' }
 ZealProject >> loadVerseFile: aFileRef into: aModule [
 	| source lines codeLines preprocessed parsed nodes inUsingBlock rawChunks |
 	source := aFileRef contents.
@@ -188,6 +321,18 @@ ZealProject >> name [ ^ name
 ZealProject >> name: s [ name := s
 ]
 
+{ #category : 'private' }
+ZealProject >> pascalToSnake: aString [
+	"Convert PascalCase to snake_case: 8Oop → 8_oop, IntroLessons → intro_lessons"
+	| result |
+	result := WriteStream on: String new.
+	aString do: [:ch |
+		(ch isUppercase and: [result position > 0]) 
+			ifTrue: [ result nextPut: $_; nextPut: ch asLowercase ]
+			ifFalse: [ result nextPut: ch asLowercase ] ].
+	^ result contents
+]
+
 { #category : 'accessing' }
 ZealProject >> path [ ^ path
 ]
@@ -233,14 +378,37 @@ ZealProject >> scanDirectory: aDir into: parentNode [
 ]
 
 { #category : 'scanning' }
+ZealProject >> scanExternalModules [
+	"Scan the VerseProject digest files for external API definitions."
+	| verseProjectPath |
+	externalModules := OrderedCollection new.
+	verseProjectPath := 'C:\Users\Jacob Goodson\AppData\Local\UnrealEditorFortnite\Saved\VerseProject' asFileReference / name.
+	verseProjectPath exists ifFalse: [ ^ self ].
+	
+	verseProjectPath directories do: [:dir |
+		| digestFile mod |
+		digestFile := dir files detect: [:f | f basename endsWith: '.digest.verse'] ifNone: [nil].
+		digestFile ifNotNil: [
+			mod := ZealModule new name: dir basename; kind: #external.
+			[ self loadDigestFile: digestFile into: mod ] on: Error do: [:e | ].
+			mod definitions notEmpty ifTrue: [ externalModules add: mod ] ] ]
+]
+
+{ #category : 'scanning' }
 ZealProject >> scanFolder: aFileReference [
-	"Scan a UEFN project folder, build ZealNode tree, and generate Smalltalk classes."
+	"Load from cache if available, otherwise scan .verse files."
 	| root |
 	root := aFileReference asFileReference.
 	path := root fullName.
 	name := root basename.
+	
+	"Try loading from cached generated classes"
+	(self loadFromCache) ifTrue: [ ^ self ].
+	
+	"First time — scan .verse files"
 	modules := OrderedCollection new.
 	self scanDirectory: root into: self.
+	self scanExternalModules.
 	self generateClasses.
 	^ self
 ]

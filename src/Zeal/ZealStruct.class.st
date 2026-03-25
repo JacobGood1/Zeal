@@ -8,12 +8,13 @@ Class {
 	#package : 'Zeal'
 }
 
-{ #category : 'compiling' }
+{ #category : 'verse' }
 ZealStruct >> compileToVerse: stream indent: level [
 	self emitIndent: level on: stream.
-	stream nextPutAll: (self toSnakeCase: name); nextPutAll: ' := struct:'.
+	stream nextPutAll: (self toSnakeCase: name); nextPutAll: ' := struct {'.
 	self fields do: [:f |
-		stream cr. f compileToVerse: stream indent: level + 1 ]
+		stream cr. f compileToVerse: stream indent: level + 1 ].
+	stream cr. self emitIndent: level on: stream. stream nextPut: $}
 ]
 
 { #category : 'compiling' }

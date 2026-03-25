@@ -97,7 +97,7 @@ VersePP2ToZeal class >> convertEnum: item [
 	^ ZealEnum new name: item second; values: item fourth
 ]
 
-{ #category : 'expressions' }
+{ #category : 'converting' }
 VersePP2ToZeal class >> convertExpr: item [
 	(item isKindOf: Array) ifFalse: [ ^ ZealLiteral new value: item asString; literalType: #raw ].
 	item isEmpty ifTrue: [ ^ ZealLiteral new value: '()'; literalType: #unit ].
@@ -113,7 +113,7 @@ VersePP2ToZeal class >> convertExpr: item [
 		| recv |
 		recv := self convertExpr: item second.
 		((recv isKindOf: ZealFunctionCall) and: [recv functionName = '.']) ifTrue: [
-			^ ZealFunctionCall new functionName: '.'; arguments: recv arguments , (item third collect: [:a | self convertExpr: a]) ].
+			^ ZealFunctionCall new functionName: '.call'; arguments: recv arguments , (item third collect: [:a | self convertExpr: a]) ].
 		(recv isKindOf: ZealSymbolRef) ifTrue: [
 			^ ZealFunctionCall new functionName: recv name; arguments: (item third collect: [:a | self convertExpr: a]) ].
 		^ ZealFunctionCall new functionName: recv compileToVerse; arguments: (item third collect: [:a | self convertExpr: a]) ].
@@ -154,23 +154,26 @@ VersePP2ToZeal class >> convertForExpr: item [
 	^ ZealFor new bindings: bindings; predicates: predicates; body: body
 ]
 
-{ #category : 'definitions' }
+{ #category : 'converting' }
 VersePP2ToZeal class >> convertFunc: item [
 	"item = {#func. name. declSpecs. params. sigSpecs. retType. body}"
-	| func params |
+	| func params bodyNodes |
 	params := (item fourth ifNil: [#()]) collect: [:p |
 		p first = #param ifTrue: [ ZealParameter new name: p second; type: p third ]
 		ifFalse: [ p first = #funcParam ifTrue: [ ZealParameter new name: p second; type: p fifth ]
 		ifFalse: [ ZealParameter new name: p second ] ] ].
+	bodyNodes := item seventh 
+		ifNotNil: [:b | { self convertExpr: b } ] 
+		ifNil: [ #() ].
 	func := ZealFunction new
 		name: item second;
 		specifiers: (item third asArray , item fifth asArray);
 		effects: item fifth asArray;
 		parameters: params;
 		type: item sixth;
-		body: { self convertExpr: item seventh }.
+		body: bodyNodes.
 	params do: [:p | p parent: func].
-	func body do: [:b | b parent: func].
+	bodyNodes do: [:b | b parent: func].
 	^ func
 ]
 

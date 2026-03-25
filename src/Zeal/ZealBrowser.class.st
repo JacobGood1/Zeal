@@ -7,7 +7,11 @@ Class {
 		'detailElement',
 		'selectedNode',
 		'expandSelectionStack',
-		'keyChord'
+		'keyChord',
+		'rehighlightProcess',
+		'zealEditor',
+		'suppressRehighlight',
+		'completionController'
 	],
 	#category : 'Zeal',
 	#package : 'Zeal'
@@ -195,45 +199,91 @@ ZealBrowser >> buildUI [
 	self addChild: self buildDetail
 ]
 
-{ #category : 'building' }
+{ #category : 'tree' }
 ZealBrowser >> childrenOf: item [
-	(item isKindOf: ZealModule) ifTrue: [ ^ item definitions ].
+	"Modules show all definitions directly — namespaces (files) are flattened out.
+	 Classes/structs/interfaces show their members."
+	(item isKindOf: ZealModule) ifTrue: [ 
+		| children |
+		children := OrderedCollection new.
+		item definitions do: [:d |
+			(d isKindOf: ZealModule) ifTrue: [
+				"This is a file/namespace — flatten its definitions into the parent"
+				d definitions do: [:defn | children add: defn ] ]
+			ifFalse: [
+				children add: d ] ].
+		^ children ].
 	(item isKindOf: ZealClass) ifTrue: [ ^ item fields , item methods ].
 	(item isKindOf: ZealStruct) ifTrue: [ ^ item fields ].
 	(item isKindOf: ZealInterface) ifTrue: [ ^ item methods ].
 	^ #()
 ]
 
-{ #category : 'actions' }
-ZealBrowser >> compileAndSave: zealEditor forNode: aNode [
-	| zealSource compiled verseSource namespace filePath genClass |
-	zealSource := zealEditor editor text asString.
+{ #category : 'compilation' }
+ZealBrowser >> compileAndSave: anEditor forNode: aNode [
+	"Compile Zeal → clean Verse, store in class, save to own .verse file."
+	| zealSource compiled verseSource genClass isExpander oldZeal compiledNodes filePath |
+	zealSource := anEditor editor text asString.
 	
 	[ compiled := ZealCompiler compile: zealSource ] on: Error do: [:e |
-		self flashEditor: zealEditor color: (Color red alpha: 0.3). ^ self ].
+		self flashEditor: anEditor color: (Color red alpha: 0.3). ^ self ].
 	
-	"Generate Verse with zeal comment"
-	[ verseSource := compiled compileToVerseWithZealComment: zealSource ] on: Error do: [:e |
-		self flashEditor: zealEditor color: (Color red alpha: 0.3). ^ self ].
+	compiledNodes := (compiled isKindOf: Collection) ifTrue: [compiled] ifFalse: [{compiled}].
 	
-	detailElement childWithId: #verseOutput ifFound: [:ve |
-		ve text: (verseSource asRopedText foreground: ZealTheme foregroundColor) ].
+	[ verseSource := String streamContents: [:s |
+		compiledNodes do: [:n | n compileToVerse: s indent: 0] separatedBy: [s cr; cr] ] ]
+		on: Error do: [:e |
+			self flashEditor: anEditor color: (Color red alpha: 0.3). ^ self ].
 	
 	aNode rawSource: nil.
+	isExpander := aNode ~~ selectedNode.
 	
+	"Capture old zeal BEFORE overwriting"
 	genClass := self generatedClassFor: aNode.
+	oldZeal := genClass ifNotNil: [ [genClass zealSource] on: Error do: [nil] ].
+	oldZeal ifNil: [ oldZeal := [String streamContents: [:s | aNode compileToZeal: s indent: 0]] on: Error do: [nil] ].
+	
+	"Store Zeal and Verse in generated class"
 	genClass ifNotNil: [
 		genClass class compile: ('zealSource
 	^ ' , zealSource printString) classified: 'zeal'.
 		genClass class compile: ('verseSource
 	^ ' , verseSource printString) classified: 'zeal' ].
 	
-	namespace := aNode module.
-	namespace ifNotNil: [
-		filePath := self verseFilePathFor: namespace.
-		filePath ifNotNil: [ self writeNamespaceToFile: namespace path: filePath ] ].
+	"Sync node if single definition"
+	(compiledNodes size = 1 and: [isExpander not or: [(aNode isKindOf: ZealModule) not]]) ifTrue: [
+		self syncNode: aNode withCompiled: compiledNodes first ].
 	
-	self flashEditor: zealEditor color: (ZealTheme cursorColor alpha: 0.2)
+	"Invalidate resolver cache"
+	ZealCompiler currentResolver ifNotNil: [:r | r invalidateAll].
+	
+	"Write to individual .verse file"
+	filePath := self verseFilePathForDefinition: aNode.
+	filePath ifNotNil: [
+		filePath asFileReference ensureDelete.
+		filePath asFileReference writeStreamDo: [:ws | ws nextPutAll: verseSource ] ].
+	
+	self flashEditor: anEditor color: (ZealTheme cursorColor alpha: 0.2).
+	
+	"Surgical update for expander saves"
+	(isExpander and: [zealEditor notNil]) ifTrue: [
+		(oldZeal notNil and: [(zealEditor editor text asString findString: oldZeal startingAt: 1) > 0]) ifTrue: [
+			self surgicallyReplace: oldZeal with: zealSource in: zealEditor ] ].
+	
+	"Update Verse preview"
+	detailElement children do: [:child |
+		((child isKindOf: BrEditor) and: [child isReadOnly]) ifTrue: [
+			child text: (verseSource asRopedText foreground: ZealTheme foregroundColor) ] ]
+]
+
+{ #category : 'editor' }
+ZealBrowser >> configureZealEditor: anEditor [
+	"Single method to set up ALL features on any Zeal code editor.
+	 Used by main editor AND expanders for consistent behavior."
+	self setupParinfer: anEditor.
+	self setupKeyChords: anEditor.
+	self setupArrowKeys: anEditor.
+	self setupCompletion: anEditor
 ]
 
 { #category : 'parinfer' }
@@ -355,6 +405,21 @@ ZealBrowser >> expandSelection: zealEditor [
 	expandSelectionStack add: (currentSelStart -> currentSelEnd)
 ]
 
+{ #category : 'compilation' }
+ZealBrowser >> expandedNodeNames [
+	"Get names of currently expanded expander nodes from the main editor"
+	| names |
+	names := OrderedCollection new.
+	zealEditor ifNil: [ ^ names ].
+	zealEditor editor text 
+		attributeRunsDo: [:start :end :attrs |
+			attrs do: [:a |
+				(a isKindOf: ZealExpanderAttribute) ifTrue: [
+					a isExpanded ifTrue: [ 
+						(a instVarNamed: 'zealNode') ifNotNil: [:n | names add: n name ] ] ] ] ].
+	^ names
+]
+
 { #category : 'actions' }
 ZealBrowser >> flashEditor: anEditor color: aColor [
 	"Flash the editor background briefly to indicate success/failure."
@@ -365,17 +430,40 @@ ZealBrowser >> flashEditor: anEditor color: aColor [
 	  anEditor enqueueTask: (BlTaskAction new action: [ anEditor background: original ]) ] fork
 ]
 
-{ #category : 'detail' }
+{ #category : 'compilation' }
 ZealBrowser >> generatedClassFor: aNode [
-	"Find the generated Smalltalk class for a ZealNode by matching name"
-	| name |
+	"Find the generated Smalltalk class for a ZealNode. 
+	 Checks cached reference first, then name-based lookup."
+	| name gc |
+	(aNode respondsTo: #generatedClass) ifTrue: [
+		gc := aNode generatedClass.
+		gc ifNotNil: [ ^ gc ] ].
 	(aNode respondsTo: #name) ifFalse: [ ^ nil ].
 	name := aNode name ifNil: [ ^ nil ].
-	^ Smalltalk allClassesAndTraits 
+	gc := Smalltalk allClassesAndTraits 
 		detect: [:c | 
 			(c name beginsWith: 'Zeal_') and: [
 				c name endsWith: '_' , (ZealClassGenerator toPascalCase: name) ] ]
-		ifNone: [ nil ]
+		ifNone: [ nil ].
+	"Cache it on the node"
+	(gc notNil and: [aNode respondsTo: #generatedClass:]) ifTrue: [ aNode generatedClass: gc ].
+	^ gc
+]
+
+{ #category : 'highlighting' }
+ZealBrowser >> highlightWithExpanders: zealText [
+	^ self highlightWithExpanders: zealText nested: false
+]
+
+{ #category : 'highlighting' }
+ZealBrowser >> highlightWithExpanders: zealText nested: isNested [
+	"Highlight Zeal source and attach inline expanders"
+	| highlighted resolver |
+	highlighted := ZealTheme highlight: zealText.
+	resolver := ZealCompiler currentResolver ifNil: [ 
+		project ifNotNil: [ ZealTypeResolver forProject: project ] ].
+	ZealTheme attachExpanders: highlighted source: zealText resolver: resolver browser: self nested: isNested.
+	^ highlighted
 ]
 
 { #category : 'parinfer' }
@@ -500,10 +588,54 @@ ZealBrowser >> removeLine: zealEditor [
 		apply
 ]
 
+{ #category : 'compilation' }
+ZealBrowser >> reopenExpanders: nodeNames [
+	"After rebuilding, find expander attributes matching nodeNames and expand them"
+	| text |
+	nodeNames isEmpty ifTrue: [ ^ self ].
+	zealEditor ifNil: [ ^ self ].
+	text := zealEditor editor text.
+	text attributeRunsDo: [:start :end :attrs |
+		attrs do: [:a |
+			(a isKindOf: ZealExpanderAttribute) ifTrue: [
+				(a instVarNamed: 'zealNode') ifNotNil: [:n |
+					(nodeNames includes: n name) ifTrue: [
+						a isExpanded ifFalse: [
+							a isExpanded: true.
+							a applyExpandedOrCollapsedAttributesOnText: text ] ] ] ] ] ]
+]
+
+{ #category : 'highlighting' }
+ZealBrowser >> scheduleRehighlight: anEditor [
+	"Debounced rehighlight — skips if completion popup is showing or rehighlight is suppressed."
+	suppressRehighlight == true ifTrue: [ ^ self ].
+	rehighlightProcess ifNotNil: [ rehighlightProcess terminate ].
+	rehighlightProcess := [
+		(Delay forMilliseconds: 500) wait.
+		anEditor enqueueTask: (BlTaskAction new action: [
+			"Skip if completion is active"
+			(completionController notNil and: [completionController isShowingPopup]) ifFalse: [
+				| text cursorPos highlighted |
+				text := anEditor editor text asString.
+				text isEmpty ifTrue: [ ^ self ].
+				cursorPos := 0.
+				anEditor editor cursors do: [:c | cursorPos := c position].
+				highlighted := self highlightWithExpanders: text.
+				anEditor text: highlighted.
+				anEditor editor navigator
+					moveTo: (cursorPos min: highlighted size);
+					apply ].
+			rehighlightProcess := nil ]) ] fork
+]
+
 { #category : 'ui' }
 ZealBrowser >> selectNode: aNode [
-	| verseText zealText generatedClass zealEditor |
+	| verseText zealText generatedClass |
 	selectedNode := aNode.
+	
+	"Modules just expand in the tree — don't show code"
+	(aNode isKindOf: ZealModule) ifTrue: [ ^ self ].
+	
 	detailElement removeChildren.
 	
 	detailElement addChild: (BrLabel new
@@ -517,13 +649,11 @@ ZealBrowser >> selectNode: aNode [
 		text: 'Zeal (Ctrl+S to compile & save):';
 		margin: (BlInsets top: 12 left: 0 bottom: 4 right: 0)).
 	
-	zealText := generatedClass 
-		ifNotNil: [ generatedClass zealSource ]
-		ifNil: [ [ aNode compileToZeal ] on: Error do: [:e | 'Error: ' , e messageText ] ].
+	zealText := self zealSourceFor: aNode generatedClass: generatedClass.
 	
 	zealEditor := BrEditor new
 		aptitude: (BrGlamorousCodeEditorAptitude new);
-		text: ((ZealTheme highlight: zealText));
+		text: ((self highlightWithExpanders: zealText));
 		background: (ZealTheme backgroundColor darker);
 		constraintsDo: [:c | c horizontal matchParent. c vertical fitContent ];
 		padding: (BlInsets all: 8);
@@ -531,9 +661,7 @@ ZealBrowser >> selectNode: aNode [
 	zealEditor addShortcut: (BlShortcutWithAction new 
 		combination: BlKeyCombination primaryS;
 		action: [ self compileAndSave: zealEditor forNode: aNode ]).
-	self setupParinfer: zealEditor.
-	self setupKeyChords: zealEditor.
-	self setupArrowKeys: zealEditor.
+	self configureZealEditor: zealEditor.
 	detailElement addChild: zealEditor.
 	
 	detailElement addChild: (BrLabel new
@@ -552,18 +680,7 @@ ZealBrowser >> selectNode: aNode [
 		beReadOnlyWithSelection;
 		padding: (BlInsets all: 8);
 		margin: (BlInsets bottom: 8);
-		id: #verseOutput).
-	
-	generatedClass ifNotNil: [
-		detailElement addChild: (BrLabel new
-			aptitude: (BrGlamorousLabelAptitude new foreground: ZealTheme commentColor; fontSize: 11);
-			text: 'Smalltalk class: ' , generatedClass name;
-			margin: (BlInsets top: 4)) ].
-	
-	(aNode isKindOf: ZealModule) ifTrue: [ self showModuleDetail: aNode ].
-	(aNode isKindOf: ZealFunction) ifTrue: [ self showFunctionDetail: aNode ].
-	(aNode isKindOf: ZealClass) ifTrue: [ self showClassDetail: aNode ].
-	(aNode isKindOf: ZealEnum) ifTrue: [ self showEnumDetail: aNode ]
+		id: #verseOutput)
 ]
 
 { #category : 'parinfer' }
@@ -594,6 +711,16 @@ ZealBrowser >> setupArrowKeys: zealEditor [
 				zealEditor editor navigator
 					moveRight;
 					apply ] ])
+]
+
+{ #category : 'completion' }
+ZealBrowser >> setupCompletion: anEditor [
+	"Install code completion — deferred until editor is in scene graph"
+	| strategy |
+	strategy := ZealCompletionStrategy new project: project.
+	anEditor addEventHandlerOn: BlElementAddedToSceneGraphEvent do: [:e |
+		completionController := GtCompletionController on: anEditor strategy: strategy.
+		completionController install ]
 ]
 
 { #category : 'parinfer' }
@@ -647,6 +774,12 @@ ZealBrowser >> setupParinfer: zealEditor [
 	zealEditor addShortcut: (BlShortcutWithAction new 
 		combination: (BlKeyCombination builder control alt arrowLeft build);
 		action: [ self barfForward: zealEditor ])
+]
+
+{ #category : 'highlighting' }
+ZealBrowser >> setupRehighlight: anEditor [
+	"No longer auto-rehighlight on typing — it interferes with completion.
+	 Rehighlighting happens on Alt+F (format) and Ctrl+S (save)."
 ]
 
 { #category : 'detail' }
@@ -747,6 +880,131 @@ ZealBrowser >> slurpForward: zealEditor [
 	zealEditor editor navigator moveTo: (cursorPos min: result size); apply
 ]
 
+{ #category : 'compilation' }
+ZealBrowser >> splitTopLevelForms: aString [
+	"Split Zeal source into top-level forms by matching parens at depth 0"
+	| forms current depth inString |
+	forms := OrderedCollection new.
+	current := WriteStream on: String new.
+	depth := 0. inString := false.
+	1 to: aString size do: [:i |
+		| ch |
+		ch := aString at: i.
+		ch = $" ifTrue: [ inString := inString not ].
+		inString ifFalse: [
+			ch = $( ifTrue: [ depth := depth + 1 ].
+			ch = $) ifTrue: [ depth := depth - 1 ] ].
+		current nextPut: ch.
+		(depth = 0 and: [inString not and: [current contents trimBoth notEmpty and: [
+			current contents trimBoth last = $)]]]) ifTrue: [
+			forms add: current contents trimBoth.
+			current := WriteStream on: String new ] ].
+	current contents trimBoth notEmpty ifTrue: [ forms add: current contents trimBoth ].
+	^ forms
+]
+
+{ #category : 'compilation' }
+ZealBrowser >> storeIndividualZeal: fullZealSource forDefinitions: compiledNodes [
+	"Parse the full Zeal source into individual definitions and store each in its generated class"
+	| zealParts |
+	zealParts := self splitTopLevelForms: fullZealSource.
+	
+	compiledNodes doWithIndex: [:node :idx |
+		| genClass defnZeal defnVerse |
+		genClass := self generatedClassFor: node.
+		genClass ifNotNil: [
+			defnZeal := (idx <= zealParts size) ifTrue: [zealParts at: idx] ifFalse: [''].
+			defnVerse := [String streamContents: [:s | node compileToVerse: s indent: 0]] on: Error do: [''].
+			genClass class compile: ('zealSource
+	^ ' , defnZeal printString) classified: 'zeal'.
+			genClass class compile: ('verseSource
+	^ ' , defnVerse printString) classified: 'zeal' ] ]
+]
+
+{ #category : 'compilation' }
+ZealBrowser >> surgicallyReplace: oldText with: newText in: mainEditor [
+	"Replace oldText with newText in the main editor, preserving other attributes.
+	 If oldText not found (nested expander case), skip silently."
+	| mainStr startIdx endIdx highlighted |
+	(mainEditor isNil or: [oldText isNil or: [newText isNil]]) ifTrue: [ ^ self ].
+	oldText = newText ifTrue: [ ^ self ].
+	mainStr := mainEditor editor text asString.
+	startIdx := mainStr findString: oldText startingAt: 1.
+	startIdx = 0 ifTrue: [ ^ self ]. "Not in main editor — nested expander, skip"
+	endIdx := startIdx + oldText size - 1.
+	
+	suppressRehighlight := true.
+	mainEditor editor deleter from: startIdx - 1 to: endIdx; delete.
+	mainEditor editor inserter 
+		at: startIdx - 1;
+		string: newText;
+		withoutCursorUpdate;
+		withoutSelectionUpdate;
+		insert.
+	
+	"Re-highlight the inserted text"
+	highlighted := ZealTheme highlight: newText.
+	1 to: newText size do: [:i |
+		(highlighted attributesAt: i) do: [:a |
+			(mainEditor editor text from: startIdx - 1 + i to: startIdx - 1 + i) attribute: a ] ].
+	
+	suppressRehighlight := false
+]
+
+{ #category : 'compilation' }
+ZealBrowser >> surgicallyUpdate: aNode in: mainEditor [
+	"Find the old definition text in the main editor and replace it with the new stored Zeal."
+	| mainText oldZeal newZeal startIdx endIdx highlighted |
+	mainEditor ifNil: [ ^ self ].
+	mainText := mainEditor editor text asString.
+	
+	oldZeal := [String streamContents: [:s | aNode compileToZeal: s indent: 0]] on: Error do: [ ^ self ].
+	newZeal := [(self generatedClassFor: aNode) zealSource] on: Error do: [ ^ self ].
+	(newZeal isNil or: [oldZeal isNil]) ifTrue: [ ^ self ].
+	oldZeal = newZeal ifTrue: [ ^ self ].
+	
+	startIdx := mainText findString: oldZeal startingAt: 1.
+	startIdx = 0 ifTrue: [ ^ self ].
+	endIdx := startIdx + oldZeal size - 1.
+	
+	mainEditor editor deleter from: startIdx - 1 to: endIdx; delete.
+	mainEditor editor inserter 
+		at: startIdx - 1;
+		string: newZeal;
+		withoutCursorUpdate;
+		withoutSelectionUpdate;
+		insert
+]
+
+{ #category : 'compilation' }
+ZealBrowser >> syncNode: aNode withCompiled: compiledNode [
+	"Update the project tree node with properties from the freshly compiled node"
+	| newName |
+	newName := compiledNode name.
+	(newName notNil and: [newName ~= aNode name]) ifTrue: [
+		"Name changed — update the node and create a new generated class entry"
+		| oldGenClass newGenClass |
+		oldGenClass := self generatedClassFor: aNode.
+		aNode name: newName.
+		"The old generated class still has the stored zeal/verse — 
+		 create mapping for the new name too"
+		newGenClass := self generatedClassFor: aNode.
+		(newGenClass isNil and: [oldGenClass notNil]) ifTrue: [
+			"Copy stored source to old class under new lookup"
+			] ].
+	aNode name: newName.
+	(aNode respondsTo: #type:) ifTrue: [ aNode type: compiledNode type ].
+	(aNode respondsTo: #specifiers:) ifTrue: [ aNode specifiers: compiledNode specifiers ].
+	(aNode respondsTo: #fields:) ifTrue: [
+		(compiledNode respondsTo: #fields) ifTrue: [ aNode fields: compiledNode fields ] ].
+	(aNode respondsTo: #methods:) ifTrue: [
+		(compiledNode respondsTo: #methods) ifTrue: [ aNode methods: compiledNode methods ] ].
+	(aNode respondsTo: #parameters:) ifTrue: [
+		(compiledNode respondsTo: #parameters) ifTrue: [ aNode parameters: compiledNode parameters ] ].
+	(aNode respondsTo: #body:) ifTrue: [
+		(compiledNode respondsTo: #body) ifTrue: [ aNode body: compiledNode body ] ]
+]
+
 { #category : 'actions' }
 ZealBrowser >> verseFilePathFor: aNamespace [
 	"Find the .verse file path for a namespace (ZealModule kind: #file)."
@@ -759,19 +1017,88 @@ ZealBrowser >> verseFilePathFor: aNamespace [
 	files ifEmpty: [ ^ nil ] ifNotEmpty: [ ^ files first fullName ]
 ]
 
-{ #category : 'actions' }
+{ #category : 'compilation' }
+ZealBrowser >> verseFilePathForDefinition: aNode [
+	"Build the .verse file path: module_name.verse, nested modules concatenated."
+	| parts current fileName |
+	parts := OrderedCollection new.
+	
+	"Walk up parent chain collecting module names"
+	current := aNode.
+	[ current notNil ] whileTrue: [
+		(current isKindOf: ZealModule) ifTrue: [ parts addFirst: current name ].
+		current := current parent ].
+	
+	"If no parent modules, search for containing module"
+	parts isEmpty ifTrue: [
+		project modules do: [:mod |
+			mod definitions do: [:ns |
+				(ns respondsTo: #definitions) ifTrue: [
+					(ns definitions identityIncludes: aNode) ifTrue: [ 
+						parts add: ns name ] ]
+				ifFalse: [
+					ns == aNode ifTrue: [ parts add: mod name ] ] ] ] ].
+	
+	"Add definition name"
+	(aNode respondsTo: #name) ifTrue: [ 
+		aNode name ifNotNil: [ parts add: aNode name ] ].
+	
+	parts isEmpty ifTrue: [ ^ nil ].
+	
+	fileName := ('_' join: parts) , '.verse'.
+	^ project path asFileReference / 'Content' / fileName
+]
+
+{ #category : 'compilation' }
 ZealBrowser >> writeNamespaceToFile: aNamespace path: filePath [
-	"Write all definitions in a namespace to the .verse file."
+	"Write all definitions in a namespace to the .verse file.
+	 Uses stored verse from generated classes when available."
 	| stream |
 	stream := String new writeStream.
-	"Write usings first"
 	aNamespace usings do: [:u |
 		stream nextPutAll: 'using { '; nextPutAll: u path; nextPutAll: ' }'.
 		stream cr ].
 	aNamespace usings notEmpty ifTrue: [ stream cr ].
-	"Write each definition's verse source"
 	aNamespace definitions do: [:d |
-		d compileToVerse: stream indent: 0.
+		| genClass storedVerse |
+		genClass := self generatedClassFor: d.
+		storedVerse := genClass ifNotNil: [ [genClass verseSource] on: Error do: [nil] ].
+		storedVerse 
+			ifNotNil: [ stream nextPutAll: storedVerse ]
+			ifNil: [ d compileToVerse: stream indent: 0 ].
 		stream cr; cr ].
 	filePath asFileReference writeStreamDo: [:ws | ws nextPutAll: stream contents ]
+]
+
+{ #category : 'compilation' }
+ZealBrowser >> zealSourceFor: aNode generatedClass: genClass [
+	"Get Zeal source. For namespaces, assemble from children. 
+	 For definitions, use stored Zeal from generated class if available."
+	
+	"Namespaces: assemble from child definitions"
+	(aNode isKindOf: ZealModule) ifTrue: [
+		^ self zealSourceForNamespace: aNode ].
+	
+	"Use stored Zeal from generated class if it exists"
+	genClass ifNotNil: [
+		| storedZeal |
+		storedZeal := [genClass zealSource] on: Error do: [nil].
+		storedZeal ifNotNil: [ ^ storedZeal ] ].
+	
+	"No generated class — decompile from node"
+	^ [aNode compileToZeal] on: Error do: [:e | 'Error: ' , e messageText]
+]
+
+{ #category : 'compilation' }
+ZealBrowser >> zealSourceForNamespace: aModule [
+	"Build Zeal source for a namespace by checking each definition's generated class first.
+	 If a definition has stored Zeal (and its Verse matches), use that. Otherwise decompile."
+	| parts |
+	parts := OrderedCollection new.
+	aModule definitions do: [:defn |
+		| genClass zealSrc |
+		genClass := self generatedClassFor: defn.
+		zealSrc := self zealSourceFor: defn generatedClass: genClass.
+		parts add: zealSrc ].
+	^ (String cr , String cr) join: parts
 ]

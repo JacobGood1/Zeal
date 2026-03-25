@@ -22,7 +22,7 @@ ZealIf >> compileToVerse: stream indent: level [
 	self compileToVerse: stream indent: level isElseIf: false
 ]
 
-{ #category : 'compiling' }
+{ #category : 'verse' }
 ZealIf >> compileToVerse: stream indent: level isElseIf: isElseIf [
 	| elseExprs |
 	clauses doWithIndex: [:pair :i |
@@ -32,16 +32,18 @@ ZealIf >> compileToVerse: stream indent: level isElseIf: isElseIf [
 		(i = 1 and: [isElseIf not]) ifTrue: [ self emitIndent: level on: stream ].
 		stream nextPutAll: 'if('.
 		self emitCondition: cond on: stream.
-		stream nextPutAll: '):'.
+		stream nextPutAll: ') {'.
 		bodyExprs := (body isKindOf: ZealBlock) ifTrue: [body body] ifFalse: [{body}].
-		bodyExprs do: [:expr | stream cr. expr compileToVerse: stream indent: level + 1 ] ].
+		bodyExprs do: [:expr | stream cr. expr compileToVerse: stream indent: level + 1 ].
+		stream cr. self emitIndent: level on: stream. stream nextPut: $} ].
 	elseBody ifNotNil: [:eb |
 		(eb isKindOf: ZealIf) ifTrue: [
 			stream cr. self emitIndent: level on: stream. stream nextPutAll: 'else '.
 			eb compileToVerse: stream indent: level isElseIf: true. ^ self ].
 		elseExprs := (eb isKindOf: ZealBlock) ifTrue: [eb body] ifFalse: [{eb}].
-		stream cr. self emitIndent: level on: stream. stream nextPutAll: 'else:'.
-		elseExprs do: [:expr | stream cr. expr compileToVerse: stream indent: level + 1 ] ]
+		stream nextPutAll: ' else {'.
+		elseExprs do: [:expr | stream cr. expr compileToVerse: stream indent: level + 1 ].
+		stream cr. self emitIndent: level on: stream. stream nextPut: $} ]
 ]
 
 { #category : 'compiling' }
