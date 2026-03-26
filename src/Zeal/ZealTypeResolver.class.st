@@ -44,25 +44,23 @@ ZealTypeResolver >> classCache [ ^ classCache
 
 { #category : 'lookup' }
 ZealTypeResolver >> findClass: aName [
-	"Find class by name in project and external modules — matches snake_case, kebab-case, or as-is"
+	"Find class, struct, or interface by name — matches snake_case, kebab-case, or as-is"
 	| kebab snake |
 	classCache at: aName ifPresent: [:v | ^ v].
 	self trackDependency: aName.
 	project ifNil: [ ^ nil ].
 	kebab := aName copyReplaceAll: '_' with: '-'.
 	snake := aName copyReplaceAll: '-' with: '_'.
-	"Search project modules"
 	project modules do: [:mod |
 		mod definitions do: [:ns |
 			(ns isKindOf: ZealModule) ifTrue: [
 				ns definitions do: [:d |
-					((d isKindOf: ZealClass) or: [d isKindOf: ZealStruct]) ifTrue: [
+					((d isKindOf: ZealClass) or: [(d isKindOf: ZealStruct) or: [d isKindOf: ZealInterface]]) ifTrue: [
 						(d name = aName or: [d name = kebab or: [d name = snake]])
 							ifTrue: [ classCache at: aName put: d. ^ d ] ] ] ] ] ].
-	"Search external modules"
 	project externalModules do: [:mod |
 		mod definitions do: [:d |
-			((d isKindOf: ZealClass) or: [d isKindOf: ZealStruct]) ifTrue: [
+			((d isKindOf: ZealClass) or: [(d isKindOf: ZealStruct) or: [d isKindOf: ZealInterface]]) ifTrue: [
 				(d name = aName or: [d name = kebab or: [d name = snake]])
 					ifTrue: [ classCache at: aName put: d. ^ d ] ] ] ].
 	^ nil

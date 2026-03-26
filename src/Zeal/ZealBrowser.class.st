@@ -11,7 +11,9 @@ Class {
 		'rehighlightProcess',
 		'zealEditor',
 		'suppressRehighlight',
-		'completionController'
+		'completionController',
+		'addEditorText',
+		'addEditorCursorPos'
 	],
 	#category : 'Zeal',
 	#package : 'Zeal'
@@ -117,6 +119,83 @@ ZealBrowser class >> openSample [
 	^ self openProject: project
 ]
 
+{ #category : 'actions' }
+ZealBrowser >> addCompiled: compiled to: aNode [
+	"Add or replace a compiled definition. Matches by name AND parameter signature
+	 to support Verse method overloading."
+	(compiled isKindOf: ZealFunction) ifTrue: [
+		| existing |
+		compiled parent: aNode.
+		(aNode respondsTo: #methods) ifTrue: [
+			aNode methods ifNil: [ aNode methods: OrderedCollection new ].
+			(aNode methods isKindOf: Array) ifTrue: [ aNode methods: aNode methods asOrderedCollection ].
+			"Match by name AND param types (overloading)"
+			existing := aNode methods detect: [:m | 
+				(m isKindOf: ZealFunction) and: [
+				m name asLowercase = compiled name asLowercase and: [
+				(self paramSignatureOf: m) = (self paramSignatureOf: compiled) ]]] ifNone: [nil].
+			existing ifNotNil: [
+				aNode methods at: (aNode methods indexOf: existing) put: compiled ]
+			ifNil: [ aNode methods add: compiled ] ].
+		^ self ].
+	
+	(compiled isKindOf: ZealVariable) ifTrue: [
+		| field |
+		field := ZealField new name: compiled name; type: compiled type; 
+			defaultValue: compiled value; isMutable: compiled isMutable.
+		(aNode respondsTo: #fields) ifTrue: [
+			| existing |
+			aNode fields ifNil: [ aNode fields: OrderedCollection new ].
+			(aNode fields isKindOf: Array) ifTrue: [ aNode fields: aNode fields asOrderedCollection ].
+			existing := aNode fields detect: [:f | 
+				((f respondsTo: #name) and: [f name notNil]) and: [f name asLowercase = compiled name asLowercase]] ifNone: [nil].
+			existing ifNotNil: [
+				aNode fields at: (aNode fields indexOf: existing) put: field ]
+			ifNil: [ aNode fields add: field ] ]
+		ifFalse: [
+			(aNode respondsTo: #methods) ifTrue: [
+				| existing |
+				aNode methods ifNil: [ aNode methods: OrderedCollection new ].
+				(aNode methods isKindOf: Array) ifTrue: [ aNode methods: aNode methods asOrderedCollection ].
+				existing := aNode methods detect: [:m | 
+					((m respondsTo: #name) and: [m name notNil]) and: [
+					(m isKindOf: ZealFunction) not and: [m name asLowercase = compiled name asLowercase]]] ifNone: [nil].
+				existing ifNotNil: [
+					aNode methods at: (aNode methods indexOf: existing) put: compiled ]
+				ifNil: [ aNode methods add: compiled ] ] ].
+		^ self ]
+]
+
+{ #category : 'actions' }
+ZealBrowser >> addMethodTo: aNode [
+	"Add a new empty method to the class/interface"
+	| newMethod |
+	newMethod := ZealFunction new name: 'new-method'; type: 'void'; 
+		parameters: OrderedCollection new; body: OrderedCollection new.
+	newMethod parent: aNode.
+	(aNode respondsTo: #methods) ifTrue: [
+		aNode methods ifNil: [ aNode methods: OrderedCollection new ].
+		(aNode methods isKindOf: Array) ifTrue: [ aNode methods: aNode methods asOrderedCollection ].
+		aNode methods add: newMethod ]
+]
+
+{ #category : 'actions' }
+ZealBrowser >> addSlotTo: aNode [
+	"Add a new empty slot to the class/interface"
+	| newField |
+	newField := ZealField new name: 'new-field'; type: 'int'; isMutable: false.
+	(aNode respondsTo: #fields) ifTrue: [
+		aNode fields ifNil: [ aNode fields: OrderedCollection new ].
+		(aNode fields isKindOf: Array) ifTrue: [ aNode fields: aNode fields asOrderedCollection ].
+		aNode fields add: newField ]
+	ifFalse: [
+		"Interface stores fields in methods"
+		(aNode respondsTo: #methods) ifTrue: [
+			aNode methods ifNil: [ aNode methods: OrderedCollection new ].
+			(aNode methods isKindOf: Array) ifTrue: [ aNode methods: aNode methods asOrderedCollection ].
+			aNode methods add: (ZealVariable new name: 'new-field'; type: 'int'; isMutable: false) ] ]
+]
+
 { #category : 'parinfer' }
 ZealBrowser >> applyFormat: zealEditor [
 	"Apply full format — normalize indentation + parinfer"
@@ -164,6 +243,143 @@ ZealBrowser >> barfForward: zealEditor [
 	zealEditor editor navigator moveTo: (cursorPos min: result size); apply
 ]
 
+{ #category : 'ui' }
+ZealBrowser >> buildAddEditor: aNode [
+	"A Zeal code editor at the bottom. Ctrl+S adds to class. Code, cursor, and focus persist."
+	| wrapper label editor initialText |
+	wrapper := BlElement new
+		layout: BlLinearLayout vertical;
+		constraintsDo: [:c | c horizontal matchParent. c vertical fitContent ];
+		margin: (BlInsets top: 4).
+	
+	label := BrLabel new
+		aptitude: (BrGlamorousLabelAptitude new foreground: ZealTheme specialFormColor; fontSize: 11);
+		text: 'Add to class (Ctrl+S to add):';
+		margin: (BlInsets bottom: 4).
+	
+	initialText := addEditorText ifNil: [ '(defn new-method:void []
+    )' ].
+	
+	editor := self newZealEditor: initialText.
+	editor padding: (BlInsets all: 8).
+	editor border: (BlBorder paint: (Color fromHexString: '50FA7B') width: 1).
+	editor id: #zealAddEditor.
+	
+	addEditorCursorPos ifNotNil: [:pos |
+		editor addEventHandlerOn: BlElementAddedToSceneGraphEvent do: [:e |
+			editor editor navigator moveTo: (pos min: editor editor text size); apply.
+			editor requestFocus ] ].
+	
+	editor addShortcut: (BlShortcutWithAction new
+		combination: BlKeyCombination primaryS;
+		action: [
+			| src compiled cursorPos |
+			src := editor editor text asString trimBoth.
+			cursorPos := 0.
+			editor editor cursors do: [:c | cursorPos := c position].
+			src isEmpty ifFalse: [
+				[ compiled := ZealCompiler compile: src.
+				  compiled := (compiled isKindOf: Collection) ifTrue: [compiled first] ifFalse: [compiled].
+				  self addCompiled: compiled to: aNode.
+				  addEditorText := src.
+				  addEditorCursorPos := cursorPos.
+				  self flashEditor: editor color: (ZealTheme cursorColor alpha: 0.2).
+				  self selectNode: aNode ]
+				on: Error do: [:e | 
+					self flashEditor: editor color: (Color red alpha: 0.3) ] ] ]).
+	
+	wrapper addChild: label.
+	wrapper addChild: editor.
+	^ wrapper
+]
+
+{ #category : 'ui' }
+ZealBrowser >> buildClassDetail: aNode [
+	"Build a GT-style class/interface inspector view with add controls"
+	| container allMembers fields methods |
+	container := BlElement new
+		layout: BlLinearLayout vertical;
+		constraintsDo: [:c | c horizontal matchParent. c vertical fitContent ].
+	
+	container addChild: (self buildClassHeader: aNode).
+	
+	container addChild: (self buildDivider).
+	
+	"Collect members"
+	allMembers := OrderedCollection new.
+	(aNode respondsTo: #fields) ifTrue: [ aNode fields ifNotNil: [:f | allMembers addAll: f ] ].
+	(aNode respondsTo: #methods) ifTrue: [ aNode methods ifNotNil: [:m | allMembers addAll: m ] ].
+	
+	fields := allMembers select: [:m | (m isKindOf: ZealFunction) not ].
+	methods := allMembers select: [:m | m isKindOf: ZealFunction ].
+	
+	"Slots section with + button"
+	container addChild: (self buildSectionWithAdd: 'Slots' count: fields size action: [
+		self addSlotTo: aNode. self selectNode: aNode ]).
+	fields do: [:f | container addChild: (self buildSlotItem: f) ].
+	
+	(fields notEmpty and: [methods notEmpty]) ifTrue: [
+		container addChild: (self buildDivider) ].
+	
+	"Methods section with + button"
+	container addChild: (self buildSectionWithAdd: 'Methods' count: methods size action: [
+		self addMethodTo: aNode. self selectNode: aNode ]).
+	methods do: [:m | container addChild: (self buildMethodItem: m) ].
+	
+	container addChild: (self buildDivider).
+	
+	"Add-by-syntax editor at bottom"
+	container addChild: (self buildAddEditor: aNode).
+	
+	^ container
+]
+
+{ #category : 'ui' }
+ZealBrowser >> buildClassHeader: aNode [
+	"Header showing name, superclass/parents, interfaces, specifiers"
+	| header typeLabel |
+	header := BlElement new
+		layout: BlLinearLayout vertical;
+		constraintsDo: [:c | c horizontal matchParent. c vertical fitContent ];
+		padding: (BlInsets all: 4).
+	
+	"Type badge + name"
+	typeLabel := (aNode isKindOf: ZealInterface) ifTrue: ['interface'] ifFalse: ['class'].
+	header addChild: (BrLabel new
+		aptitude: (BrGlamorousLabelAptitude new foreground: ZealTheme colonChainColor; fontSize: 20; bold);
+		text: typeLabel , ' ' , (self toKebab: aNode name)).
+	
+	"Extends (class)"
+	((aNode respondsTo: #superclass) and: [aNode superclass notNil]) ifTrue: [
+		header addChild: (BrLabel new
+			aptitude: (BrGlamorousLabelAptitude new foreground: ZealTheme commentColor; fontSize: 12);
+			text: 'extends: ' , (self toKebab: aNode superclass);
+			margin: (BlInsets top: 2)) ].
+	
+	"Parents (interface)"
+	((aNode respondsTo: #parents) and: [aNode parents notNil and: [aNode parents notEmpty]]) ifTrue: [
+		header addChild: (BrLabel new
+			aptitude: (BrGlamorousLabelAptitude new foreground: ZealTheme commentColor; fontSize: 12);
+			text: 'extends: ' , (', ' join: (aNode parents collect: [:p | self toKebab: p]));
+			margin: (BlInsets top: 2)) ].
+	
+	"Implements (class)"
+	((aNode respondsTo: #interfaces) and: [aNode interfaces notNil and: [aNode interfaces notEmpty]]) ifTrue: [
+		header addChild: (BrLabel new
+			aptitude: (BrGlamorousLabelAptitude new foreground: ZealTheme commentColor; fontSize: 12);
+			text: 'implements: ' , (', ' join: (aNode interfaces collect: [:i | self toKebab: i]));
+			margin: (BlInsets top: 2)) ].
+	
+	"Specifiers"
+	((aNode respondsTo: #specifiers) and: [aNode specifiers notNil and: [aNode specifiers notEmpty]]) ifTrue: [
+		header addChild: (BrLabel new
+			aptitude: (BrGlamorousLabelAptitude new foreground: (Color fromHexString: '888888'); fontSize: 11);
+			text: 'specifiers: ' , (', ' join: aNode specifiers);
+			margin: (BlInsets top: 2)) ].
+	
+	^ header
+]
+
 { #category : 'building' }
 ZealBrowser >> buildDetail [
 	detailElement := BlElement new.
@@ -173,6 +389,141 @@ ZealBrowser >> buildDetail [
 	detailElement padding: (BlInsets all: 12).
 	self showWelcome.
 	^ detailElement
+]
+
+{ #category : 'ui' }
+ZealBrowser >> buildDivider [
+	^ BlElement new 
+		background: (Color fromHexString: '444444');
+		constraintsDo: [:c | c horizontal matchParent. c vertical exact: 1];
+		margin: (BlInsets top: 8 bottom: 8)
+]
+
+{ #category : 'ui' }
+ZealBrowser >> buildMethodItem: aMethod [
+	"A collapsible method — simple toggle with arrow"
+	| container headerRow sig expanded contentHolder arrow label |
+	sig := (self toKebab: aMethod name).
+	aMethod type ifNotNil: [:t | sig := sig , ':' , t ].
+	sig := sig , ' ['.
+	sig := sig , (', ' join: (aMethod parameters collect: [:p | 
+		| ps |
+		ps := self toKebab: p name.
+		p type ifNotNil: [:t | ps := ps , ':' , t ].
+		ps ])).
+	sig := sig , ']'.
+	
+	container := BlElement new
+		layout: BlLinearLayout vertical;
+		constraintsDo: [:c | c horizontal matchParent. c vertical fitContent ];
+		margin: (BlInsets top: 2 left: 8 bottom: 2 right: 0).
+	
+	contentHolder := BlElement new
+		layout: BlLinearLayout vertical;
+		constraintsDo: [:c | c horizontal matchParent. c vertical fitContent ];
+		visibility: BlVisibility gone.
+	
+	expanded := false.
+	
+	headerRow := BlElement new
+		layout: BlLinearLayout horizontal alignCenterLeft;
+		constraintsDo: [:c | c horizontal matchParent. c vertical fitContent ];
+		padding: (BlInsets all: 4);
+		background: (ZealTheme backgroundColor darker).
+	
+	arrow := BrLabel new
+		aptitude: (BrGlamorousLabelAptitude new foreground: ZealTheme parenColor; fontSize: 11);
+		text: '▶';
+		margin: (BlInsets right: 6).
+	
+	label := BrLabel new
+		aptitude: (BrGlamorousLabelAptitude new foreground: ZealTheme symbolColor; fontSize: 12);
+		text: sig.
+	
+	headerRow addChild: arrow.
+	headerRow addChild: label.
+	
+	headerRow addEventHandlerOn: BlClickEvent do: [:e |
+		| source editor |
+		expanded := expanded not.
+		expanded ifTrue: [
+			arrow text: ('▼' asRopedText foreground: ZealTheme parenColor).
+			contentHolder removeChildren.
+			source := self zealSourceFor: aMethod generatedClass: (self generatedClassFor: aMethod).
+			editor := self newZealEditor: source.
+			editor margin: (BlInsets top: 4).
+			editor border: (BlBorder paint: (Color fromHexString: '9580FF') width: 1).
+			editor addShortcut: (BlShortcutWithAction new 
+				combination: BlKeyCombination primaryS;
+				action: [ self compileAndSave: editor forNode: aMethod ]).
+			contentHolder addChild: editor.
+			contentHolder visibility: BlVisibility visible ]
+		ifFalse: [
+			arrow text: ('▶' asRopedText foreground: ZealTheme parenColor).
+			contentHolder visibility: BlVisibility gone ] ].
+	
+	container addChild: headerRow.
+	container addChild: contentHolder.
+	^ container
+]
+
+{ #category : 'ui' }
+ZealBrowser >> buildSectionLabel: aString [
+	^ BrLabel new
+		aptitude: (BrGlamorousLabelAptitude new foreground: ZealTheme specialFormColor; fontSize: 13; bold);
+		text: aString;
+		margin: (BlInsets top: 4 bottom: 4)
+]
+
+{ #category : 'ui' }
+ZealBrowser >> buildSectionWithAdd: title count: count action: aBlock [
+	"Section label with a + button"
+	| row |
+	row := BlElement new
+		layout: BlLinearLayout horizontal alignCenterLeft;
+		constraintsDo: [:c | c horizontal matchParent. c vertical fitContent ].
+	
+	row addChild: (BrLabel new
+		aptitude: (BrGlamorousLabelAptitude new foreground: ZealTheme specialFormColor; fontSize: 13; bold);
+		text: title , ' (' , count printString , ')').
+	
+	row addChild: (BrButton new
+		aptitude: (BrGlamorousButtonWithLabelAptitude new);
+		label: '+';
+		beSmallSize;
+		margin: (BlInsets left: 8);
+		action: aBlock).
+	
+	^ row
+]
+
+{ #category : 'ui' }
+ZealBrowser >> buildSlotItem: aField [
+	"A slot row: icon + name:type = value"
+	| row label isMut |
+	isMut := (aField respondsTo: #isMutable) ifTrue: [aField isMutable] ifFalse: [false].
+	row := BlElement new
+		layout: BlLinearLayout horizontal alignCenterLeft;
+		constraintsDo: [:c | c horizontal matchParent. c vertical fitContent ];
+		padding: (BlInsets top: 2 left: 12 bottom: 2 right: 4).
+	
+	row addChild: (BrLabel new
+		aptitude: (BrGlamorousLabelAptitude new foreground: ZealTheme operatorColor; fontSize: 11);
+		text: (isMut ifTrue: ['~'] ifFalse: ['=']);
+		margin: (BlInsets right: 6)).
+	
+	label := isMut ifTrue: ['var '] ifFalse: [''].
+	label := label , (self toKebab: aField name).
+	(aField respondsTo: #type) ifTrue: [ aField type ifNotNil: [:t | label := label , ':' , t ] ].
+	(aField respondsTo: #defaultValue) ifTrue: [ 
+		aField defaultValue ifNotNil: [:v |
+			label := label , ' = ' , ([String streamContents: [:s | v compileToZeal: s indent: 0]] on: Error do: [v printString]) ] ].
+	
+	row addChild: (BrLabel new
+		aptitude: (BrGlamorousLabelAptitude new foreground: ZealTheme symbolColor; fontSize: 12);
+		text: label).
+	
+	^ row
 ]
 
 { #category : 'building' }
@@ -201,21 +552,17 @@ ZealBrowser >> buildUI [
 
 { #category : 'tree' }
 ZealBrowser >> childrenOf: item [
-	"Modules show all definitions directly — namespaces (files) are flattened out.
-	 Classes/structs/interfaces show their members."
+	"Only modules expand in the tree. Classes/interfaces/etc are leaf nodes — 
+	 their contents are shown in the detail pane."
 	(item isKindOf: ZealModule) ifTrue: [ 
 		| children |
 		children := OrderedCollection new.
 		item definitions do: [:d |
 			(d isKindOf: ZealModule) ifTrue: [
-				"This is a file/namespace — flatten its definitions into the parent"
 				d definitions do: [:defn | children add: defn ] ]
 			ifFalse: [
 				children add: d ] ].
 		^ children ].
-	(item isKindOf: ZealClass) ifTrue: [ ^ item fields , item methods ].
-	(item isKindOf: ZealStruct) ifTrue: [ ^ item fields ].
-	(item isKindOf: ZealInterface) ifTrue: [ ^ item methods ].
 	^ #()
 ]
 
@@ -278,8 +625,8 @@ ZealBrowser >> compileAndSave: anEditor forNode: aNode [
 
 { #category : 'editor' }
 ZealBrowser >> configureZealEditor: anEditor [
-	"Single method to set up ALL features on any Zeal code editor.
-	 Used by main editor AND expanders for consistent behavior."
+	"Set up all features on any Zeal code editor.
+	 Styling is handled by the editor's styler, not manual rehighlight."
 	self setupParinfer: anEditor.
 	self setupKeyChords: anEditor.
 	self setupArrowKeys: anEditor.
@@ -549,6 +896,28 @@ ZealBrowser >> moveCursorToSelectionEdge: zealEditor left: isLeft [
 	^ true "Signal: we handled it"
 ]
 
+{ #category : 'editor' }
+ZealBrowser >> newZealEditor: sourceText [
+	"Create a fully configured Zeal code editor using the styler system."
+	| editor styler |
+	styler := ZealTextStyler new project: project; browser: self.
+	editor := BrEditor new
+		aptitude: (BrGlamorousCodeEditorAptitude new);
+		text: sourceText asRopedText;
+		background: (ZealTheme backgroundColor);
+		constraintsDo: [:c | c horizontal matchParent. c vertical fitContent ];
+		padding: (BlInsets all: 6).
+	editor editor styler: styler.
+	self configureZealEditor: editor.
+	^ editor
+]
+
+{ #category : 'private' }
+ZealBrowser >> paramSignatureOf: aFunction [
+	"Return a string representing the parameter types for overload comparison"
+	^ ', ' join: (aFunction parameters collect: [:p | p type ifNil: ['any']])
+]
+
 { #category : 'accessing' }
 ZealBrowser >> project: aZealProject [
 	project := aZealProject.
@@ -607,24 +976,30 @@ ZealBrowser >> reopenExpanders: nodeNames [
 
 { #category : 'highlighting' }
 ZealBrowser >> scheduleRehighlight: anEditor [
-	"Debounced rehighlight — skips if completion popup is showing or rehighlight is suppressed."
+	"Debounced rehighlight — syntax colors only, no expanders (expanders break on text replace)"
 	suppressRehighlight == true ifTrue: [ ^ self ].
 	rehighlightProcess ifNotNil: [ rehighlightProcess terminate ].
 	rehighlightProcess := [
 		(Delay forMilliseconds: 500) wait.
 		anEditor enqueueTask: (BlTaskAction new action: [
-			"Skip if completion is active"
-			(completionController notNil and: [completionController isShowingPopup]) ifFalse: [
-				| text cursorPos highlighted |
+			| skip text cursorPos highlighted |
+			skip := false.
+			(completionController notNil and: [completionController isShowingPopup]) ifTrue: [ skip := true ].
+			skip ifFalse: [
+				anEditor editor text attributeRunsDo: [:start :end :attrs |
+					attrs do: [:a |
+						(a isKindOf: ZealExpanderAttribute) ifTrue: [
+							a isExpanded ifTrue: [ skip := true ] ] ] ] ].
+			skip ifFalse: [
 				text := anEditor editor text asString.
-				text isEmpty ifTrue: [ ^ self ].
-				cursorPos := 0.
-				anEditor editor cursors do: [:c | cursorPos := c position].
-				highlighted := self highlightWithExpanders: text.
-				anEditor text: highlighted.
-				anEditor editor navigator
-					moveTo: (cursorPos min: highlighted size);
-					apply ].
+				text isEmpty ifFalse: [
+					cursorPos := 0.
+					anEditor editor cursors do: [:c | cursorPos := c position].
+					highlighted := ZealTheme highlight: text.
+					anEditor text: highlighted.
+					anEditor editor navigator
+						moveTo: (cursorPos min: highlighted size);
+						apply ] ].
 			rehighlightProcess := nil ]) ] fork
 ]
 
@@ -633,11 +1008,17 @@ ZealBrowser >> selectNode: aNode [
 	| verseText zealText generatedClass |
 	selectedNode := aNode.
 	
-	"Modules just expand in the tree — don't show code"
+	"Modules just expand in the tree"
 	(aNode isKindOf: ZealModule) ifTrue: [ ^ self ].
 	
 	detailElement removeChildren.
 	
+	"Classes and interfaces get a GT-style inspector view"
+	((aNode isKindOf: ZealClass) or: [aNode isKindOf: ZealInterface]) ifTrue: [
+		detailElement addChild: (self buildClassDetail: aNode).
+		^ self ].
+	
+	"Everything else: Zeal source + Verse output"
 	detailElement addChild: (BrLabel new
 		aptitude: (BrGlamorousLabelAptitude new foreground: ZealTheme colonChainColor; fontSize: 18; bold);
 		text: (self labelFor: aNode)).
@@ -651,17 +1032,13 @@ ZealBrowser >> selectNode: aNode [
 	
 	zealText := self zealSourceFor: aNode generatedClass: generatedClass.
 	
-	zealEditor := BrEditor new
-		aptitude: (BrGlamorousCodeEditorAptitude new);
-		text: ((self highlightWithExpanders: zealText));
-		background: (ZealTheme backgroundColor darker);
-		constraintsDo: [:c | c horizontal matchParent. c vertical fitContent ];
-		padding: (BlInsets all: 8);
-		margin: (BlInsets bottom: 8).
+	zealEditor := self newZealEditor: zealText.
+	zealEditor background: (ZealTheme backgroundColor darker).
+	zealEditor margin: (BlInsets bottom: 8).
+	zealEditor padding: (BlInsets all: 8).
 	zealEditor addShortcut: (BlShortcutWithAction new 
 		combination: BlKeyCombination primaryS;
 		action: [ self compileAndSave: zealEditor forNode: aNode ]).
-	self configureZealEditor: zealEditor.
 	detailElement addChild: zealEditor.
 	
 	detailElement addChild: (BrLabel new
@@ -715,12 +1092,17 @@ ZealBrowser >> setupArrowKeys: zealEditor [
 
 { #category : 'completion' }
 ZealBrowser >> setupCompletion: anEditor [
-	"Install code completion — deferred until editor is in scene graph"
-	| strategy |
+	"Install themed code completion"
+	| strategy controller |
 	strategy := ZealCompletionStrategy new project: project.
-	anEditor addEventHandlerOn: BlElementAddedToSceneGraphEvent do: [:e |
-		completionController := GtCompletionController on: anEditor strategy: strategy.
-		completionController install ]
+	controller := GtCompletionController on: anEditor strategy: strategy.
+	controller install.
+	completionController := controller.
+	
+	"Theme the overlay popup (list is created lazily, gets overlay bg)"
+	(controller instVarNamed: 'overlay') ifNotNil: [:overlay |
+		overlay background: ZealTheme backgroundColor.
+		overlay border: (BlBorder paint: (Color fromHexString: '9580FF') width: 1) ]
 ]
 
 { #category : 'parinfer' }
@@ -778,8 +1160,10 @@ ZealBrowser >> setupParinfer: zealEditor [
 
 { #category : 'highlighting' }
 ZealBrowser >> setupRehighlight: anEditor [
-	"No longer auto-rehighlight on typing — it interferes with completion.
-	 Rehighlighting happens on Alt+F (format) and Ctrl+S (save)."
+	"Debounced rehighlight on text changes"
+	anEditor editor
+		when: BrTextEditorInsertedEvent do: [:e | self scheduleRehighlight: anEditor ];
+		when: BrTextEditorDeletedEvent do: [:e | self scheduleRehighlight: anEditor ]
 ]
 
 { #category : 'detail' }
@@ -1003,6 +1387,19 @@ ZealBrowser >> syncNode: aNode withCompiled: compiledNode [
 		(compiledNode respondsTo: #parameters) ifTrue: [ aNode parameters: compiledNode parameters ] ].
 	(aNode respondsTo: #body:) ifTrue: [
 		(compiledNode respondsTo: #body) ifTrue: [ aNode body: compiledNode body ] ]
+]
+
+{ #category : 'private' }
+ZealBrowser >> toKebab: aString [
+	"Convert PascalCase/snake_case to kebab-case"
+	| result |
+	result := WriteStream on: String new.
+	aString do: [:ch |
+		ch = $_ ifTrue: [ result nextPut: $- ]
+		ifFalse: [ (ch isUppercase and: [result position > 0]) 
+			ifTrue: [ result nextPut: $-; nextPut: ch asLowercase ]
+			ifFalse: [ result nextPut: ch asLowercase ] ] ].
+	^ result contents
 ]
 
 { #category : 'actions' }

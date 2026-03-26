@@ -27,11 +27,10 @@ ZealExpanderAttribute >> browser: aZealBrowser [
 
 { #category : 'building' }
 ZealExpanderAttribute >> buildExpandedEditor [
-	"Build an inline editor. External definitions show read-only signature."
+	"Build an inline editor using the styler system — same as all other editors"
 	| source editor statusLabel container isExternal |
 	zealNode ifNil: [ ^ BlElement new ].
 	
-	"Check if this is an external (digest) definition"
 	isExternal := zealNode body isNil or: [zealNode body isEmpty and: [zealNode rawSource notNil]].
 	
 	source := isExternal
@@ -56,20 +55,16 @@ ZealExpanderAttribute >> buildExpandedEditor [
 		constraintsDo: [:c | c horizontal matchParent];
 		margin: (BlInsets bottom: 2).
 	
-	editor := BrEditor new
-		aptitude: (BrGlamorousCodeEditorAptitude new);
-		text: (ZealTheme highlight: source);
-		background: (ZealTheme backgroundColor);
-		constraintsDo: [:c | c horizontal matchParent. c vertical fitContent ];
-		padding: (BlInsets all: 6).
-	
-	isExternal ifTrue: [ editor beReadOnlyWithSelection ]
+	isExternal ifTrue: [
+		editor := BrEditor new
+			aptitude: (BrGlamorousCodeEditorAptitude new);
+			text: (ZealTheme highlight: source);
+			background: (ZealTheme backgroundColor);
+			constraintsDo: [:c | c horizontal matchParent. c vertical fitContent ];
+			padding: (BlInsets all: 6);
+			beReadOnlyWithSelection ]
 	ifFalse: [
-		| highlightedText |
-		highlightedText := browser 
-			ifNotNil: [ browser highlightWithExpanders: source nested: true ]
-			ifNil: [ ZealTheme highlight: source ].
-		editor text: highlightedText.
+		editor := browser newZealEditor: source.
 		editor addShortcut: (BlShortcutWithAction new 
 			combination: BlKeyCombination primaryS;
 			action: [ 
@@ -83,8 +78,7 @@ ZealExpanderAttribute >> buildExpandedEditor [
 					ifFalse: [ 
 						statusLabel text: ('Compiled: ' , compiled class name , ' ' , compiled name) asRopedText.
 						(statusLabel text) foreground: (Color fromHexString: '50FA7B').
-						browser ifNotNil: [ browser compileAndSave: editor forNode: zealNode ] ] ]).
-		browser ifNotNil: [ browser configureZealEditor: editor ] ].
+						browser ifNotNil: [ browser compileAndSave: editor forNode: zealNode ] ] ]) ].
 	
 	container addChild: statusLabel.
 	container addChild: editor.
