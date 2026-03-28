@@ -65,6 +65,11 @@ ZealTextStyler >> applyExpanders: aString to: text resolver: aResolver [
 ]
 
 { #category : 'styling' }
+ZealTextStyler >> applyFormHighlight: aString to: text [
+	"No-op — form highlighting is now handled by the editor's cursor change listener"
+]
+
+{ #category : 'styling' }
 ZealTextStyler >> applySyntaxHighlighting: aString to: text [
 	"Delegate to ZealTheme highlight: logic but apply to existing text"
 	| highlighted |
@@ -82,13 +87,14 @@ ZealTextStyler >> browser: aBrowser [
 
 { #category : 'styling' }
 ZealTextStyler >> privateStyle: aText [
-	"Apply syntax highlighting and expanders"
+	"Apply syntax highlighting, expanders, and form highlighting"
 	| text source resolver |
 	text := (aText respondsTo: #text) ifTrue: [aText text] ifFalse: [aText].
 	source := text asString.
 	source isEmpty ifTrue: [ ^ aText ].
 	
 	self applySyntaxHighlighting: source to: text.
+	self applyFormHighlight: source to: text.
 	
 	project ifNotNil: [
 		resolver := ZealCompiler currentResolver ifNil: [ 

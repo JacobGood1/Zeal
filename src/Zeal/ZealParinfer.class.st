@@ -88,6 +88,37 @@ ZealParinfer class >> closerFor: anOpener [
 ]
 
 { #category : 'structural' }
+ZealParinfer class >> elementsInForm: aString from: formStart to: formEnd [
+	"Return elements directly inside the form"
+	| elements i inStr depth eStart |
+	elements := OrderedCollection new.
+	i := formStart + 1. inStr := false. depth := 0. eStart := 0.
+	[ i < formEnd ] whileTrue: [
+		| ch skip |
+		ch := aString at: i. skip := false.
+		ch = $" ifTrue: [
+			inStr ifFalse: [ eStart = 0 ifTrue: [ eStart := i ] ].
+			inStr := inStr not.
+			(inStr not and: [depth = 0]) ifTrue: [ elements add: eStart -> i. eStart := 0 ].
+			skip := true ].
+		(skip not and: [inStr]) ifTrue: [ skip := true ].
+		(skip not and: [depth > 0]) ifTrue: [
+			(#($( $[ ${) includes: ch) ifTrue: [ depth := depth + 1 ].
+			(#($) $] $}) includes: ch) ifTrue: [ 
+				depth := depth - 1. 
+				(depth = 0 and: [eStart > 0]) ifTrue: [ elements add: eStart -> i. eStart := 0 ] ].
+			skip := true ].
+		(skip not and: [(#($( $[ ${) includes: ch)]) ifTrue: [
+			eStart := i. depth := depth + 1. skip := true ].
+		(skip not and: [ch isSeparator]) ifTrue: [
+			eStart > 0 ifTrue: [ elements add: eStart -> (i - 1). eStart := 0 ]. skip := true ].
+		(skip not) ifTrue: [ eStart = 0 ifTrue: [ eStart := i ] ].
+		i := i + 1 ].
+	(eStart > 0 and: [depth = 0]) ifTrue: [ elements add: eStart -> (formEnd - 1) ].
+	^ elements
+]
+
+{ #category : 'structural' }
 ZealParinfer class >> endOfExpressionAfter: pos in: aString [
 	"Find end (1-based) of the next expression after 0-based pos. Skip whitespace first."
 	| i ch inStr depth |
@@ -313,6 +344,52 @@ ZealParinfer class >> reindentLine: lineNum to: targetCol in: aString [
 ]
 
 { #category : 'structural' }
+ZealParinfer class >> siblingFormsAt: cursorPos in: aString [
+	"Find sibling forms at the same nesting level as the cursor"
+	| stack inString pairs innermost parentOpen parentClose siblings depth formStart |
+	pairs := OrderedCollection new.
+	stack := OrderedCollection new.
+	inString := false.
+	1 to: aString size do: [:i |
+		| ch |
+		ch := aString at: i.
+		ch = $" ifTrue: [ inString := inString not ]
+		ifFalse: [ inString ifFalse: [
+			(#($( $[ ${) includes: ch) ifTrue: [ stack add: i ].
+			(#($) $] $}) includes: ch) ifTrue: [
+				stack notEmpty ifTrue: [ pairs add: stack removeLast -> i ] ] ] ] ].
+	
+	innermost := nil.
+	pairs do: [:pair |
+		(pair key <= cursorPos and: [pair value >= cursorPos]) ifTrue: [
+			(innermost isNil or: [(pair value - pair key) < (innermost value - innermost key)])
+				ifTrue: [ innermost := pair ] ] ].
+	innermost ifNil: [ ^ self topLevelForms: aString ].
+	
+	parentOpen := nil. parentClose := nil.
+	pairs do: [:pair |
+		(pair key < innermost key and: [pair value > innermost value]) ifTrue: [
+			(parentOpen isNil or: [(pair value - pair key) < (parentClose - parentOpen)])
+				ifTrue: [ parentOpen := pair key. parentClose := pair value ] ] ].
+	parentOpen ifNil: [ ^ self topLevelForms: aString ].
+	
+	siblings := OrderedCollection new.
+	depth := 0. formStart := 0. inString := false.
+	parentOpen + 1 to: parentClose - 1 do: [:i |
+		| ch |
+		ch := aString at: i.
+		ch = $" ifTrue: [ inString := inString not ]
+		ifFalse: [ inString ifFalse: [
+			(#($( $[ ${) includes: ch) ifTrue: [
+				depth = 0 ifTrue: [ formStart := i ].
+				depth := depth + 1 ].
+			(#($) $] $}) includes: ch) ifTrue: [
+				depth := depth - 1.
+				depth = 0 ifTrue: [ siblings add: formStart -> i ] ] ] ] ].
+	^ siblings
+]
+
+{ #category : 'structural' }
 ZealParinfer class >> slurpForward: aString at: cursorPos [
 	"Slurp: pull next expression into the form containing cursor.
 	 When slurping across lines, indent the slurped expression to align with first arg."
@@ -500,4 +577,78 @@ ZealParinfer class >> structuralRangesAt: cursorPos in: aString [
 		ifTrue: [ ranges add: 0 -> aString size ].
 	
 	^ ranges
+]
+
+{ #category : 'structural' }
+ZealParinfer class >> swapFormDown: aString at: cursorPos [
+	"Swap the element at cursor with the one after it"
+	| stack inString pairs innermost elements currentIdx current below belowText currentText beforeCurrent betweenText afterBelow |
+	pairs := OrderedCollection new. stack := OrderedCollection new. inString := false.
+	1 to: aString size do: [:i | | ch | ch := aString at: i.
+		ch = $" ifTrue: [ inString := inString not ] ifFalse: [ inString ifFalse: [
+			(#($( $[ ${) includes: ch) ifTrue: [ stack add: i ].
+			(#($) $] $}) includes: ch) ifTrue: [ stack notEmpty ifTrue: [ pairs add: stack removeLast -> i ] ] ] ] ].
+	innermost := nil.
+	pairs do: [:pair | (pair key < cursorPos and: [pair value > cursorPos]) ifTrue: [
+		(innermost isNil or: [(pair value - pair key) < (innermost value - innermost key)]) ifTrue: [ innermost := pair ] ] ].
+	innermost ifNil: [ ^ aString ].
+	elements := self elementsInForm: aString from: innermost key to: innermost value.
+	elements size < 2 ifTrue: [ ^ aString ].
+	currentIdx := 0.
+	elements doWithIndex: [:e :idx | (e key <= cursorPos and: [e value >= cursorPos]) ifTrue: [ currentIdx := idx ] ].
+	(currentIdx = 0 or: [currentIdx >= elements size]) ifTrue: [ ^ aString ].
+	current := elements at: currentIdx. below := elements at: currentIdx + 1.
+	belowText := aString copyFrom: below key to: below value.
+	currentText := aString copyFrom: current key to: current value.
+	beforeCurrent := aString copyFrom: 1 to: current key - 1.
+	betweenText := aString copyFrom: current value + 1 to: below key - 1.
+	afterBelow := aString allButFirst: below value.
+	^ beforeCurrent , belowText , betweenText , currentText , afterBelow
+]
+
+{ #category : 'structural' }
+ZealParinfer class >> swapFormUp: aString at: cursorPos [
+	"Swap the element at cursor with the one before it"
+	| stack inString pairs innermost elements currentIdx current above aboveText currentText beforeAbove betweenText afterCurrent |
+	pairs := OrderedCollection new. stack := OrderedCollection new. inString := false.
+	1 to: aString size do: [:i | | ch | ch := aString at: i.
+		ch = $" ifTrue: [ inString := inString not ] ifFalse: [ inString ifFalse: [
+			(#($( $[ ${) includes: ch) ifTrue: [ stack add: i ].
+			(#($) $] $}) includes: ch) ifTrue: [ stack notEmpty ifTrue: [ pairs add: stack removeLast -> i ] ] ] ] ].
+	innermost := nil.
+	pairs do: [:pair | (pair key < cursorPos and: [pair value > cursorPos]) ifTrue: [
+		(innermost isNil or: [(pair value - pair key) < (innermost value - innermost key)]) ifTrue: [ innermost := pair ] ] ].
+	innermost ifNil: [ ^ aString ].
+	elements := self elementsInForm: aString from: innermost key to: innermost value.
+	elements size < 2 ifTrue: [ ^ aString ].
+	currentIdx := 0.
+	elements doWithIndex: [:e :idx | (e key <= cursorPos and: [e value >= cursorPos]) ifTrue: [ currentIdx := idx ] ].
+	currentIdx <= 1 ifTrue: [ ^ aString ].
+	current := elements at: currentIdx. above := elements at: currentIdx - 1.
+	aboveText := aString copyFrom: above key to: above value.
+	currentText := aString copyFrom: current key to: current value.
+	beforeAbove := aString copyFrom: 1 to: above key - 1.
+	betweenText := aString copyFrom: above value + 1 to: current key - 1.
+	afterCurrent := aString allButFirst: current value.
+	^ beforeAbove , currentText , betweenText , aboveText , afterCurrent
+]
+
+{ #category : 'structural' }
+ZealParinfer class >> topLevelForms: aString [
+	"Return ordered collection of start->end (1-based) for each top-level form"
+	| forms depth inString formStart |
+	forms := OrderedCollection new.
+	depth := 0. inString := false. formStart := 0.
+	1 to: aString size do: [:i |
+		| ch |
+		ch := aString at: i.
+		ch = $" ifTrue: [ inString := inString not ]
+		ifFalse: [ inString ifFalse: [
+			(#($( $[ ${) includes: ch) ifTrue: [ 
+				depth = 0 ifTrue: [ formStart := i ].
+				depth := depth + 1 ].
+			(#($) $] $}) includes: ch) ifTrue: [
+				depth := depth - 1.
+				depth = 0 ifTrue: [ forms add: formStart -> i ] ] ] ] ].
+	^ forms
 ]

@@ -10,12 +10,12 @@ Class {
 	#package : 'Zeal'
 }
 
-{ #category : 'compiling' }
+{ #category : 'verse' }
 ZealBinding >> compileToVerse: stream indent: level [
 	stream nextPutAll: (self toPascalCase: name).
 	type ifNotNil: [ stream nextPutAll: ' : '; nextPutAll: type; nextPutAll: ' = ' ]
 		ifNil: [ stream nextPutAll: ' := ' ].
-	value compileToVerse: stream indent: level
+	value compileToVerse: stream indent: 0
 ]
 
 { #category : 'accessing' }

@@ -920,11 +920,18 @@ ZealBrowser >> configureZealEditor: anEditor [
 	self setupKeyChords: anEditor.
 	self setupArrowKeys: anEditor.
 	self setupCompletion: anEditor.
+	self setupFormHighlight: anEditor.
 	
-	"Ctrl+B: browse definition under cursor"
 	anEditor addShortcut: (BlShortcutWithAction new
 		combination: (BlKeyCombination builder control b build);
-		action: [ self browseDefinitionAt: anEditor ])
+		action: [ self browseDefinitionAt: anEditor ]).
+	
+	anEditor addShortcut: (BlShortcutWithAction new
+		combination: (BlKeyCombination builder control shift arrowUp build);
+		action: [ self swapForm: anEditor up: true ]).
+	anEditor addShortcut: (BlShortcutWithAction new
+		combination: (BlKeyCombination builder control shift arrowDown build);
+		action: [ self swapForm: anEditor up: false ])
 ]
 
 { #category : 'parinfer' }
@@ -1443,6 +1450,46 @@ ZealBrowser >> setupCompletion: anEditor [
 		overlay border: (BlBorder paint: (Color fromHexString: '9580FF') width: 1) ]
 ]
 
+{ #category : 'editor' }
+ZealBrowser >> setupFormHighlight: anEditor [
+	"Listen for cursor changes and highlight the innermost form at cursor position"
+	anEditor editor
+		when: BrTextEditorCursorChangedEvent do: [:e |
+			| text source cursorPos pairs stack inString innermost |
+			text := anEditor editor text.
+			source := text asString.
+			cursorPos := 0.
+			anEditor editor cursors do: [:c | cursorPos := c position].
+			
+			"Clear old highlights"
+			text clearAttributes: [:a | a isKindOf: BlTextHighlightAttribute].
+			
+			cursorPos = 0 ifFalse: [
+				"Find all paren pairs (1-based)"
+				pairs := OrderedCollection new.
+				stack := OrderedCollection new.
+				inString := false.
+				1 to: source size do: [:i |
+					| ch |
+					ch := source at: i.
+					ch = $" ifTrue: [ inString := inString not ]
+					ifFalse: [ inString ifFalse: [
+						(#($( $[ ${) includes: ch) ifTrue: [ stack add: i ].
+						(#($) $] $}) includes: ch) ifTrue: [
+							stack notEmpty ifTrue: [ pairs add: stack removeLast -> i ] ] ] ] ].
+				
+				"Find innermost form containing cursor (cursor is 0-based, pairs are 1-based)"
+				innermost := nil.
+				pairs do: [:pair |
+					(pair key <= cursorPos and: [pair value > cursorPos]) ifTrue: [
+						(innermost isNil or: [(pair value - pair key) < (innermost value - innermost key)])
+							ifTrue: [ innermost := pair ] ] ].
+				
+				innermost ifNotNil: [
+					(text from: innermost key to: innermost value) 
+						attribute: (BlTextHighlightAttribute new paint: ((Color fromHexString: '9580FF') alpha: 0.2)) ] ] ]
+]
+
 { #category : 'parinfer' }
 ZealBrowser >> setupKeyChords: zealEditor [
 	"Install key chord handler with default chords"
@@ -1696,6 +1743,55 @@ ZealBrowser >> surgicallyUpdate: aNode in: mainEditor [
 		withoutCursorUpdate;
 		withoutSelectionUpdate;
 		insert
+]
+
+{ #category : 'actions' }
+ZealBrowser >> swapForm: anEditor up: isUp [
+	"Swap element at cursor with adjacent sibling. Cursor stays at same position in element."
+	| text cursorPos result stack inString pairs innermost elements currentIdx current offsetInElement currentText newStart newCursorPos |
+	text := anEditor editor text asString.
+	text isEmpty ifTrue: [ ^ self ].
+	cursorPos := 0.
+	anEditor editor cursors do: [:c | cursorPos := c position].
+	
+	pairs := OrderedCollection new. stack := OrderedCollection new. inString := false.
+	1 to: text size do: [:i | | ch | ch := text at: i.
+		ch = $" ifTrue: [ inString := inString not ] ifFalse: [ inString ifFalse: [
+			(#($( $[ ${) includes: ch) ifTrue: [ stack add: i ].
+			(#($) $] $}) includes: ch) ifTrue: [ stack notEmpty ifTrue: [ pairs add: stack removeLast -> i ] ] ] ] ].
+	innermost := nil.
+	pairs do: [:pair | (pair key < cursorPos and: [pair value > cursorPos]) ifTrue: [
+		(innermost isNil or: [(pair value - pair key) < (innermost value - innermost key)]) ifTrue: [ innermost := pair ] ] ].
+	innermost ifNil: [ ^ self ].
+	
+	elements := ZealParinfer elementsInForm: text from: innermost key to: innermost value.
+	elements size < 2 ifTrue: [ ^ self ].
+	currentIdx := 0.
+	elements doWithIndex: [:e :idx | (e key <= cursorPos and: [e value >= cursorPos]) ifTrue: [ currentIdx := idx ] ].
+	currentIdx = 0 ifTrue: [ ^ self ].
+	isUp ifTrue: [ currentIdx <= 1 ifTrue: [ ^ self ] ] ifFalse: [ currentIdx >= elements size ifTrue: [ ^ self ] ].
+	
+	current := elements at: currentIdx.
+	"0-based offset: cursorPos is 0-based, current key is 1-based"
+	offsetInElement := cursorPos - (current key - 1).
+	currentText := text copyFrom: current key to: current value.
+	
+	result := isUp
+		ifTrue: [ ZealParinfer swapFormUp: text at: cursorPos ]
+		ifFalse: [ ZealParinfer swapFormDown: text at: cursorPos ].
+	result = text ifTrue: [ ^ self ].
+	
+	newStart := isUp
+		ifTrue: [ (elements at: currentIdx - 1) key ]
+		ifFalse: [ result findString: currentText startingAt: (elements at: currentIdx) key ].
+	"Convert 1-based newStart to 0-based and add offset"
+	newCursorPos := (newStart - 1) + offsetInElement.
+	
+	suppressRehighlight := true.
+	anEditor editor deleter from: 0 to: text size; delete.
+	anEditor editor inserter at: 0; string: result; withoutCursorUpdate; insert.
+	suppressRehighlight := false.
+	anEditor editor navigator moveTo: ((newCursorPos max: 0) min: result size); apply
 ]
 
 { #category : 'compilation' }

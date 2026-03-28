@@ -166,7 +166,7 @@ ZealTheme class >> highlight: aString [
 				"Scan the whole colon chain"
 				[ i <= size and: [
 					| c | c := aString at: i.
-					c isLetter or: [c isDigit or: ['_-?!/@:[]' includes: c]] ] ] whileTrue: [ i := i + 1 ].
+					c isLetter or: [c isDigit or: ['_-?!/@:' includes: c]] ] ] whileTrue: [ i := i + 1 ].
 				(text from: start to: i - 1) foreground: self colonChainColor ]
 			ifFalse: [
 				(self specialForms includes: word)
