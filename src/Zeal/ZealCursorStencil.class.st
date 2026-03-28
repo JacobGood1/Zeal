@@ -5,11 +5,12 @@ Class {
 	#package : 'Zeal'
 }
 
-{ #category : 'instance creation' }
+{ #category : 'building' }
 ZealCursorStencil >> create [
-	^ BrCursorElement new
+	^ ZealCursorElement new
 		constraintsDo: [ :c |
 			c horizontal exact: 12.
 			c vertical matchParent ];
-		background: (Color fromHexString: '00FFFF')
+		background: (Color fromHexString: '00FFFF');
+		opacity: 1.0
 ]

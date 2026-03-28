@@ -2,10 +2,10 @@ Extension { #name : 'BrCursorStencil' }
 
 { #category : '*Zeal' }
 BrCursorStencil >> create [
-	^ BrCursorElement new
+	^ ZealCursorElement new
 		constraintsDo: [ :c |
-			c horizontal exact: ZealTheme cursorWidth.
+			c horizontal exact: 12.
 			c vertical matchParent ];
-		background: (ZealTheme cursorColor alpha: ZealTheme cursorAlpha);
-		border: (BlBorder paint: ZealTheme cursorColor width: 1)
+		background: ((Color fromHexString: '00FFFF') alpha: 0.4);
+		opacity: 1.0
 ]

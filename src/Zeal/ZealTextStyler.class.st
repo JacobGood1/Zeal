@@ -10,6 +10,19 @@ Class {
 }
 
 { #category : 'styling' }
+ZealTextStyler >> applyCursorHighlight: aString to: text [
+	"Add cursor highlight — single character under cursor turns white"
+	1 to: aString size do: [:i |
+		| ch |
+		ch := aString at: i.
+		ch isSeparator ifFalse: [
+			(text from: i to: i) attribute: (BrTextCursorAttribute new
+				enterAction: [:aTextEditor :anEvent :s :e | 
+					(aTextEditor text from: s + 1 to: e + 1) foreground: Color white ];
+				leaveAction: [:aTextEditor :anEvent :s :e | ]) ] ]
+]
+
+{ #category : 'styling' }
 ZealTextStyler >> applyExpanders: aString to: text resolver: aResolver [
 	"Attach expander attributes to function/class/method references"
 	| i size |
@@ -69,7 +82,7 @@ ZealTextStyler >> browser: aBrowser [
 
 { #category : 'styling' }
 ZealTextStyler >> privateStyle: aText [
-	"Apply syntax highlighting and expanders to Zeal source text."
+	"Apply syntax highlighting and expanders"
 	| text source resolver |
 	text := (aText respondsTo: #text) ifTrue: [aText text] ifFalse: [aText].
 	source := text asString.
