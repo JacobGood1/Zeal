@@ -217,6 +217,17 @@ ZealBrowser >> addSlotTo: aNode mutable: isMutable [
 			aNode methods add: (ZealVariable new name: 'new-field'; type: 'int'; isMutable: isMutable) ] ]
 ]
 
+{ #category : 'ui' }
+ZealBrowser >> allModuleNames [
+	"Collect all folder module names with paths"
+	| result rootMod |
+	result := OrderedCollection new.
+	rootMod := project modules first.
+	result add: rootMod name -> rootMod.
+	self collectModuleNames: rootMod path: rootMod name into: result.
+	^ result
+]
+
 { #category : 'parinfer' }
 ZealBrowser >> applyFormat: zealEditor [
 	"Apply full format — normalize indentation + parinfer"
@@ -250,6 +261,19 @@ ZealBrowser >> applyParinfer: zealEditor [
 		apply
 ]
 
+{ #category : 'ui' }
+ZealBrowser >> badgeLetterFor: item [
+	(item isKindOf: ZealTreeGroup) ifTrue: [ ^ '▸' ].
+	(item isKindOf: ZealModule) ifTrue: [ ^ 'M' ].
+	(item isKindOf: ZealClass) ifTrue: [ ^ 'C' ].
+	(item isKindOf: ZealInterface) ifTrue: [ ^ 'I' ].
+	(item isKindOf: ZealStruct) ifTrue: [ ^ 'S' ].
+	(item isKindOf: ZealEnum) ifTrue: [ ^ 'E' ].
+	(item isKindOf: ZealFunction) ifTrue: [ ^ 'λ' ].
+	(item isKindOf: ZealVariable) ifTrue: [ ^ 'V' ].
+	^ '?'
+]
+
 { #category : 'parinfer' }
 ZealBrowser >> barfForward: zealEditor [
 	"Barf: push last expression out of the current form"
@@ -266,7 +290,7 @@ ZealBrowser >> barfForward: zealEditor [
 
 { #category : 'actions' }
 ZealBrowser >> browseDefinitionAt: anEditor [
-	"Find the word under cursor, resolve it, and open in the pager"
+	"Find the word under cursor, resolve it, and open it"
 	| text cursorPos source wordStart wordEnd word node |
 	text := anEditor editor text asString.
 	cursorPos := 0.
@@ -274,7 +298,6 @@ ZealBrowser >> browseDefinitionAt: anEditor [
 	cursorPos = 0 ifTrue: [ ^ self ].
 	source := text.
 	
-	"Extract word at cursor"
 	wordStart := cursorPos.
 	wordEnd := cursorPos + 1.
 	[ wordStart > 0 and: [
@@ -291,14 +314,16 @@ ZealBrowser >> browseDefinitionAt: anEditor [
 	(wordStart > wordEnd) ifTrue: [ ^ self ].
 	word := source copyFrom: wordStart to: wordEnd.
 	
-	"Resolve the word to a node"
 	node := self resolveWord: word.
 	node ifNil: [ ^ self ].
 	
-	"Spawn in pager"
-	anEditor phlow spawnTool: (GtPhlowExplicitTool new
+	"Try phlow spawnTool: first (works inside pager). Fallback to selectNode:."
+	[ anEditor phlow spawnTool: (GtPhlowExplicitTool new
 		name: (self toKebab: node name);
-		stencil: [ self wrapInDarkPage: (self buildDefinitionView: node) ])
+		stencil: [ self wrapInDarkPage: (self buildDefinitionView: node) ]) ]
+	on: Error do: [
+		"Not in a pager context — open in the main detail pane"
+		self selectNode: node ]
 ]
 
 { #category : 'ui' }
@@ -422,24 +447,33 @@ ZealBrowser >> buildClassDetail: aNode [
 
 { #category : 'ui' }
 ZealBrowser >> buildClassDetail: aNode expandMethod: aMethodOrNil [
-	"Build a GT-style class/interface inspector view, optionally with a method expanded"
+	"Class/interface view: header, module, using, slots, extends, methods, add editor"
 	| container allMembers fields methods mutableFields immutableFields |
 	container := BlElement new
 		layout: BlLinearLayout vertical;
 		constraintsDo: [:c | c horizontal matchParent. c vertical fitContent ].
 	
+	"Header"
 	container addChild: (self buildClassHeader: aNode).
+	
+	"Module dropdown"
+	container addChild: (self buildModuleDropdown: aNode inContainer: container).
+	
+	"Using"
+	container addChild: (self buildUsingEditor: aNode).
+	
 	container addChild: (self buildDivider).
 	
+	"Collect members"
 	allMembers := OrderedCollection new.
 	(aNode respondsTo: #fields) ifTrue: [ aNode fields ifNotNil: [:f | allMembers addAll: f ] ].
 	(aNode respondsTo: #methods) ifTrue: [ aNode methods ifNotNil: [:m | allMembers addAll: m ] ].
-	
 	fields := allMembers select: [:m | (m isKindOf: ZealFunction) not ].
 	methods := allMembers select: [:m | m isKindOf: ZealFunction ].
 	mutableFields := fields select: [:f | (f respondsTo: #isMutable) and: [f isMutable]].
 	immutableFields := fields reject: [:f | (f respondsTo: #isMutable) and: [f isMutable]].
 	
+	"Slots"
 	fields notEmpty ifTrue: [
 		| columnsRow leftCol rightCol |
 		columnsRow := BlElement new
@@ -454,16 +488,20 @@ ZealBrowser >> buildClassDetail: aNode expandMethod: aMethodOrNil [
 		rightCol addChild: (self buildSectionLabel: 'Immutable Slots').
 		immutableFields do: [:f | rightCol addChild: (self buildSlotItem: f forClass: aNode inContainer: container) ].
 		columnsRow addChild: leftCol. columnsRow addChild: rightCol.
-		container addChild: columnsRow ].
+		container addChild: columnsRow.
+		container addChild: (self buildDivider) ].
 	
-	(fields notEmpty and: [methods notEmpty]) ifTrue: [ container addChild: (self buildDivider) ].
+	"Extends"
+	container addChild: (self buildExtendsEditor: aNode inContainer: container).
 	
+	container addChild: (self buildDivider).
+	
+	"Methods"
 	methods notEmpty ifTrue: [
 		container addChild: (self buildSectionLabel: 'Methods').
 		methods do: [:m |
 			| item |
 			item := self buildMethodItem: m forClass: aNode inContainer: container.
-			"Auto-expand target method if specified"
 			(aMethodOrNil notNil and: [m name = aMethodOrNil name]) ifTrue: [
 				item children first fireEvent: BlClickEvent new ].
 			container addChild: item ] ].
@@ -476,41 +514,18 @@ ZealBrowser >> buildClassDetail: aNode expandMethod: aMethodOrNil [
 
 { #category : 'ui' }
 ZealBrowser >> buildClassHeader: aNode [
-	"Header showing name, superclass/parents, interfaces, specifiers"
+	"Header — just type label + name + specifiers. No extends (moved to body)."
 	| header typeLabel |
 	header := BlElement new
 		layout: BlLinearLayout vertical;
 		constraintsDo: [:c | c horizontal matchParent. c vertical fitContent ];
 		padding: (BlInsets all: 4).
 	
-	"Type badge + name"
 	typeLabel := (aNode isKindOf: ZealInterface) ifTrue: ['interface'] ifFalse: ['class'].
 	header addChild: (BrLabel new
 		aptitude: (BrGlamorousLabelAptitude new foreground: ZealTheme colonChainColor; fontSize: 20; bold);
 		text: typeLabel , ' ' , (self toKebab: aNode name)).
 	
-	"Extends (class)"
-	((aNode respondsTo: #superclass) and: [aNode superclass notNil]) ifTrue: [
-		header addChild: (BrLabel new
-			aptitude: (BrGlamorousLabelAptitude new foreground: ZealTheme commentColor; fontSize: 12);
-			text: 'extends: ' , (self toKebab: aNode superclass);
-			margin: (BlInsets top: 2)) ].
-	
-	"Parents (interface)"
-	((aNode respondsTo: #parents) and: [aNode parents notNil and: [aNode parents notEmpty]]) ifTrue: [
-		header addChild: (BrLabel new
-			aptitude: (BrGlamorousLabelAptitude new foreground: ZealTheme commentColor; fontSize: 12);
-			text: 'extends: ' , (', ' join: (aNode parents collect: [:p | self toKebab: p]));
-			margin: (BlInsets top: 2)) ].
-	
-	"Implements (class)"
-	((aNode respondsTo: #interfaces) and: [aNode interfaces notNil and: [aNode interfaces notEmpty]]) ifTrue: [
-		header addChild: (BrLabel new
-			aptitude: (BrGlamorousLabelAptitude new foreground: ZealTheme commentColor; fontSize: 12);
-			text: 'implements: ' , (', ' join: (aNode interfaces collect: [:i | self toKebab: i]));
-			margin: (BlInsets top: 2)) ].
-	
-	"Specifiers"
 	((aNode respondsTo: #specifiers) and: [aNode specifiers notNil and: [aNode specifiers notEmpty]]) ifTrue: [
 		header addChild: (BrLabel new
 			aptitude: (BrGlamorousLabelAptitude new foreground: (Color fromHexString: '888888'); fontSize: 11);
@@ -521,8 +536,77 @@ ZealBrowser >> buildClassHeader: aNode [
 ]
 
 { #category : 'ui' }
+ZealBrowser >> buildCommandBar [
+	"Input bar for creating modules and definitions"
+	| wrapper label editor |
+	wrapper := BlElement new
+		layout: BlLinearLayout vertical;
+		constraintsDo: [:c | c horizontal matchParent. c vertical fitContent ].
+	
+	label := BrLabel new
+		aptitude: (BrGlamorousLabelAptitude new foreground: ZealTheme specialFormColor; fontSize: 11);
+		text: 'New definition (Ctrl+S)';
+		margin: (BlInsets top: 4 left: 6 bottom: 2 right: 0).
+	
+	editor := self newZealEditor: ''.
+	editor constraintsDo: [:c | c horizontal matchParent. c vertical exact: 60 ].
+	editor padding: (BlInsets all: 6).
+	editor margin: (BlInsets top: 0 left: 4 bottom: 4 right: 4).
+	editor border: (BlBorder paint: (Color fromHexString: '50FA7B') width: 1).
+	
+	editor addShortcut: (BlShortcutWithAction new
+		combination: BlKeyCombination primaryS;
+		action: [
+			| input cleaned compiled node resolved isModule |
+			input := editor editor text asString trimBoth.
+			input isEmpty ifFalse: [
+				"Strip parens and check for defmodule"
+				cleaned := input.
+				(cleaned first = $() ifTrue: [ cleaned := cleaned allButFirst ].
+				(cleaned last = $)) ifTrue: [ cleaned := cleaned allButLast ].
+				cleaned := cleaned trimBoth.
+				isModule := cleaned beginsWith: 'defmodule '.
+				isModule ifTrue: [
+					self createModule: (cleaned allButFirst: 10) trimBoth.
+					self flashEditor: editor color: (ZealTheme cursorColor alpha: 0.2) ]
+				ifFalse: [ 
+					[ compiled := ZealCompiler compile: input.
+					  node := (compiled isKindOf: Collection) ifTrue: [compiled first] ifFalse: [compiled].
+					  self createDefinition: input.
+					  self flashEditor: editor color: (ZealTheme cursorColor alpha: 0.2).
+					  resolved := self resolveWord: node name.
+					  resolved ifNotNil: [ self selectNode: resolved ] ]
+					on: Error do: [
+						self flashEditor: editor color: (Color red alpha: 0.3) ] ] ] ]).
+	
+	wrapper addChild: label.
+	wrapper addChild: editor.
+	^ wrapper
+]
+
+{ #category : 'ui' }
+ZealBrowser >> buildCompileAllButton [
+	"Button that compiles all definitions and writes .verse files"
+	| btn |
+	btn := BlElement new
+		layout: BlLinearLayout horizontal alignCenterLeft;
+		constraintsDo: [:c | c horizontal fitContent. c vertical fitContent ];
+		padding: (BlInsets top: 4 left: 10 bottom: 4 right: 10);
+		background: (Color fromHexString: '2E8B57');
+		geometry: (BlRoundedRectangleGeometry cornerRadius: 4);
+		mouseCursor: BlHandCursor new.
+	btn addChild: (BrLabel new
+		aptitude: (BrGlamorousLabelAptitude new foreground: Color white; fontSize: 12; bold);
+		text: 'Compile All').
+	btn addEventHandlerOn: BlMouseEnterEvent do: [:e | btn background: (Color fromHexString: '3AAF6E') ].
+	btn addEventHandlerOn: BlMouseLeaveEvent do: [:e | btn background: (Color fromHexString: '2E8B57') ].
+	btn addEventHandlerOn: BlClickEvent do: [:e | self compileAll ].
+	^ btn
+]
+
+{ #category : 'ui' }
 ZealBrowser >> buildDefinitionView: aNode [
-	"Build a view for any definition. Methods open their parent class with that method expanded."
+	"Build a view for any definition with module, using, and code editor"
 	| container source editor |
 	((aNode isKindOf: ZealClass) or: [aNode isKindOf: ZealInterface]) ifTrue: [
 		^ self buildClassDetail: aNode ].
@@ -540,7 +624,11 @@ ZealBrowser >> buildDefinitionView: aNode [
 	container addChild: (BrLabel new
 		aptitude: (BrGlamorousLabelAptitude new foreground: ZealTheme colonChainColor; fontSize: 16; bold);
 		text: (self labelFor: aNode);
-		margin: (BlInsets bottom: 8)).
+		margin: (BlInsets bottom: 4)).
+	
+	container addChild: (self buildModuleDropdown: aNode inContainer: container).
+	container addChild: (self buildUsingEditor: aNode).
+	container addChild: (self buildDivider).
 	
 	source := self zealSourceFor: aNode generatedClass: (self generatedClassFor: aNode).
 	editor := self newZealEditor: source.
@@ -554,15 +642,15 @@ ZealBrowser >> buildDefinitionView: aNode [
 	^ container
 ]
 
-{ #category : 'building' }
+{ #category : 'ui' }
 ZealBrowser >> buildDetail [
 	detailElement := BlElement new.
 	detailElement layout: BlLinearLayout vertical.
-	detailElement constraintsDo: [:c | c horizontal matchParent. c vertical matchParent ].
+	detailElement constraintsDo: [:c | c horizontal matchParent. c vertical fitContent ].
 	detailElement background: ZealTheme backgroundColor.
 	detailElement padding: (BlInsets all: 12).
 	self showWelcome.
-	^ detailElement
+	^ detailElement asScrollableElement
 ]
 
 { #category : 'ui' }
@@ -571,6 +659,58 @@ ZealBrowser >> buildDivider [
 		background: (Color fromHexString: '444444');
 		constraintsDo: [:c | c horizontal matchParent. c vertical exact: 1];
 		margin: (BlInsets top: 8 bottom: 8)
+]
+
+{ #category : 'ui' }
+ZealBrowser >> buildExtendsEditor: aNode inContainer: aContainer [
+	"Editable extends field for classes/interfaces"
+	| row extensionsEditor currentExtensions strategy |
+	row := BlElement new
+		layout: BlLinearLayout horizontal alignCenterLeft;
+		constraintsDo: [:c | c horizontal matchParent. c vertical fitContent ];
+		margin: (BlInsets top: 4 bottom: 4).
+	
+	row addChild: (BrLabel new
+		aptitude: (BrGlamorousLabelAptitude new foreground: ZealTheme specialFormColor; fontSize: 13; bold);
+		text: 'extends: ';
+		margin: (BlInsets right: 4)).
+	
+	currentExtensions := OrderedCollection new.
+	((aNode respondsTo: #superclass) and: [aNode superclass notNil]) ifTrue: [
+		currentExtensions add: (self toKebab: aNode superclass) ].
+	((aNode respondsTo: #interfaces) and: [aNode interfaces notNil]) ifTrue: [
+		aNode interfaces do: [:i | currentExtensions add: (self toKebab: i) ] ].
+	((aNode respondsTo: #parents) and: [aNode parents notNil]) ifTrue: [
+		aNode parents do: [:p | currentExtensions add: (self toKebab: p) ] ].
+	
+	extensionsEditor := BrEditor new
+		aptitude: (BrGlamorousCodeEditorAptitude new);
+		text: ((', ' join: currentExtensions) asRopedText foreground: ZealTheme symbolColor);
+		background: (ZealTheme backgroundColor darker);
+		constraintsDo: [:c | c horizontal matchParent. c vertical fitContent ];
+		padding: (BlInsets all: 4);
+		border: (BlBorder paint: (Color fromHexString: '444444') width: 1).
+	
+	strategy := ZealExtensionCompletionStrategy new project: project.
+	(GtCompletionController on: extensionsEditor strategy: strategy) install.
+	
+	extensionsEditor addShortcut: (BlShortcutWithAction new
+		combination: BlKeyCombination primaryS;
+		action: [
+			| newExts parts |
+			newExts := extensionsEditor editor text asString trimBoth.
+			parts := (newExts substrings: ',') collect: [:p | p trimBoth].
+			parts := parts reject: [:p | p isEmpty].
+			(aNode respondsTo: #superclass:) ifTrue: [
+				aNode superclass: (parts isEmpty ifTrue: [nil] ifFalse: [parts first]) ].
+			(aNode respondsTo: #interfaces:) ifTrue: [
+				aNode interfaces: (parts size > 1 ifTrue: [parts allButFirst] ifFalse: [#()]) ].
+			(aNode respondsTo: #parents:) ifTrue: [
+				aNode parents: parts ].
+			self flashEditor: extensionsEditor color: (ZealTheme cursorColor alpha: 0.2) ]).
+	
+	row addChild: extensionsEditor.
+	^ row
 ]
 
 { #category : 'ui' }
@@ -739,6 +879,71 @@ ZealBrowser >> buildMinusButton: aBlock [
 ]
 
 { #category : 'ui' }
+ZealBrowser >> buildModuleDropdown: aNode inContainer: aContainer [
+	"A themed dropdown to move a definition between modules"
+	| row currentMod moduleNames currentName btn |
+	row := BlElement new
+		layout: BlLinearLayout horizontal alignCenterLeft;
+		constraintsDo: [:c | c horizontal matchParent. c vertical fitContent ];
+		margin: (BlInsets top: 4 bottom: 4).
+	
+	row addChild: (BrLabel new
+		aptitude: (BrGlamorousLabelAptitude new foreground: ZealTheme specialFormColor; fontSize: 13; bold);
+		text: 'module: ';
+		margin: (BlInsets right: 4)).
+	
+	currentMod := self currentModuleOf: aNode.
+	moduleNames := self allModuleNames.
+	currentName := currentMod ifNotNil: [currentMod name] ifNil: ['(none)'].
+	
+	btn := BlElement new
+		layout: BlFrameLayout new;
+		constraintsDo: [:c | c horizontal fitContent. c vertical fitContent ];
+		padding: (BlInsets top: 4 left: 10 bottom: 4 right: 10);
+		background: (Color fromHexString: '333333');
+		geometry: (BlRoundedRectangleGeometry cornerRadius: 4);
+		mouseCursor: BlHandCursor new;
+		addChild: (BrLabel new
+			id: #moduleLabel;
+			aptitude: (BrGlamorousLabelAptitude new foreground: ZealTheme symbolColor; fontSize: 12);
+			text: currentName).
+	
+	btn aptitude: (BrGlamorousWithDropdownAptitude
+		handle: [
+			BlElement new
+				layout: BlFrameLayout new;
+				constraintsDo: [:c | c horizontal fitContent. c vertical fitContent ];
+				padding: (BlInsets top: 4 left: 10 bottom: 4 right: 10);
+				background: (Color fromHexString: '333333');
+				geometry: (BlRoundedRectangleGeometry cornerRadius: 4);
+				addChild: (BrLabel new
+					aptitude: (BrGlamorousLabelAptitude new foreground: ZealTheme symbolColor; fontSize: 12);
+					text: ((self currentModuleOf: aNode) ifNotNil: [:m | m name] ifNil: ['(none)'])) ] asStencil
+		content: [
+			BrSimpleList new
+				fitContentLimited;
+				background: ZealTheme backgroundColor;
+				border: (BlBorder paint: (Color fromHexString: '9580FF') width: 1);
+				items: (self allModuleNames);
+				itemStencil: [
+					BrLabel new
+						aptitude: (BrGlamorousLabelAptitude new foreground: ZealTheme symbolColor);
+						hMatchParent;
+						padding: (BlInsets all: 6) ];
+				itemDataBinder: [:lbl :assoc |
+					lbl text: (assoc key asRopedText foreground: ZealTheme symbolColor).
+					lbl addEventHandlerOn: BlClickEvent do: [:e |
+						self moveNode: aNode toModule: assoc value.
+						self rebuildTree.
+						"Update the button label"
+						btn childWithId: #moduleLabel ifFound: [:l |
+							l text: (assoc value name asRopedText foreground: ZealTheme symbolColor) ] ifNone: [] ] ] ] asStencil).
+	
+	row addChild: btn.
+	^ row
+]
+
+{ #category : 'ui' }
 ZealBrowser >> buildSectionLabel: title [
 	^ BrLabel new
 		aptitude: (BrGlamorousLabelAptitude new foreground: ZealTheme specialFormColor; fontSize: 15; bold);
@@ -816,12 +1021,31 @@ ZealBrowser >> buildSlotItem: aField forClass: aClassNode inContainer: aContaine
 	^ row
 ]
 
-{ #category : 'building' }
+{ #category : 'ui' }
 ZealBrowser >> buildTree [
 	treeElement := BrSimpleTree new.
 	treeElement
-		nodeStencil: [ BrLabel new aptitude: (BrGlamorousLabelAptitude new foreground: ZealTheme foregroundColor) ];
-		nodeDataBinder: [ :label :item | label text: (self labelFor: item) ];
+		nodeStencil: [
+			BlElement new
+				layout: BlLinearLayout horizontal alignCenterLeft;
+				constraintsDo: [:c | c horizontal matchParent. c vertical fitContent ];
+				addChild: (BlElement new id: #removeHolder;
+					layout: BlLinearLayout horizontal;
+					constraintsDo: [:c | c horizontal fitContent. c vertical fitContent ]);
+				addChild: (BlElement new id: #iconHolder; 
+					constraintsDo: [:c | c horizontal exact: 22. c vertical exact: 18 ]);
+				addChild: (BrLabel new aptitude: (BrGlamorousLabelAptitude new foreground: ZealTheme foregroundColor; fontSize: 13); id: #name) ];
+		nodeDataBinder: [ :row :item |
+			row childWithId: #removeHolder ifFound: [:holder |
+				holder removeChildren.
+				((item isKindOf: ZealTreeGroup) or: [item isKindOf: ZealModule]) ifFalse: [
+					holder addChild: (self buildMinusButton: [
+						self removeDefinition: item. self rebuildTree ]) ] ].
+			row childWithId: #iconHolder ifFound: [:holder |
+				holder removeChildren.
+				holder addChild: (self iconElementFor: item) ].
+			row childWithId: #name ifFound: [:lbl |
+				lbl text: ((self labelFor: item) asRopedText foreground: ZealTheme foregroundColor) ] ];
 		items: project modules lazy: [ :item | self childrenOf: item ];
 		when: BrSelectionChanged do: [:event |
 			event indices ifNotEmpty: [:indices |
@@ -833,27 +1057,171 @@ ZealBrowser >> buildTree [
 	^ treeElement
 ]
 
-{ #category : 'building' }
+{ #category : 'ui' }
 ZealBrowser >> buildUI [
+	| leftPane topBar content mainLayout |
 	self removeChildren.
-	self addChild: self buildTree.
-	self addChild: self buildDetail
+	
+	topBar := BlElement new
+		layout: BlLinearLayout horizontal alignCenterLeft;
+		constraintsDo: [:c | c horizontal matchParent. c vertical fitContent ];
+		background: (ZealTheme backgroundColor darker);
+		padding: (BlInsets all: 6).
+	topBar addChild: (BrLabel new
+		aptitude: (BrGlamorousLabelAptitude new foreground: ZealTheme colonChainColor; fontSize: 14; bold);
+		text: 'Zeal // ' , project name;
+		margin: (BlInsets right: 12)).
+	topBar addChild: (self buildCompileAllButton).
+	
+	content := BlElement new
+		layout: BlLinearLayout horizontal;
+		constraintsDo: [:c | c horizontal matchParent. c vertical matchParent ].
+	
+	leftPane := BlElement new
+		layout: BlLinearLayout vertical;
+		constraintsDo: [:c | c horizontal exact: 280. c vertical matchParent ];
+		background: (ZealTheme backgroundColor lighter).
+	leftPane addChild: self buildTree.
+	treeElement constraintsDo: [:c | c horizontal matchParent. c vertical matchParent ].
+	leftPane addChild: self buildCommandBar.
+	content addChild: leftPane.
+	content addChild: self buildDetail.
+	
+	mainLayout := BlElement new
+		layout: BlLinearLayout vertical;
+		constraintsDo: [:c | c horizontal matchParent. c vertical matchParent ].
+	mainLayout addChild: topBar.
+	mainLayout addChild: content.
+	self addChild: mainLayout
+]
+
+{ #category : 'ui' }
+ZealBrowser >> buildUsingEditor: aNode [
+	"Editable using paths — comma separated, Ctrl+S to save"
+	| row editor currentUsings |
+	row := BlElement new
+		layout: BlLinearLayout horizontal alignCenterLeft;
+		constraintsDo: [:c | c horizontal matchParent. c vertical fitContent ];
+		margin: (BlInsets top: 2 bottom: 4).
+	
+	row addChild: (BrLabel new
+		aptitude: (BrGlamorousLabelAptitude new foreground: ZealTheme specialFormColor; fontSize: 13; bold);
+		text: 'using: ';
+		margin: (BlInsets right: 4)).
+	
+	currentUsings := aNode usings collect: [:u | 
+		(u respondsTo: #path) ifTrue: [u path] ifFalse: [u printString] ].
+	
+	editor := BrEditor new
+		aptitude: (BrGlamorousCodeEditorAptitude new);
+		text: ((', ' join: currentUsings) asRopedText foreground: ZealTheme symbolColor);
+		background: (ZealTheme backgroundColor darker);
+		constraintsDo: [:c | c horizontal matchParent. c vertical fitContent ];
+		padding: (BlInsets all: 4);
+		border: (BlBorder paint: (Color fromHexString: '444444') width: 1).
+	
+	editor addShortcut: (BlShortcutWithAction new
+		combination: BlKeyCombination primaryS;
+		action: [
+			| text paths |
+			text := editor editor text asString trimBoth.
+			paths := (text substrings: ',') collect: [:p | p trimBoth].
+			paths := paths reject: [:p | p isEmpty].
+			aNode usings: (paths collect: [:p | ZealUsing new path: p]).
+			self flashEditor: editor color: (ZealTheme cursorColor alpha: 0.2) ]).
+	
+	row addChild: editor.
+	^ row
 ]
 
 { #category : 'tree' }
 ZealBrowser >> childrenOf: item [
-	"Only modules expand in the tree. Classes/interfaces/etc are leaf nodes — 
-	 their contents are shown in the detail pane."
+	"Modules show definitions grouped by type, alphabetically sorted."
 	(item isKindOf: ZealModule) ifTrue: [ 
-		| children |
-		children := OrderedCollection new.
+		| allDefs subModules classes interfaces structs enums functions variables groups |
+		allDefs := OrderedCollection new.
+		subModules := OrderedCollection new.
 		item definitions do: [:d |
-			(d isKindOf: ZealModule) ifTrue: [
-				d definitions do: [:defn | children add: defn ] ]
-			ifFalse: [
-				children add: d ] ].
-		^ children ].
+			(d isKindOf: ZealModule) ifTrue: [ subModules add: d ]
+			ifFalse: [ allDefs add: d ] ].
+		
+		classes := (allDefs select: [:d | d isKindOf: ZealClass]) sorted: [:a :b | a name asLowercase < b name asLowercase].
+		interfaces := (allDefs select: [:d | d isKindOf: ZealInterface]) sorted: [:a :b | a name asLowercase < b name asLowercase].
+		structs := (allDefs select: [:d | d isKindOf: ZealStruct]) sorted: [:a :b | a name asLowercase < b name asLowercase].
+		enums := (allDefs select: [:d | d isKindOf: ZealEnum]) sorted: [:a :b | a name asLowercase < b name asLowercase].
+		functions := (allDefs select: [:d | d isKindOf: ZealFunction]) sorted: [:a :b | a name asLowercase < b name asLowercase].
+		variables := (allDefs select: [:d | (d isKindOf: ZealVariable) or: [d isKindOf: ZealField]]) sorted: [:a :b | a name asLowercase < b name asLowercase].
+		subModules := subModules sorted: [:a :b | a name asLowercase < b name asLowercase].
+		
+		groups := OrderedCollection new.
+		subModules notEmpty ifTrue: [ groups add: (ZealTreeGroup new name: 'Modules'; items: subModules) ].
+		classes notEmpty ifTrue: [ groups add: (ZealTreeGroup new name: 'Classes'; items: classes) ].
+		interfaces notEmpty ifTrue: [ groups add: (ZealTreeGroup new name: 'Interfaces'; items: interfaces) ].
+		structs notEmpty ifTrue: [ groups add: (ZealTreeGroup new name: 'Structs'; items: structs) ].
+		enums notEmpty ifTrue: [ groups add: (ZealTreeGroup new name: 'Enums'; items: enums) ].
+		functions notEmpty ifTrue: [ groups add: (ZealTreeGroup new name: 'Functions'; items: functions) ].
+		variables notEmpty ifTrue: [ groups add: (ZealTreeGroup new name: 'Variables'; items: variables) ].
+		^ groups ].
+	
+	(item isKindOf: ZealTreeGroup) ifTrue: [ ^ item items ].
 	^ #()
+]
+
+{ #category : 'ui' }
+ZealBrowser >> collectModuleNames: aModule path: prefix into: result [
+	"Only collect folder modules, NOT file namespaces"
+	aModule definitions do: [:d |
+		((d isKindOf: ZealModule) and: [d kind = #folder]) ifTrue: [
+			| fullPath |
+			fullPath := prefix isEmpty 
+				ifTrue: [ d name ] 
+				ifFalse: [ prefix , '/' , d name ].
+			result add: fullPath -> d.
+			self collectModuleNames: d path: fullPath into: result ] ]
+]
+
+{ #category : 'compilation' }
+ZealBrowser >> compileAll [
+	"Compile all definitions and write each to its own .verse file"
+	| count |
+	count := 0.
+	project modules do: [:mod |
+		mod definitions do: [:ns |
+			(ns isKindOf: ZealModule) ifTrue: [
+				ns definitions do: [:defn |
+					((defn respondsTo: #name) and: [defn name notNil]) ifTrue: [
+						| zealSrc verseStr genClass filePath |
+						"Get Zeal source"
+						genClass := self generatedClassFor: defn.
+						zealSrc := self zealSourceFor: defn generatedClass: genClass.
+						
+						"Compile to Verse"
+						[ | compiled nodes |
+						  compiled := ZealCompiler compile: zealSrc.
+						  nodes := (compiled isKindOf: Collection) ifTrue: [compiled] ifFalse: [{compiled}].
+						  verseStr := String streamContents: [:s |
+							nodes do: [:n | n compileToVerse: s indent: 0] separatedBy: [s cr; cr] ].
+						  
+						  "Store in generated class"
+						  genClass ifNotNil: [
+							genClass class compile: ('zealSource
+	^ ' , zealSrc printString) classified: 'zeal'.
+							genClass class compile: ('verseSource
+	^ ' , verseStr printString) classified: 'zeal' ].
+						  
+						  "Write .verse file with using declarations"
+						  filePath := self verseFilePathForDefinition: defn.
+						  filePath ifNotNil: [
+							filePath asFileReference ensureDelete.
+							filePath asFileReference writeStreamDo: [:ws |
+								defn usings do: [:u | ws nextPutAll: 'using { '; nextPutAll: u path; nextPutAll: ' }'; cr].
+								defn usings notEmpty ifTrue: [ws cr].
+								ws nextPutAll: verseStr ] ].
+						  
+						  count := count + 1 ]
+						on: Error do: [ "skip broken definitions" ] ] ] ] ] ].
+	
+	Smalltalk globals at: #ZealDebug put: 'Compiled ' , count printString , ' definitions'
 ]
 
 { #category : 'compilation' }
@@ -932,6 +1300,83 @@ ZealBrowser >> configureZealEditor: anEditor [
 	anEditor addShortcut: (BlShortcutWithAction new
 		combination: (BlKeyCombination builder control shift arrowDown build);
 		action: [ self swapForm: anEditor up: false ])
+]
+
+{ #category : 'actions' }
+ZealBrowser >> createDefinition: zealSource [
+	"Compile Zeal source and add/replace definition directly in the root module."
+	| compiled nodes rootMod |
+	[ compiled := ZealCompiler compile: zealSource ] on: Error do: [ ^ self ].
+	nodes := (compiled isKindOf: Collection) ifTrue: [compiled] ifFalse: [{compiled}].
+	rootMod := project modules first.
+	
+	nodes do: [:node |
+		| nodeName |
+		nodeName := (node respondsTo: #name) ifTrue: [node name] ifFalse: [nil].
+		nodeName ifNotNil: [
+			"Remove any existing definition with same name"
+			rootMod definitions: (rootMod definitions asOrderedCollection reject: [:d |
+				((d respondsTo: #name) and: [d name notNil]) and: [
+				d name asLowercase = nodeName asLowercase] ]) asArray ] ].
+	
+	"Add all new nodes directly to root module"
+	nodes do: [:node |
+		rootMod definitions: (rootMod definitions asOrderedCollection add: node; yourself) asArray.
+		self persistDefinition: node inNamespace: rootMod ].
+	
+	self rebuildTree
+]
+
+{ #category : 'actions' }
+ZealBrowser >> createModule: nameStr [
+	"Create a folder module — removes any existing definition with same name first"
+	| parts current packageName parentClassName parentClass |
+	parts := nameStr substrings: '/'.
+	current := project modules first.
+	packageName := 'ZealProject-' , (project name copyReplaceAll: ' ' with: '').
+	parentClassName := 'Zeal_' , (ZealClassGenerator toPascalCase: project name) , '_' , (ZealClassGenerator toPascalCase: current name).
+	parentClass := Smalltalk globals at: parentClassName asSymbol ifAbsent: [nil].
+	
+	parts do: [:part |
+		| existing newMod modClassName modClass toRemove |
+		"Remove any non-folder definition with same name"
+		toRemove := current definitions asOrderedCollection select: [:d |
+			((d respondsTo: #name) and: [d name notNil and: [d name asLowercase = part asLowercase]]) 
+				and: [((d isKindOf: ZealModule) and: [d kind = #folder]) not] ].
+		toRemove do: [:d | 
+			(self generatedClassFor: d) ifNotNil: [:gc | gc removeFromSystem ] ].
+		current definitions: (current definitions asOrderedCollection removeAll: toRemove; yourself) asArray.
+		
+		existing := current definitions asOrderedCollection
+			detect: [:d | (d isKindOf: ZealModule) and: [d name = part and: [d kind = #folder]]] 
+			ifNone: [nil].
+		existing ifNotNil: [ 
+			current := existing.
+			parentClass := Smalltalk globals at: (parentClassName , '_' , (ZealClassGenerator toPascalCase: part)) asSymbol ifAbsent: [parentClass].
+			parentClassName := parentClassName , '_' , (ZealClassGenerator toPascalCase: part) ]
+		ifNil: [
+			newMod := ZealModule new name: part; kind: #folder; definitions: #().
+			current definitions: (current definitions asOrderedCollection add: newMod; yourself) asArray.
+			parentClass ifNotNil: [
+				modClassName := parentClassName , '_' , (ZealClassGenerator toPascalCase: part).
+				modClass := ZealClassGenerator ensureClass: modClassName superclass: parentClass trait: TZealModule package: packageName.
+				modClass class compile: ('zealSource ^ ''module: ' , part , '''') classified: 'zeal'.
+				modClass class compile: ('verseSource ^ ''module: ' , part , '''') classified: 'zeal'.
+				parentClass := modClass.
+				parentClassName := modClassName ].
+			current := newMod ] ].
+	
+	self rebuildTree
+]
+
+{ #category : 'ui' }
+ZealBrowser >> currentModuleOf: aNode [
+	"Find which module a definition currently lives in"
+	| found |
+	found := nil.
+	project modules do: [:mod |
+		self searchModule: mod forNode: aNode path: '' found: [:m | found := m ] ].
+	^ found
 ]
 
 { #category : 'parinfer' }
@@ -1068,14 +1513,16 @@ ZealBrowser >> expandedNodeNames [
 	^ names
 ]
 
-{ #category : 'actions' }
+{ #category : 'ui' }
 ZealBrowser >> flashEditor: anEditor color: aColor [
-	"Flash the editor background briefly to indicate success/failure."
-	| original |
-	original := anEditor background.
+	"Flash the editor border and background briefly"
+	| originalBorder originalBg |
+	originalBorder := anEditor border copy.
+	originalBg := anEditor background copy.
+	anEditor border: (BlBorder paint: aColor width: 2).
 	anEditor background: aColor.
-	[ (Delay forMilliseconds: 300) wait.
-	  anEditor enqueueTask: (BlTaskAction new action: [ anEditor background: original ]) ] fork
+	[ (Delay forMilliseconds: 400) wait.
+	  [ anEditor border: originalBorder. anEditor background: originalBg ] on: Error do: [] ] fork
 ]
 
 { #category : 'compilation' }
@@ -1112,6 +1559,51 @@ ZealBrowser >> highlightWithExpanders: zealText nested: isNested [
 		project ifNotNil: [ ZealTypeResolver forProject: project ] ].
 	ZealTheme attachExpanders: highlighted source: zealText resolver: resolver browser: self nested: isNested.
 	^ highlighted
+]
+
+{ #category : 'ui' }
+ZealBrowser >> iconColorFor: item [
+	"Muted colors for tree badges"
+	(item isKindOf: ZealTreeGroup) ifTrue: [ ^ Color fromHexString: '444444' ].
+	(item isKindOf: ZealModule) ifTrue: [ ^ Color fromHexString: '2D6A8A' ].
+	(item isKindOf: ZealClass) ifTrue: [ ^ Color fromHexString: '6B5AA6' ].
+	(item isKindOf: ZealInterface) ifTrue: [ ^ Color fromHexString: '2E8B57' ].
+	(item isKindOf: ZealStruct) ifTrue: [ ^ Color fromHexString: '8B5A6B' ].
+	(item isKindOf: ZealEnum) ifTrue: [ ^ Color fromHexString: '8B6E2E' ].
+	(item isKindOf: ZealFunction) ifTrue: [ ^ Color fromHexString: '4A7A8A' ].
+	(item isKindOf: ZealVariable) ifTrue: [ ^ Color fromHexString: '7A5A9A' ].
+	^ Color fromHexString: '555555'
+]
+
+{ #category : 'ui' }
+ZealBrowser >> iconElementFor: item [
+	"Colored badge with letter — visible on dark theme"
+	| badge label |
+	badge := BlElement new
+		layout: BlFrameLayout new;
+		constraintsDo: [:c | c horizontal exact: 22. c vertical exact: 18 ];
+		geometry: (BlRoundedRectangleGeometry cornerRadius: 3);
+		background: (self iconColorFor: item);
+		margin: (BlInsets right: 6).
+	label := BrLabel new
+		aptitude: (BrGlamorousLabelAptitude new foreground: Color white; fontSize: 11; bold);
+		text: (self badgeLetterFor: item);
+		constraintsDo: [:c | c frame horizontal alignCenter. c frame vertical alignCenter ].
+	badge addChild: label.
+	^ badge
+]
+
+{ #category : 'ui' }
+ZealBrowser >> iconFor: item [
+	"Return an emoji icon for tree items"
+	(item isKindOf: ZealModule) ifTrue: [ ^ '📦 ' ].
+	(item isKindOf: ZealClass) ifTrue: [ ^ '🔷 ' ].
+	(item isKindOf: ZealInterface) ifTrue: [ ^ '🔶 ' ].
+	(item isKindOf: ZealStruct) ifTrue: [ ^ '🧱 ' ].
+	(item isKindOf: ZealEnum) ifTrue: [ ^ '📋 ' ].
+	(item isKindOf: ZealFunction) ifTrue: [ ^ '⚡ ' ].
+	(item isKindOf: ZealVariable) ifTrue: [ ^ '💎 ' ].
+	^ '▪ '
 ]
 
 { #category : 'parinfer' }
@@ -1157,22 +1649,20 @@ ZealBrowser >> initialize [
 	self background: ZealTheme backgroundColor
 ]
 
-{ #category : 'building' }
+{ #category : 'ui' }
 ZealBrowser >> labelFor: item [
-	(item isKindOf: ZealModule) ifTrue: [ 
-		item kind = #file ifTrue: [ ^ 'namespace ' , item name ].
-		^ item name ].
-	(item isKindOf: ZealClass) ifTrue: [ 
-		^ 'class ' , item name , (item superclass ifNotNil: [:p | '(' , p , ')'] ifNil: ['']) ].
-	(item isKindOf: ZealStruct) ifTrue: [ ^ 'struct ' , item name ].
-	(item isKindOf: ZealEnum) ifTrue: [ ^ 'enum ' , item name ].
-	(item isKindOf: ZealInterface) ifTrue: [ ^ 'interface ' , item name ].
+	(item isKindOf: ZealTreeGroup) ifTrue: [ ^ item name ].
+	(item isKindOf: ZealModule) ifTrue: [ ^ item name ].
+	(item isKindOf: ZealClass) ifTrue: [ ^ item name ].
+	(item isKindOf: ZealStruct) ifTrue: [ ^ item name ].
+	(item isKindOf: ZealEnum) ifTrue: [ ^ item name ].
+	(item isKindOf: ZealInterface) ifTrue: [ ^ item name ].
 	(item isKindOf: ZealFunction) ifTrue: [
-		^ 'fn ' , item name , (item type ifNotNil: [':' , item type] ifNil: ['']) ].
+		^ item name , (item type ifNotNil: [':' , item type] ifNil: ['']) ].
 	(item isKindOf: ZealVariable) ifTrue: [ 
-		^ (item isMutable ifTrue: ['var '] ifFalse: ['val ']) , item name , (item type ifNotNil: [':' , item type] ifNil: ['']) ].
+		^ item name , (item type ifNotNil: [':' , item type] ifNil: ['']) ].
 	(item isKindOf: ZealField) ifTrue: [ 
-		^ (item isMutable ifTrue: ['var '] ifFalse: ['']) , item name , (item type ifNotNil: [':' , item type] ifNil: ['']) ].
+		^ item name , (item type ifNotNil: [':' , item type] ifNil: ['']) ].
 	(item isKindOf: ZealCompileError) ifTrue: [ ^ '! ' , (item message copyFrom: 1 to: (item message size min: 50)) ].
 	^ item printString
 ]
@@ -1197,6 +1687,18 @@ ZealBrowser >> moveCursorToSelectionEdge: zealEditor left: isLeft [
 	^ true "Signal: we handled it"
 ]
 
+{ #category : 'actions' }
+ZealBrowser >> moveNode: aNode toModule: targetModule [
+	"Move a definition from its current module to targetModule"
+	| currentMod |
+	currentMod := self currentModuleOf: aNode.
+	currentMod ifNotNil: [
+		currentMod definitions: (currentMod definitions asOrderedCollection 
+			reject: [:d | d == aNode]) asArray ].
+	targetModule definitions: (targetModule definitions asOrderedCollection 
+		add: aNode; yourself) asArray
+]
+
 { #category : 'editor' }
 ZealBrowser >> newZealEditor: sourceText [
 	"Create a fully configured Zeal code editor using the styler system."
@@ -1219,6 +1721,34 @@ ZealBrowser >> paramSignatureOf: aFunction [
 	^ ', ' join: (aFunction parameters collect: [:p | p type ifNil: ['any']])
 ]
 
+{ #category : 'compilation' }
+ZealBrowser >> persistDefinition: aNode inNamespace: aNs [
+	"Generate a Smalltalk class for a definition directly under the module class"
+	| packageName projectPrefix modClassName moduleClass defClass zealSrc verseSrc modName |
+	(aNode respondsTo: #name) ifFalse: [ ^ self ].
+	aNode name ifNil: [ ^ self ].
+	
+	modName := project modules first name.
+	modName ifNil: [ ^ self ].
+	
+	packageName := 'ZealProject-' , (project name copyReplaceAll: ' ' with: '').
+	projectPrefix := 'Zeal_' , (ZealClassGenerator toPascalCase: project name).
+	modClassName := projectPrefix , '_' , (ZealClassGenerator toPascalCase: modName).
+	
+	moduleClass := Smalltalk globals at: modClassName asSymbol ifAbsent: [nil].
+	moduleClass ifNil: [ ^ self ].
+	
+	defClass := ZealClassGenerator generateDef: aNode parent: moduleClass package: packageName.
+	defClass ifNotNil: [
+		aNode generatedClass: defClass.
+		zealSrc := [String streamContents: [:s | aNode compileToZeal: s indent: 0]] on: Error do: [''].
+		verseSrc := [String streamContents: [:s | aNode compileToVerse: s indent: 0]] on: Error do: [''].
+		defClass class compile: ('zealSource
+	^ ' , zealSrc printString) classified: 'zeal'.
+		defClass class compile: ('verseSource
+	^ ' , verseSrc printString) classified: 'zeal' ]
+]
+
 { #category : 'accessing' }
 ZealBrowser >> project: aZealProject [
 	project := aZealProject.
@@ -1235,6 +1765,32 @@ ZealBrowser >> rebuildClassIn: parentElement node: aNode [
 ]
 
 { #category : 'ui' }
+ZealBrowser >> rebuildTree [
+	"Refresh tree items and restore expanded state"
+	| expandedNames root |
+	expandedNames := Set new.
+	root := treeElement viewModel root.
+	root childrenNodesDo: [:treeNode |
+		treeNode isExpanded ifTrue: [
+			| val |
+			val := treeNode value.
+			(val respondsTo: #name) ifTrue: [ expandedNames add: val name ] ].
+		treeNode childrenNodesDo: [:child |
+			child isExpanded ifTrue: [
+				| val |
+				val := child value.
+				(val respondsTo: #name) ifTrue: [ expandedNames add: val name ] ] ] ].
+	
+	treeElement items: project modules lazy: [:item | self childrenOf: item].
+	
+	expandedNames notEmpty ifTrue: [
+		treeElement expandSuchThat: [:treeNode |
+			| val |
+			val := treeNode value.
+			(val respondsTo: #name) and: [expandedNames includes: val name] ] ]
+]
+
+{ #category : 'ui' }
 ZealBrowser >> refreshClassView: aNode [
 	"Rebuild the class detail view wherever it currently lives.
 	 If it's in detailElement (selected from tree), rebuild there.
@@ -1243,6 +1799,18 @@ ZealBrowser >> refreshClassView: aNode [
 		"It's the main view — safe to rebuild detailElement"
 		detailElement removeChildren.
 		detailElement addChild: (self buildClassDetail: aNode) ]
+]
+
+{ #category : 'actions' }
+ZealBrowser >> removeDefinition: aNode [
+	"Remove a definition from the project and delete its generated class"
+	| genClass |
+	"Remove from module"
+	project modules do: [:mod |
+		self removeNodeFromModule: mod node: aNode ].
+	"Remove generated class"
+	genClass := self generatedClassFor: aNode.
+	genClass ifNotNil: [ genClass removeFromSystem ]
 ]
 
 { #category : 'parinfer' }
@@ -1278,6 +1846,14 @@ ZealBrowser >> removeLine: zealEditor [
 		apply
 ]
 
+{ #category : 'actions' }
+ZealBrowser >> removeNodeFromModule: aModule node: aNode [
+	"Recursively remove a node from a module"
+	aModule definitions: (aModule definitions asOrderedCollection reject: [:d | d == aNode]) asArray.
+	aModule definitions do: [:d |
+		(d isKindOf: ZealModule) ifTrue: [ self removeNodeFromModule: d node: aNode ] ]
+]
+
 { #category : 'compilation' }
 ZealBrowser >> reopenExpanders: nodeNames [
 	"After rebuilding, find expander attributes matching nodeNames and expand them"
@@ -1297,26 +1873,45 @@ ZealBrowser >> reopenExpanders: nodeNames [
 
 { #category : 'actions' }
 ZealBrowser >> resolveWord: word [
-	"Resolve a word to a ZealNode — tries classes, functions, methods"
-	| resolver node kebab pascal snake |
+	"Resolve a word to a ZealNode — type-aware member access, then generic lookup"
+	| resolver node kebab pascal snake objName methodName typeName cls methodPascal |
 	resolver := ZealCompiler currentResolver ifNil: [
 		project ifNotNil: [ ZealTypeResolver forProject: project ] ].
 	resolver ifNil: [ ^ nil ].
 	
-	(word includes: $/) ifTrue: [ 
-		^ ZealTheme resolveExpander: word with: resolver ].
+	"Member access: obj/method"
+	(word includes: $/) ifTrue: [
+		objName := word copyUpToLast: $/.
+		methodName := word copyAfterLast: $/.
+		methodPascal := '' join: ((methodName substrings: '-') collect: [:s | s capitalized]).
+		"Try type-aware: find type of obj, find method on that class"
+		typeName := (ZealCompletionStrategy new project: project) findTypeOf: objName in: ''.
+		typeName ifNotNil: [
+			cls := resolver findClass: (typeName copyReplaceAll: '-' with: '_').
+			cls ifNotNil: [
+				node := resolver findMethod: methodPascal inClass: cls name.
+				node ifNotNil: [ ^ node ] ] ].
+		"Fallback: search project classes first, then all"
+		project modules do: [:mod |
+			mod definitions do: [:d |
+				((d respondsTo: #methods) and: [d methods notNil]) ifTrue: [
+					d methods do: [:m |
+						(m name asLowercase = methodPascal asLowercase) ifTrue: [ ^ m ] ] ] ] ].
+		^ resolver findMethodAnywhere: methodPascal ].
 	
+	"Function"
 	kebab := word copyReplaceAll: '/' with: '-'.
 	pascal := '' join: ((kebab substrings: '-') collect: [:s | s capitalized]).
 	node := resolver findFunction: pascal.
 	node ifNotNil: [ ^ node ].
 	
+	"Class"
 	snake := word copyReplaceAll: '-' with: '_'.
 	node := resolver findClass: snake.
 	node ifNotNil: [ ^ node ].
 	
-	node := resolver findMethodAnywhere: pascal.
-	^ node
+	"Method"
+	^ resolver findMethodAnywhere: pascal
 ]
 
 { #category : 'highlighting' }
@@ -1349,12 +1944,25 @@ ZealBrowser >> scheduleRehighlight: anEditor [
 ]
 
 { #category : 'ui' }
+ZealBrowser >> searchModule: aModule forNode: aNode path: prefix found: foundBlock [
+	"Recursively search for a node in modules"
+	aModule definitions do: [:d |
+		(d isKindOf: ZealModule) ifTrue: [
+			d definitions do: [:dd |
+				(dd == aNode) ifTrue: [ foundBlock value: d ] ].
+			self searchModule: d forNode: aNode path: '' found: foundBlock ]
+		ifFalse: [
+			(d == aNode) ifTrue: [ foundBlock value: aModule ] ] ]
+]
+
+{ #category : 'ui' }
 ZealBrowser >> selectNode: aNode [
 	| verseText zealText generatedClass |
 	selectedNode := aNode.
 	
 	"Modules just expand in the tree"
 	(aNode isKindOf: ZealModule) ifTrue: [ ^ self ].
+	(aNode isKindOf: ZealTreeGroup) ifTrue: [ ^ self ].
 	
 	detailElement removeChildren.
 	
@@ -1369,6 +1977,8 @@ ZealBrowser >> selectNode: aNode [
 		text: (self labelFor: aNode)).
 	
 	generatedClass := self generatedClassFor: aNode.
+	detailElement addChild: (self buildModuleDropdown: aNode inContainer: detailElement).
+	detailElement addChild: (self buildUsingEditor: aNode).
 	
 	detailElement addChild: (BrLabel new
 		aptitude: (BrGlamorousLabelAptitude new foreground: ZealTheme specialFormColor; fontSize: 12);
@@ -1850,44 +2460,40 @@ ZealBrowser >> verseFilePathFor: aNamespace [
 
 { #category : 'compilation' }
 ZealBrowser >> verseFilePathForDefinition: aNode [
-	"Build the .verse file path: module_name.verse, nested modules concatenated."
-	| parts current fileName |
-	parts := OrderedCollection new.
+	"Build .verse file path from the generated class hierarchy. 
+	 Skips the project name segment — uses module/namespace/definition only."
+	| genClass segments parts |
+	genClass := self generatedClassFor: aNode.
+	genClass ifNil: [ ^ nil ].
 	
-	"Walk up parent chain collecting module names"
-	current := aNode.
-	[ current notNil ] whileTrue: [
-		(current isKindOf: ZealModule) ifTrue: [ parts addFirst: current name ].
-		current := current parent ].
+	"Class name: Zeal_Project_Module_Namespace_Definition"
+	segments := genClass name substrings: '_'.
+	"Skip Zeal prefix and project name (first 2 segments)"
+	segments size < 3 ifTrue: [ ^ nil ].
+	parts := (segments copyFrom: 3 to: segments size) collect: [:p |
+		| result |
+		result := WriteStream on: String new.
+		p do: [:ch |
+			(ch isUppercase and: [result position > 0])
+				ifTrue: [ result nextPut: $-; nextPut: ch asLowercase ]
+				ifFalse: [ result nextPut: ch asLowercase ] ].
+		result contents ].
 	
-	"If no parent modules, search for containing module"
-	parts isEmpty ifTrue: [
-		project modules do: [:mod |
-			mod definitions do: [:ns |
-				(ns respondsTo: #definitions) ifTrue: [
-					(ns definitions identityIncludes: aNode) ifTrue: [ 
-						parts add: ns name ] ]
-				ifFalse: [
-					ns == aNode ifTrue: [ parts add: mod name ] ] ] ] ].
-	
-	"Add definition name"
-	(aNode respondsTo: #name) ifTrue: [ 
-		aNode name ifNotNil: [ parts add: aNode name ] ].
-	
-	parts isEmpty ifTrue: [ ^ nil ].
-	
-	fileName := ('_' join: parts) , '.verse'.
-	^ project path asFileReference / 'Content' / fileName
+	^ project path asFileReference / 'Content' / ('zeal-' , ('-' join: parts) , '.verse')
 ]
 
 { #category : 'ui' }
 ZealBrowser >> wrapInDarkPage: anElement [
-	"Wrap an element in a full-size dark container for pager pages"
-	^ BlElement new
+	"Wrap an element in a scrollable dark container for pager pages"
+	| inner |
+	inner := BlElement new
 		layout: BlLinearLayout vertical;
-		constraintsDo: [:c | c horizontal matchParent. c vertical matchParent ];
+		constraintsDo: [:c | c horizontal matchParent. c vertical fitContent ];
 		background: ZealTheme backgroundColor;
-		addChild: anElement
+		addChild: anElement.
+	^ inner asScrollableElement
+		background: ZealTheme backgroundColor;
+		constraintsDo: [:c | c horizontal matchParent. c vertical matchParent ]
 ]
 
 { #category : 'compilation' }

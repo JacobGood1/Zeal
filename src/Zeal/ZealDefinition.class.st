@@ -5,8 +5,8 @@ Class {
 		'name',
 		'type'
 	],
-	#category : 'Zeal',
-	#package : 'Zeal'
+	#category : '_UnpackagedPackage',
+	#package : '_UnpackagedPackage'
 }
 
 { #category : 'accessing' }

@@ -44,7 +44,7 @@ ZealTypeResolver >> classCache [ ^ classCache
 
 { #category : 'lookup' }
 ZealTypeResolver >> findClass: aName [
-	"Find class, struct, or interface by name — matches snake_case, kebab-case, or as-is"
+	"Find class/struct/interface by name — searches all levels"
 	| kebab snake |
 	classCache at: aName ifPresent: [:v | ^ v].
 	self trackDependency: aName.
@@ -52,12 +52,7 @@ ZealTypeResolver >> findClass: aName [
 	kebab := aName copyReplaceAll: '_' with: '-'.
 	snake := aName copyReplaceAll: '-' with: '_'.
 	project modules do: [:mod |
-		mod definitions do: [:ns |
-			(ns isKindOf: ZealModule) ifTrue: [
-				ns definitions do: [:d |
-					((d isKindOf: ZealClass) or: [(d isKindOf: ZealStruct) or: [d isKindOf: ZealInterface]]) ifTrue: [
-						(d name = aName or: [d name = kebab or: [d name = snake]])
-							ifTrue: [ classCache at: aName put: d. ^ d ] ] ] ] ] ].
+		self searchModule: mod forClass: aName kebab: kebab snake: snake ifFound: [:d | classCache at: aName put: d. ^ d ] ].
 	project externalModules do: [:mod |
 		mod definitions do: [:d |
 			((d isKindOf: ZealClass) or: [(d isKindOf: ZealStruct) or: [d isKindOf: ZealInterface]]) ifTrue: [
@@ -68,18 +63,12 @@ ZealTypeResolver >> findClass: aName [
 
 { #category : 'lookup' }
 ZealTypeResolver >> findFunction: aName [
-	"Find function by name in project and external modules — case-insensitive"
+	"Find function by name — searches all levels, case-insensitive"
 	functionCache at: aName ifPresent: [:v | ^ v].
 	self trackDependency: aName.
 	project ifNil: [ ^ nil ].
-	"Search project modules"
 	project modules do: [:mod |
-		mod definitions do: [:ns |
-			(ns isKindOf: ZealModule) ifTrue: [
-				ns definitions do: [:d |
-					((d isKindOf: ZealFunction) and: [d name asLowercase = aName asLowercase]) 
-						ifTrue: [ functionCache at: aName put: d. ^ d ] ] ] ] ].
-	"Search external modules"
+		self searchModule: mod forFunction: aName ifFound: [:d | functionCache at: aName put: d. ^ d ] ].
 	project externalModules do: [:mod |
 		mod definitions do: [:d |
 			((d isKindOf: ZealFunction) and: [d name asLowercase = aName asLowercase])
@@ -103,19 +92,14 @@ ZealTypeResolver >> findMethod: methodName inClass: className [
 
 { #category : 'lookup' }
 ZealTypeResolver >> findMethodAnywhere: methodName [
-	"Find a method by name across all classes in project and external modules — case-insensitive"
+	"Find a method by name across all classes — searches all module levels"
 	| lowerName |
 	lowerName := methodName asLowercase.
 	project ifNil: [ ^ nil ].
-	"Search project modules"
 	project modules do: [:mod |
-		mod definitions do: [:ns |
-			(ns respondsTo: #definitions) ifTrue: [
-				ns definitions do: [:d |
-					(d respondsTo: #methods) ifTrue: [
-						d methods do: [:m |
-							m name asLowercase = lowerName ifTrue: [ ^ m ] ] ] ] ] ] ].
-	"Search external modules"
+		| result |
+		result := self searchModuleForMethod: mod name: lowerName.
+		result ifNotNil: [ ^ result ] ].
 	project externalModules do: [:mod |
 		mod definitions do: [:d |
 			(d respondsTo: #methods) ifTrue: [
@@ -230,6 +214,48 @@ ZealTypeResolver >> pushScopeForNamespace: aZealModule [
 				((d isKindOf: ZealClass) or: [(d isKindOf: ZealStruct) or: [d isKindOf: ZealEnum]]) ifTrue: [
 					scope at: d name put: d name ] ] ] ].
 	self pushScope: scope
+]
+
+{ #category : 'lookup' }
+ZealTypeResolver >> searchModule: aModule forClass: aName kebab: kebab snake: snake ifFound: aBlock [
+	"Recursively search module and sub-modules for a class/struct/interface"
+	aModule definitions do: [:d |
+		((d isKindOf: ZealClass) or: [(d isKindOf: ZealStruct) or: [d isKindOf: ZealInterface]]) ifTrue: [
+			(d name = aName or: [d name = kebab or: [d name = snake]])
+				ifTrue: [ aBlock value: d ] ].
+		(d isKindOf: ZealModule) ifTrue: [
+			self searchModule: d forClass: aName kebab: kebab snake: snake ifFound: aBlock ] ]
+]
+
+{ #category : 'lookup' }
+ZealTypeResolver >> searchModule: aModule forFunction: aName ifFound: aBlock [
+	"Recursively search for a function — matches PascalCase, kebab-case, or case-insensitive"
+	| lower kebab |
+	lower := aName asLowercase.
+	kebab := aName copyReplaceAll: '_' with: '-'.
+	aModule definitions do: [:d |
+		((d isKindOf: ZealFunction) and: [
+			d name asLowercase = lower or: [
+			d name = aName or: [
+			d name = kebab or: [
+			(d name copyReplaceAll: '-' with: '') = (aName copyReplaceAll: '-' with: '') asLowercase ]]]]) 
+				ifTrue: [ aBlock value: d ].
+		(d isKindOf: ZealModule) ifTrue: [
+			self searchModule: d forFunction: aName ifFound: aBlock ] ]
+]
+
+{ #category : 'lookup' }
+ZealTypeResolver >> searchModuleForMethod: aModule name: lowerName [
+	"Recursively search for a method in all classes within a module"
+	aModule definitions do: [:d |
+		(d respondsTo: #methods) ifTrue: [
+			d methods do: [:m |
+				(m name asLowercase = lowerName) ifTrue: [ ^ m ] ] ].
+		(d isKindOf: ZealModule) ifTrue: [
+			| result |
+			result := self searchModuleForMethod: d name: lowerName.
+			result ifNotNil: [ ^ result ] ] ].
+	^ nil
 ]
 
 { #category : 'tracking' }

@@ -210,46 +210,54 @@ ZealProject >> loadDigestFile: aFileRef into: aModule [
 
 { #category : 'scanning' }
 ZealProject >> loadFromCache [
-	"Rebuild project tree from generated Smalltalk class hierarchy."
+	"Rebuild project tree from generated Smalltalk class hierarchy.
+	 Modules have TZealModule trait. Everything else is a definition."
 	| projectClass prefix |
 	prefix := 'Zeal_' , (ZealClassGenerator toPascalCase: name).
 	projectClass := Smalltalk globals at: prefix asSymbol ifAbsent: [ ^ false ].
 	
 	modules := OrderedCollection new.
 	
-	"Module classes are direct subclasses of project class"
 	(Smalltalk allClassesAndTraits select: [:c | c superclass == projectClass]) do: [:modClass |
-		| mod modName namespaces |
+		| mod modName |
 		modName := self pascalToSnake: (modClass name allButFirst: prefix size + 1).
 		mod := ZealModule new name: modName; kind: #folder.
-		namespaces := OrderedCollection new.
-		
-		"Namespace classes are subclasses of module class"
-		(Smalltalk allClassesAndTraits select: [:c | c superclass == modClass]) do: [:nsClass |
-			| ns nsName defs |
-			nsName := self pascalToSnake: (nsClass name allButFirst: modClass name size + 1).
-			ns := ZealModule new name: nsName; kind: #file.
-			defs := OrderedCollection new.
-			
-			"Definition classes are subclasses of namespace class"
-			(Smalltalk allClassesAndTraits select: [:c | c superclass == nsClass]) do: [:defClass |
-				| zealSource compiled |
-				zealSource := [defClass zealSource] on: Error do: [nil].
-				zealSource ifNotNil: [
-					[ compiled := ZealCompiler compile: zealSource.
-					  compiled := (compiled isKindOf: Collection) ifTrue: [compiled first] ifFalse: [compiled].
-					  compiled generatedClass: defClass.
-					  defs add: compiled ]
-					on: Error do: [ ] ] ].
-			
-			ns definitions: defs asArray.
-			namespaces add: ns ].
-		
-		mod definitions: namespaces asArray.
+		self loadModuleFromCache: modClass into: mod.
 		modules add: mod ].
 	
 	self scanExternalModules.
 	^ modules notEmpty
+]
+
+{ #category : 'scanning' }
+ZealProject >> loadModuleFromCache: parentClass into: aModule [
+	"Load definitions and sub-modules from generated class hierarchy.
+	 TZealModule = sub-module, TZealNamespace = old namespace (flatten into parent), others = definitions."
+	| defs |
+	defs := OrderedCollection new.
+	
+	(Smalltalk allClassesAndTraits select: [:c | c superclass == parentClass]) do: [:childClass |
+		(childClass traits includes: TZealModule) ifTrue: [
+			| subMod subName |
+			subName := self pascalToSnake: (childClass name allButFirst: parentClass name size + 1).
+			subMod := ZealModule new name: subName; kind: #folder.
+			self loadModuleFromCache: childClass into: subMod.
+			defs add: subMod ]
+		ifFalse: [ (childClass traits includes: TZealNamespace) ifTrue: [
+			"Old namespace — flatten its children into this module"
+			self loadModuleFromCache: childClass into: aModule ]
+		ifFalse: [
+			| zealSource compiled |
+			zealSource := [childClass zealSource] on: Error do: [nil].
+			zealSource ifNotNil: [
+				[ compiled := ZealCompiler compile: zealSource.
+				  compiled := (compiled isKindOf: Collection) ifTrue: [compiled first] ifFalse: [compiled].
+				  compiled generatedClass: childClass.
+				  defs add: compiled ]
+				on: Error do: [ ] ] ] ] ].
+	
+	"Merge defs into aModule's existing definitions (for namespace flattening)"
+	aModule definitions: (aModule definitions asOrderedCollection addAll: defs; yourself) asArray
 ]
 
 { #category : 'scanning' }

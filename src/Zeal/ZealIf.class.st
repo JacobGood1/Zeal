@@ -46,29 +46,32 @@ ZealIf >> compileToVerse: stream indent: level isElseIf: isElseIf [
 		stream cr. self emitIndent: level on: stream. stream nextPut: $} ]
 ]
 
-{ #category : 'compiling' }
+{ #category : 'zeal' }
 ZealIf >> compileToZeal: stream indent: level [
 	| allClauses finalElse hasBinding |
 	self emitIndent: level on: stream.
 	allClauses := self flattenClauses.
 	finalElse := self finalElseBody.
 	
-	"Check if any clause has a binding condition — use let instead of if"
 	hasBinding := allClauses anySatisfy: [:pair |
 		(pair first isKindOf: ZealOperator) and: [pair first operator = ':='] ].
-	
 	hasBinding ifTrue: [ ^ self compileToZealAsLet: stream indent: level clauses: allClauses else: finalElse ].
 	
 	stream nextPutAll: '(if'.
-	allClauses do: [:pair |
+	allClauses doWithIndex: [:pair :i |
 		stream nextPut: $ .
 		self emitZealCondition: pair first on: stream.
 		stream cr.
-		pair second compileToZeal: stream indent: level + 1 ].
+		pair second compileToZeal: stream indent: level + 1.
+		"Simple if/else (one clause + else): no :else keyword"
+		"Multi-clause: use :else before the final else"
+		].
 	finalElse ifNotNil: [:eb |
-		stream cr.
-		self emitIndent: level + 1 on: stream.
-		stream nextPutAll: ':else'.
+		allClauses size > 1 ifTrue: [
+			"Multi-clause: need :else"
+			stream cr.
+			self emitIndent: level + 1 on: stream.
+			stream nextPutAll: ':else' ].
 		stream cr.
 		eb compileToZeal: stream indent: level + 1 ].
 	stream nextPut: $)

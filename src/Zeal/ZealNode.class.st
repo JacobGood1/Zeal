@@ -6,10 +6,11 @@ Class {
 		'specifiers',
 		'annotations',
 		'rawSource',
-		'generatedClass'
+		'generatedClass',
+		'usings'
 	],
-	#category : 'Zeal',
-	#package : 'Zeal'
+	#category : '_UnpackagedPackage',
+	#package : '_UnpackagedPackage'
 }
 
 { #category : 'accessing' }
@@ -198,4 +199,14 @@ ZealNode >> typeToZeal: aTypeString [
 	(aTypeString beginsWith: '?') ifTrue: [ 
 		^ (self toKebabCase: aTypeString allButFirst) , '?' ].
 	^ self toKebabCase: aTypeString
+]
+
+{ #category : 'accessing' }
+ZealNode >> usings [
+	^ usings ifNil: [ #() ]
+]
+
+{ #category : 'accessing' }
+ZealNode >> usings: aCollection [
+	usings := aCollection
 ]

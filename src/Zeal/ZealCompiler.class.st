@@ -341,12 +341,13 @@ ZealCompiler class >> buildIf: aListNode [
 		ifFalse: [ ^ self buildIfExpr: aListNode ]
 ]
 
-{ #category : 'special forms' }
+{ #category : 'builders' }
 ZealCompiler class >> buildIfExpr: aListNode [
-	"If-style: (if cond body...) or (if cond1 body1 cond2 body2 :else elseBody)
-	 Without :else — first arg is condition, rest are body expressions.
-	 With :else — pairs of (cond body) before :else, then else body."
-	| args elseIdx clauses elseBody bodyExprs |
+	"(if cond then) — simple if
+	 (if cond then else) — if/else (positional, no keyword needed)
+	 (if cond1 body1 cond2 body2 :else elseBody) — multi-clause with :else
+	 (if [bindings] body) — let-style (handled by buildIf:)"
+	| args elseIdx clauses elseBody |
 	args := aListNode expressions allButFirst.
 	
 	"Find :else position"
@@ -355,7 +356,7 @@ ZealCompiler class >> buildIfExpr: aListNode [
 		ifNone: [ 0 ].
 	
 	elseIdx > 0 ifTrue: [
-		"Has :else — everything before is cond/body pairs, after is else body"
+		"Has :else — pairs of (cond body) before :else, then else body"
 		| beforeElse afterElse |
 		beforeElse := args copyFrom: 1 to: elseIdx - 1.
 		afterElse := args copyFrom: elseIdx + 1 to: args size.
@@ -367,14 +368,23 @@ ZealCompiler class >> buildIfExpr: aListNode [
 			ifTrue: [ self buildExpression: afterElse first ]
 			ifFalse: [ ZealBlock new body: (afterElse collect: [:e | self buildExpression: e]) ] ]
 	ifFalse: [
-		"No :else — first arg is condition, rest are body"
-		clauses := OrderedCollection new.
-		bodyExprs := args allButFirst collect: [:e | self buildExpression: e].
-		clauses add: { self buildExpression: args first. 
-			bodyExprs size = 1 
-				ifTrue: [ bodyExprs first ] 
-				ifFalse: [ ZealBlock new body: bodyExprs ] }.
-		elseBody := nil ].
+		"No :else — positional"
+		args size = 2 ifTrue: [
+			"(if cond then) — simple if, no else"
+			clauses := OrderedCollection with: { self buildExpression: args first. self buildExpression: args second }.
+			elseBody := nil ]
+		ifFalse: [ args size = 3 ifTrue: [
+			"(if cond then else) — simple if/else"
+			clauses := OrderedCollection with: { self buildExpression: args first. self buildExpression: args second }.
+			elseBody := self buildExpression: args third ]
+		ifFalse: [
+			"(if cond body...) — multi-expression body, no else"
+			| bodyExprs |
+			clauses := OrderedCollection new.
+			bodyExprs := args allButFirst collect: [:e | self buildExpression: e].
+			clauses add: { self buildExpression: args first. 
+				bodyExprs size = 1 ifTrue: [ bodyExprs first ] ifFalse: [ ZealBlock new body: bodyExprs ] }.
+			elseBody := nil ] ] ].
 	
 	^ ZealIf new clauses: clauses; elseBody: elseBody
 ]

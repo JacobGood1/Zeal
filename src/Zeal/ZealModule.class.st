@@ -2,7 +2,6 @@ Class {
 	#name : 'ZealModule',
 	#superclass : 'ZealDefinition',
 	#instVars : [
-		'usings',
 		'definitions',
 		'kind'
 	],
