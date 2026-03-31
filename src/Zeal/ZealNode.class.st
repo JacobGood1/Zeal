@@ -9,8 +9,8 @@ Class {
 		'generatedClass',
 		'usings'
 	],
-	#category : '_UnpackagedPackage',
-	#package : '_UnpackagedPackage'
+	#category : 'Zeal',
+	#package : 'Zeal'
 }
 
 { #category : 'accessing' }
