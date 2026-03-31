@@ -23,6 +23,37 @@ ZealTextStyler >> applyCursorHighlight: aString to: text [
 ]
 
 { #category : 'styling' }
+ZealTextStyler >> applyDefinitionColors: aString to: text [
+	"Color definition names (after defn, defclass, etc) in pink/purple"
+	| defForms i size |
+	defForms := #('defn ' 'defclass ' 'definterface ' 'defstruct ' 'defenum ' 'def ' 'var ' 'set ').
+	i := 1. size := aString size.
+	[ i < size ] whileTrue: [
+		| ch |
+		ch := aString at: i.
+		ch = $( ifTrue: [
+			| afterParen matched |
+			afterParen := i + 1.
+			matched := false.
+			defForms do: [:form |
+				(matched not and: [afterParen + form size - 1 <= size]) ifTrue: [
+					((aString copyFrom: afterParen to: afterParen + form size - 1) = form) ifTrue: [
+						"Found a def form — color the name that follows"
+						| nameStart nameEnd |
+						nameStart := afterParen + form size.
+						nameEnd := nameStart.
+						[ nameEnd <= size and: [
+							| c | c := aString at: nameEnd.
+							c isLetter or: [c isDigit or: [c = $- or: [c = $_ or: [c = $/ or: [c = $:]]]]]
+						] ] whileTrue: [ nameEnd := nameEnd + 1 ].
+						nameEnd > nameStart ifTrue: [
+							(text from: nameStart to: nameEnd - 1) foreground: ZealTheme definitionNameColor ].
+						matched := true ] ] ].
+			i := i + 1 ]
+		ifFalse: [ i := i + 1 ] ]
+]
+
+{ #category : 'styling' }
 ZealTextStyler >> applyExpanders: aString to: text resolver: aResolver [
 	"Attach expander attributes to function/class/method references"
 	| i size |
@@ -87,14 +118,14 @@ ZealTextStyler >> browser: aBrowser [
 
 { #category : 'styling' }
 ZealTextStyler >> privateStyle: aText [
-	"Apply syntax highlighting, expanders, and form highlighting"
+	"Apply syntax highlighting, definition name coloring, and expanders"
 	| text source resolver |
 	text := (aText respondsTo: #text) ifTrue: [aText text] ifFalse: [aText].
 	source := text asString.
 	source isEmpty ifTrue: [ ^ aText ].
 	
 	self applySyntaxHighlighting: source to: text.
-	self applyFormHighlight: source to: text.
+	self applyDefinitionColors: source to: text.
 	
 	project ifNotNil: [
 		resolver := ZealCompiler currentResolver ifNil: [ 

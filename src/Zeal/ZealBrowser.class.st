@@ -878,7 +878,7 @@ ZealBrowser >> buildMinusButton: aBlock [
 	^ btn
 ]
 
-{ #category : 'ui' }
+{ #category : 'ui - detail' }
 ZealBrowser >> buildModuleDropdown: aNode inContainer: aContainer [
 	"A themed dropdown to move a definition between modules"
 	| row currentMod moduleNames currentName btn |
@@ -926,18 +926,29 @@ ZealBrowser >> buildModuleDropdown: aNode inContainer: aContainer [
 				border: (BlBorder paint: (Color fromHexString: '9580FF') width: 1);
 				items: (self allModuleNames);
 				itemStencil: [
-					BrLabel new
-						aptitude: (BrGlamorousLabelAptitude new foreground: ZealTheme symbolColor);
-						hMatchParent;
-						padding: (BlInsets all: 6) ];
-				itemDataBinder: [:lbl :assoc |
-					lbl text: (assoc key asRopedText foreground: ZealTheme symbolColor).
-					lbl addEventHandlerOn: BlClickEvent do: [:e |
+					| item |
+					item := BlElement new
+						layout: BlFrameLayout new;
+						constraintsDo: [:c | c horizontal matchParent. c vertical fitContent ];
+						padding: (BlInsets all: 6);
+						mouseCursor: BlHandCursor new;
+						addChild: (BrLabel new
+							id: #itemLabel;
+							aptitude: (BrGlamorousLabelAptitude new foreground: ZealTheme symbolColor)).
+					item addEventHandlerOn: BlMouseEnterEvent do: [:e |
+						item background: (Color fromHexString: '444444') ].
+					item addEventHandlerOn: BlMouseLeaveEvent do: [:e |
+						item background: Color transparent ].
+					item ];
+				itemDataBinder: [:row2 :assoc |
+					row2 childWithId: #itemLabel ifFound: [:lbl |
+						lbl text: (assoc key asRopedText foreground: ZealTheme symbolColor) ] ifNone: [].
+					row2 addEventHandlerOn: BlClickEvent do: [:e |
 						self moveNode: aNode toModule: assoc value.
 						self rebuildTree.
-						"Update the button label"
 						btn childWithId: #moduleLabel ifFound: [:l |
-							l text: (assoc value name asRopedText foreground: ZealTheme symbolColor) ] ifNone: [] ] ] ] asStencil).
+							l text: (assoc value name asRopedText foreground: ZealTheme symbolColor) ] ifNone: [].
+						btn dispatchEvent: BrDropdownHideWish new ] ] ] asStencil).
 	
 	row addChild: btn.
 	^ row

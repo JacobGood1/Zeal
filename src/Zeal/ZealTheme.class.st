@@ -93,6 +93,12 @@ ZealTheme class >> cursorWidth [
 ]
 
 { #category : 'colors' }
+ZealTheme class >> definitionNameColor [
+	"Pink/purple for definition names"
+	^ Color fromHexString: 'E876B0'
+]
+
+{ #category : 'colors' }
 ZealTheme class >> foregroundColor [
 	^ Color fromHexString: 'CDD7DC'
 ]
