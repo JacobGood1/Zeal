@@ -1106,10 +1106,10 @@ ZealBrowser >> buildUI [
 	self addChild: mainLayout
 ]
 
-{ #category : 'ui' }
+{ #category : 'ui - detail' }
 ZealBrowser >> buildUsingEditor: aNode [
-	"Editable using paths — comma separated, Ctrl+S to save"
-	| row editor currentUsings |
+	"Editable using paths — comma separated, Ctrl+S to save, with module completion"
+	| row editor currentUsings strategy controller |
 	row := BlElement new
 		layout: BlLinearLayout horizontal alignCenterLeft;
 		constraintsDo: [:c | c horizontal matchParent. c vertical fitContent ];
@@ -1130,6 +1130,24 @@ ZealBrowser >> buildUsingEditor: aNode [
 		constraintsDo: [:c | c horizontal matchParent. c vertical fitContent ];
 		padding: (BlInsets all: 4);
 		border: (BlBorder paint: (Color fromHexString: '444444') width: 1).
+	
+	"Module completion with themed overlay"
+	strategy := ZealModuleCompletionStrategy new project: project.
+	controller := GtCompletionController on: editor strategy: strategy.
+	controller install.
+	controller showOnTextModification: true.
+	(controller instVarNamed: 'overlay') ifNotNil: [:overlay |
+		overlay background: ZealTheme backgroundColor.
+		overlay border: (BlBorder paint: (Color fromHexString: '9580FF') width: 1) ].
+	
+	editor enqueueTask: (BlTaskAction new action: [
+		| c |
+		c := GtCompletionController on: editor strategy: strategy.
+		c install.
+		c showOnTextModification: true.
+		(c instVarNamed: 'overlay') ifNotNil: [:overlay |
+			overlay background: ZealTheme backgroundColor.
+			overlay border: (BlBorder paint: (Color fromHexString: '9580FF') width: 1) ] ]).
 	
 	editor addShortcut: (BlShortcutWithAction new
 		combination: BlKeyCombination primaryS;
