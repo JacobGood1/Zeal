@@ -155,7 +155,7 @@ ZealCompiler class >> buildDef: aListNode [
 	^ results
 ]
 
-{ #category : 'builders' }
+{ #category : 'special forms' }
 ZealCompiler class >> buildDefclass: aListNode [
 	"(defclass name:specs [parents...] body...)
 	 [parents] is optional — if second arg is a vector, it's the extension list"
@@ -170,7 +170,14 @@ ZealCompiler class >> buildDefclass: aListNode [
 	"Check for [extensions] vector"
 	(rest notEmpty and: [ rest first isKindOf: ZealVectorNode ]) ifTrue: [
 		rest first expressions do: [:e | parents add: e value value ].
-		rest := rest allButFirst ].
+		rest := rest allButFirst ]
+	ifFalse: [
+		"Check for common mistake: (parent) instead of [parent]"
+		(rest notEmpty and: [ rest first isKindOf: ZealListNode ]) ifTrue: [
+			| firstList |
+			firstList := rest first.
+			(firstList expressions size = 1 and: [ firstList expressions first isKindOf: ZealSymbolNode ]) ifTrue: [
+				^ ZealCompileError new error: 'defclass ', (resolved at: #name), ' uses (', firstList expressions first value value, ') for parents — use square brackets [', firstList expressions first value value, '] instead' ] ] ].
 	
 	fields := OrderedCollection new. methods := OrderedCollection new.
 	rest do: [:item | | built |
@@ -665,26 +672,78 @@ ZealCompiler class >> fromVerse: aString [
 	^ VersePP2ToZeal convert: parsed
 ]
 
-{ #category : 'building' }
+{ #category : 'type inference' }
+ZealCompiler class >> inferMapType: aMapNode [
+	"Infer map type from first key-value pair"
+	| pairs keyType valType |
+	pairs := aMapNode pairs.
+	pairs isEmpty ifTrue: [ ^ '[any]any' ].
+	keyType := self inferType: pairs first key.
+	valType := self inferType: pairs first value.
+	keyType ifNil: [ keyType := 'any' ].
+	valType ifNil: [ valType := 'any' ].
+	^ '[', keyType, ']', valType
+]
+
+{ #category : 'type inference' }
 ZealCompiler class >> inferType: aZealNode [
-	"Quick type inference from a value expression — no project context needed for literals"
+	"Type inference from a value expression"
+	"Literals"
 	(aZealNode isKindOf: ZealLiteral) ifTrue: [
 		aZealNode literalType = #integer ifTrue: [ ^ 'int' ].
 		aZealNode literalType = #float ifTrue: [ ^ 'float' ].
 		aZealNode literalType = #string ifTrue: [ ^ 'string' ].
 		aZealNode literalType = #char ifTrue: [ ^ 'char' ].
 		aZealNode literalType = #boolean ifTrue: [ ^ 'logic' ] ].
+	
+	"Boolean symbols"
 	(aZealNode isKindOf: ZealSymbolRef) ifTrue: [
 		(aZealNode name = 'true' or: [aZealNode name = 'false']) ifTrue: [ ^ 'logic' ] ].
+	
+	"Arrays — infer element type from first element"
 	(aZealNode isKindOf: ZealArray) ifTrue: [
 		aZealNode elements notEmpty ifTrue: [
 			| elemType |
 			elemType := self inferType: aZealNode elements first.
 			elemType ifNotNil: [ ^ '[]' , elemType ] ].
 		^ '[]any' ].
+	
+	"Operators"
 	(aZealNode isKindOf: ZealOperator) ifTrue: [
 		(#('+' '-' '*' '/') includes: aZealNode operator) ifTrue: [ ^ self inferType: aZealNode operands first ].
 		(#('=' '<>' '<' '>' '<=' '>=' 'and' 'or' 'not') includes: aZealNode operator) ifTrue: [ ^ 'logic' ] ].
+	
+	"Constructor/archetype calls: (class-name :field1 val1 :field2 val2)
+	 A function call where the name starts with lowercase and has keyword args"
+	(aZealNode isKindOf: ZealFunctionCall) ifTrue: [
+		^ self inferTypeFromCall: aZealNode ].
+	
+	"Maps"
+	(aZealNode isKindOf: ZealMap) ifTrue: [
+		^ self inferMapType: aZealNode ].
+	
+	^ nil
+]
+
+{ #category : 'type inference' }
+ZealCompiler class >> inferTypeFromCall: aFunctionCall [
+	"Infer type from a function call.
+	 Archetype: functionName = 'archetype', first arg is the type name."
+	| fname |
+	
+	"Archetype instantiation: (class-name :field val ...)"
+	aFunctionCall functionName = 'archetype' ifTrue: [
+		| firstArg |
+		firstArg := aFunctionCall arguments first.
+		(firstArg isKindOf: ZealSymbolRef) ifTrue: [
+			^ firstArg instVarNamed: 'name' ] ].
+	
+	"Direct call where name looks like a type and has keyword args"
+	fname := aFunctionCall functionName.
+	fname ifNil: [ ^ nil ].
+	(aFunctionCall arguments anySatisfy: [:a | 
+		(a isKindOf: ZealOperator) and: [a operator = ':=']]) ifTrue: [ ^ fname ].
+	
 	^ nil
 ]
 

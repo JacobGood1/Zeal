@@ -440,6 +440,24 @@ ZealBrowser >> buildAllSlotsEditor: aNode inContainer: aContainer [
 	^ container
 ]
 
+{ #category : 'ui - chat' }
+ZealBrowser >> buildChatPanel [
+	"Build the embedded Zeal Bot chat panel"
+	| chat panel |
+	chat := ZealBot new browser: self.
+	chat systemPrompt: self chatSystemPrompt.
+	
+	panel := BlElement new
+		id: #chatPanel;
+		layout: BlLinearLayout vertical;
+		constraintsDo: [:c | c horizontal exact: 400. c vertical matchParent ];
+		background: (Color fromHexString: '1A1A1A');
+		border: (BlBorder paint: (Color fromHexString: '333333') width: 1).
+	panel addChild: chat.
+	chat constraintsDo: [:c | c horizontal matchParent. c vertical matchParent].
+	^ panel
+]
+
 { #category : 'ui' }
 ZealBrowser >> buildClassDetail: aNode [
 	^ self buildClassDetail: aNode expandMethod: nil
@@ -1070,7 +1088,7 @@ ZealBrowser >> buildTree [
 
 { #category : 'ui' }
 ZealBrowser >> buildUI [
-	| leftPane topBar content mainLayout |
+	| leftPane topBar content mainLayout chatBtn |
 	self removeChildren.
 	
 	topBar := BlElement new
@@ -1083,6 +1101,14 @@ ZealBrowser >> buildUI [
 		text: 'Zeal // ' , project name;
 		margin: (BlInsets right: 12)).
 	topBar addChild: (self buildCompileAllButton).
+	
+	"Chat toggle button"
+	chatBtn := BrButton new
+		aptitude: (BrGlamorousButtonWithLabelAptitude new);
+		label: 'Chat';
+		margin: (BlInsets left: 8);
+		action: [ self toggleChat ].
+	topBar addChild: chatBtn.
 	
 	content := BlElement new
 		layout: BlLinearLayout horizontal;
@@ -1161,6 +1187,29 @@ ZealBrowser >> buildUsingEditor: aNode [
 	
 	row addChild: editor.
 	^ row
+]
+
+{ #category : 'ui - chat' }
+ZealBrowser >> chatSystemPrompt [
+	^ 'You are a Zeal programming assistant embedded in the Zeal IDE.
+Zeal is a Lisp-syntax language that transpiles to Epic Verse (UEFN).
+
+IMPORTANT: Use ```zeal for code blocks. NEVER use ```clojure or ```lisp.
+
+KEY TOOLS — use these to make changes:
+- zealUpdateDefinition(name, zealCode) — Update or replace ANY definition (function, class, interface, etc.). Use this for top-level definitions.
+- zealAddToClass(className, zealCode) — Add a field or method to a class, or replace the entire class.
+- zealGetDefinition(name) — Look up any definition by name. Use before modifying.
+- zealCompile(zealSource) — Test-compile Zeal to Verse without saving.
+- zealListDefinitions(moduleName) — List definitions (empty string = all modules).
+- zealSyntaxReference() — Get Zeal syntax reference.
+
+WORKFLOW: When asked to modify code, ALWAYS:
+1. Use zealGetDefinition to see current code
+2. Use zealUpdateDefinition or zealAddToClass to make the change
+3. Confirm what you changed
+
+Be concise. Context about the selected definition is provided below.'
 ]
 
 { #category : 'tree' }
@@ -2473,6 +2522,23 @@ ZealBrowser >> toKebab: aString [
 			ifTrue: [ result nextPut: $-; nextPut: ch asLowercase ]
 			ifFalse: [ result nextPut: ch asLowercase ] ] ].
 	^ result contents
+]
+
+{ #category : 'ui - chat' }
+ZealBrowser >> toggleChat [
+	"Toggle the chat panel on the right side"
+	| content chatPanel |
+	content := self children first children last. "The horizontal content element"
+	chatPanel := content childWithId: #chatPanel ifFound: [:p | p] ifNone: [nil].
+	
+	chatPanel ifNotNil: [
+		"Remove chat"
+		content removeChild: chatPanel.
+		^ self ].
+	
+	"Add chat"
+	chatPanel := self buildChatPanel.
+	content addChild: chatPanel
 ]
 
 { #category : 'actions' }

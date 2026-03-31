@@ -115,7 +115,7 @@ ZealIf >> elseBody: e [ elseBody := e
 
 { #category : 'compiling' }
 ZealIf >> emitCondition: cond on: stream [
-	"Emit condition — comma operator emits comma-separated, and stays as 'and'"
+	"Emit condition — operators skip their outer parens since if(...) provides them"
 	((cond isKindOf: ZealOperator) and: [cond operator = ',']) ifTrue: [
 		cond operands 
 			do: [:o | self emitCondition: o on: stream ]
@@ -125,7 +125,10 @@ ZealIf >> emitCondition: cond on: stream [
 		stream nextPutAll: ' := '.
 		cond operands second compileToVerse: stream indent: 0 ]
 	ifFalse: [
-		cond compileToVerse: stream indent: 0 ] ]
+		(cond isKindOf: ZealOperator) ifTrue: [
+			cond emitWithoutOuterParens: stream ]
+		ifFalse: [
+			cond compileToVerse: stream indent: 0 ] ] ]
 ]
 
 { #category : 'compiling' }

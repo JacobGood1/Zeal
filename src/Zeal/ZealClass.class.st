@@ -47,11 +47,18 @@ ZealClass >> compileToVerseWithComments: stream indent: level [
 
 { #category : 'compiling' }
 ZealClass >> compileToZeal: stream indent: level [
+	| parents |
 	self emitIndent: level on: stream.
 	stream nextPutAll: '(defclass '.
 	stream nextPutAll: (self toKebabCase: name).
 	specifiers do: [:s | stream nextPut: $:; nextPutAll: (self toKebabCase: s) ].
-	superclass ifNotNil: [ stream nextPutAll: ' (' , (self toKebabCase: superclass) , ')' ].
+	parents := OrderedCollection new.
+	superclass ifNotNil: [ parents add: (self toKebabCase: superclass) ].
+	interfaces ifNotNil: [ interfaces do: [:i | parents add: (self toKebabCase: i) ] ].
+	parents notEmpty ifTrue: [
+		stream nextPutAll: ' ['.
+		stream nextPutAll: (' ' join: parents).
+		stream nextPutAll: ']' ].
 	self fields do: [:f | stream cr. f compileToZeal: stream indent: level + 1 ].
 	self methods do: [:m | stream cr. m compileToZeal: stream indent: level + 1 ].
 	stream nextPut: $)
