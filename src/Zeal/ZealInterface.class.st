@@ -17,16 +17,15 @@ ZealInterface >> compileToVerse: stream indent: level [
 	stream cr. self emitIndent: level on: stream. stream nextPut: $}
 ]
 
-{ #category : 'zeal' }
+{ #category : 'compiling' }
 ZealInterface >> compileToZeal: stream indent: level [
 	self emitIndent: level on: stream.
 	stream nextPutAll: '(definterface '.
 	stream nextPutAll: (self toKebabCase: name).
-	parents ifNotNil: [
-		parents notEmpty ifTrue: [
-			stream nextPutAll: ' ['.
-			parents do: [:p | stream nextPutAll: (self toKebabCase: p)] separatedBy: [stream nextPut: $ ].
-			stream nextPut: $] ] ].
+	((self respondsTo: #interfaces) and: [interfaces notNil and: [interfaces notEmpty]]) ifTrue: [
+		stream nextPutAll: ' ['.
+		interfaces do: [:p | stream nextPutAll: (self toKebabCase: p)] separatedBy: [stream nextPut: $ ].
+		stream nextPut: $] ].
 	methods do: [:m | stream cr. m compileToZeal: stream indent: level + 1 ].
 	stream nextPut: $)
 ]

@@ -25,19 +25,23 @@ ZealExpanderAttribute >> browser: aZealBrowser [
 	browser := aZealBrowser
 ]
 
-{ #category : 'building' }
+{ #category : 'ui' }
 ZealExpanderAttribute >> buildExpandedEditor [
-	"Build an inline editor using the styler system — same as all other editors"
-	| source editor statusLabel container isExternal |
+	"Build inline expanded view — dispatches based on node type"
+	| source editor container isExternal label |
 	zealNode ifNil: [ ^ BlElement new ].
 	
 	isExternal := zealNode body isNil or: [zealNode body isEmpty and: [zealNode rawSource notNil]].
 	
+	"Get source based on type"
 	source := isExternal
 		ifTrue: [ self buildExternalSource ]
-		ifFalse: [ browser 
-			ifNotNil: [ browser zealSourceFor: zealNode generatedClass: (browser generatedClassFor: zealNode) ]
-			ifNil: [ String streamContents: [:s | zealNode compileToZeal: s indent: 0] ] ].
+		ifFalse: [ [zealNode compileToZeal] on: Error do: [''] ].
+	
+	"Label shows what kind of thing this is"
+	label := isExternal
+		ifTrue: [ zealNode parent ifNotNil: [:p | p name, '.', zealNode name, ' (external)'] ifNil: [zealNode name, ' (external)'] ]
+		ifFalse: [ (zealNode class name copyReplaceAll: 'Zeal' with: ''), ': ', zealNode name ].
 	
 	container := BlElement new
 		layout: BlLinearLayout vertical;
@@ -47,13 +51,11 @@ ZealExpanderAttribute >> buildExpandedEditor [
 		border: (BlBorder paint: (isExternal ifTrue: [Color fromHexString: '888888'] ifFalse: [Color fromHexString: '9580FF']) width: 1);
 		background: (ZealTheme backgroundColor darker).
 	
-	statusLabel := BrLabel new
+	container addChild: (BrLabel new
 		aptitude: (BrGlamorousLabelAptitude new foreground: (Color fromHexString: '9580FF'); fontSize: 10);
-		text: (isExternal 
-			ifTrue: [ zealNode parent ifNotNil: [:p | p name , '.' , zealNode name , ' (external)'] ifNil: [zealNode name , ' (external)'] ]
-			ifFalse: [ zealNode class name , ': ' , zealNode name ]);
+		text: label;
 		constraintsDo: [:c | c horizontal matchParent];
-		margin: (BlInsets bottom: 2).
+		margin: (BlInsets bottom: 2)).
 	
 	isExternal ifTrue: [
 		editor := BrEditor new
@@ -64,23 +66,17 @@ ZealExpanderAttribute >> buildExpandedEditor [
 			padding: (BlInsets all: 6);
 			beReadOnlyWithSelection ]
 	ifFalse: [
-		editor := browser newZealEditor: source.
-		editor addShortcut: (BlShortcutWithAction new 
+		editor := browser 
+			ifNotNil: [ browser newZealEditor: source ]
+			ifNil: [ BrEditor new
+				aptitude: (BrGlamorousCodeEditorAptitude new);
+				text: (ZealTheme highlight: source);
+				constraintsDo: [:c | c horizontal matchParent. c vertical fitContent ];
+				padding: (BlInsets all: 6) ].
+		editor addShortcut: (BlShortcutWithAction new
 			combination: BlKeyCombination primaryS;
-			action: [ 
-				| newSource compiled |
-				newSource := editor editor text asString.
-				compiled := ZealCompiler compile: newSource.
-				(compiled isKindOf: ZealCompileError) 
-					ifTrue: [ 
-						statusLabel text: ('Error: ' , compiled message) asRopedText.
-						(statusLabel text) foreground: Color red ]
-					ifFalse: [ 
-						statusLabel text: ('Compiled: ' , compiled class name , ' ' , compiled name) asRopedText.
-						(statusLabel text) foreground: (Color fromHexString: '50FA7B').
-						browser ifNotNil: [ browser compileAndSave: editor forNode: zealNode ] ] ]) ].
+			action: [ browser ifNotNil: [ browser compileAndSave: editor forNode: zealNode ] ]) ].
 	
-	container addChild: statusLabel.
 	container addChild: editor.
 	^ container
 ]

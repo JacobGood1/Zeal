@@ -6,18 +6,6 @@ Trait {
 	#package : 'Zeal'
 }
 
-{ #category : 'accessing' }
-TZealModule >> definitionKind [ ^ #module
-]
-
-{ #category : 'accessing' }
-TZealModule >> definitions [ ^ self zealNode definitions
-]
-
-{ #category : 'testing' }
-TZealModule >> isModule [ ^ true
-]
-
-{ #category : 'accessing' }
-TZealModule >> usings [ ^ self zealNode usings
+{ #category : 'metadata' }
+TZealModule classSide >> definitionKind [ ^ #module
 ]

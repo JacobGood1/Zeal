@@ -11,6 +11,28 @@ Class {
 }
 
 { #category : 'private' }
+ZealCompletionStrategy >> addCandidatesFrom: aModule to: result prefix: aPrefix [
+	"Add candidates from a module, recursing into sub-modules"
+	aModule definitions do: [:d |
+		((d respondsTo: #name) and: [d name notNil]) ifTrue: [
+			| typeName |
+			typeName := d class name copyReplaceAll: 'Zeal' with: ''.
+			(d isKindOf: ZealModule) 
+				ifTrue: [ self addCandidatesFrom: d to: result prefix: d name ]
+				ifFalse: [
+					result at: (self toKebab: d name) put: typeName.
+					"Add fields and methods of classes/interfaces"
+					((d respondsTo: #methods) and: [d methods notNil]) ifTrue: [
+						d methods do: [:m |
+							((m respondsTo: #name) and: [m name notNil]) ifTrue: [
+								result at: (self toKebab: m name) put: ('method on ', (self toKebab: d name)) ] ] ].
+					((d respondsTo: #fields) and: [d fields notNil]) ifTrue: [
+						d fields do: [:f |
+							((f respondsTo: #name) and: [f name notNil]) ifTrue: [
+								result at: (self toKebab: f name) put: ('field on ', (self toKebab: d name)) ] ] ] ] ] ]
+]
+
+{ #category : 'private' }
 ZealCompletionStrategy >> buildCandidates [
 	"Build completion candidates from project + external modules"
 	| result |
@@ -20,30 +42,18 @@ ZealCompletionStrategy >> buildCandidates [
 	ZealTheme specialForms do: [:sf | result at: sf put: 'special form' ].
 	
 	project modules do: [:mod |
-		mod definitions do: [:ns |
-			(ns respondsTo: #name) ifTrue: [ 
-				ns name ifNotNil: [ result at: (self toKebab: ns name) put: 'namespace' ] ].
-			(ns respondsTo: #definitions) ifTrue: [
-				ns definitions do: [:d |
-					((d respondsTo: #name) and: [d name notNil]) ifTrue: [
-						result at: (self toKebab: d name) put: (d class name copyReplaceAll: 'Zeal' with: '').
-						((d respondsTo: #methods) and: [d methods notNil]) ifTrue: [
-							d methods do: [:m | 
-								((m respondsTo: #name) and: [m name notNil]) ifTrue: [
-									result at: (self toKebab: m name) put: ('method on ' , (self toKebab: d name)) ] ] ].
-						((d respondsTo: #fields) and: [d fields notNil]) ifTrue: [
-							d fields do: [:f |
-								((f respondsTo: #name) and: [f name notNil]) ifTrue: [
-									result at: (self toKebab: f name) put: ('field on ' , (self toKebab: d name)) ] ] ] ] ] ] ] ].
+		self addCandidatesFrom: mod to: result prefix: '' ].
 	
 	project externalModules do: [:mod |
 		mod definitions do: [:d |
 			((d respondsTo: #name) and: [d name notNil]) ifTrue: [
-				result at: (self toKebab: d name) put: (mod name , ' ' , (d class name copyReplaceAll: 'Zeal' with: '')).
+				| typeName |
+				typeName := d class name copyReplaceAll: 'Zeal' with: ''.
+				result at: (self toKebab: d name) put: (mod name, ' ', typeName).
 				((d respondsTo: #methods) and: [d methods notNil]) ifTrue: [
 					d methods do: [:m |
 						((m respondsTo: #name) and: [m name notNil]) ifTrue: [
-							result at: (self toKebab: m name) put: (mod name , ' method') ] ] ] ] ] ].
+							result at: (self toKebab: m name) put: (mod name, ' method') ] ] ] ] ] ].
 	
 	^ result
 ]
@@ -55,14 +65,14 @@ ZealCompletionStrategy >> candidates [
 
 { #category : 'completion' }
 ZealCompletionStrategy >> completionPrefixAt: anInteger in: aText [
-	"Extract the word being typed at the cursor position"
+	"Extract the word being typed at the cursor position. Includes @ for archetype prefix."
 	| text i start |
 	text := aText asString.
 	i := anInteger.
 	[ i > 0 and: [
 		| c |
 		c := text at: i.
-		c isLetter or: [c isDigit or: [c = $- or: [c = $/ or: [c = $_ or: [c = $:]]]]]
+		c isLetter or: [c isDigit or: [c = $- or: [c = $/ or: [c = $_ or: [c = $: or: [c = $@]]]]]]
 	] ] whileTrue: [ i := i - 1 ].
 	start := i + 1.
 	start > anInteger ifTrue: [ ^ '' ].
@@ -71,8 +81,8 @@ ZealCompletionStrategy >> completionPrefixAt: anInteger in: aText [
 
 { #category : 'completion' }
 ZealCompletionStrategy >> completionResultFor: aText at: positionInteger requested: aBoolean [
-	"Return type-aware completion results with pink-tinted labels"
-	| prefix matches stream completionColor |
+	"Return type-aware completion results. @ prefix filters to classes/interfaces only."
+	| prefix matches stream completionColor isArchetype searchPrefix |
 	prefix := self completionPrefixAt: positionInteger in: aText.
 	(prefix isEmpty and: [aBoolean not]) ifTrue: [ ^ GtCompletionResult empty ].
 	prefix size < 2 ifTrue: [ aBoolean ifFalse: [ ^ GtCompletionResult empty ] ].
@@ -81,18 +91,28 @@ ZealCompletionStrategy >> completionResultFor: aText at: positionInteger request
 	(prefix includes: $/) ifTrue: [
 		^ self memberCompletionFor: aText at: positionInteger prefix: prefix requested: aBoolean ].
 	
+	"@ prefix = archetype, only show classes and interfaces"
+	isArchetype := prefix beginsWith: '@'.
+	searchPrefix := isArchetype ifTrue: [prefix allButFirst] ifFalse: [prefix].
+	
 	matches := self candidates associations
 		select: [:assoc |
-			(assoc key beginsWith: prefix) or: [self isSubsequence: prefix of: assoc key] ]
+			| nameMatch typeMatch |
+			nameMatch := (assoc key beginsWith: searchPrefix) or: [self isSubsequence: searchPrefix of: assoc key].
+			typeMatch := isArchetype 
+				ifTrue: [(assoc value includesSubstring: 'Class') or: [assoc value includesSubstring: 'Interface']]
+				ifFalse: [true].
+			nameMatch and: [typeMatch] ]
 		thenCollect: [:assoc |
-			| action |
-			action := GtInsertTextCompletionAction
-				labeled: (self labelFor: assoc key withSearch: prefix)
-				completion: (assoc key allButFirst: prefix size)
+			| completionText |
+			completionText := isArchetype
+				ifTrue: [assoc key allButFirst: searchPrefix size]
+				ifFalse: [assoc key allButFirst: prefix size].
+			GtInsertTextCompletionAction
+				labeled: ((isArchetype ifTrue: ['@', assoc key] ifFalse: [assoc key]) asRopedText foreground: completionColor)
+				completion: completionText
 				position: positionInteger
-				from: positionInteger - prefix size + 1.
-			action displayText foreground: completionColor.
-			action ].
+				from: positionInteger - prefix size + 1 ].
 	
 	matches isEmpty ifTrue: [ ^ GtCompletionResult empty ].
 	stream := matches asAsyncStream.

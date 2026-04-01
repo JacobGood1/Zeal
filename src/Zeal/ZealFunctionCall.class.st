@@ -17,7 +17,7 @@ ZealFunctionCall >> arguments [ ^ arguments ifNil: [ #() ]
 ZealFunctionCall >> arguments: a [ arguments := a
 ]
 
-{ #category : 'verse' }
+{ #category : 'compiling' }
 ZealFunctionCall >> compileToVerse: stream indent: level [
 	self emitIndent: level on: stream.
 	functionName = '.' ifTrue: [
@@ -51,7 +51,7 @@ ZealFunctionCall >> compileToVerse: stream indent: level [
 	functionName = 'archetype' ifTrue: [
 		| typeName |
 		typeName := (arguments first isKindOf: ZealSymbolRef) 
-			ifTrue: [self toSnakeCase: arguments first name] 
+			ifTrue: [(self toSnakeCase: (arguments first name copyReplaceAll: '@' with: ''))] 
 			ifFalse: [arguments first compileToVerse].
 		stream nextPutAll: typeName; nextPut: ${.
 		arguments allButFirst 

@@ -157,37 +157,45 @@ ZealCompiler class >> buildDef: aListNode [
 
 { #category : 'special forms' }
 ZealCompiler class >> buildDefclass: aListNode [
-	"(defclass name:specs [parents...] body...)
-	 [parents] is optional — if second arg is a vector, it's the extension list"
-	| exprs err resolved rest parents fields methods cls |
+	"(defclass @name:specs [parents...] body...)
+	 Class names use @ prefix. [parents] is optional."
+	| exprs err resolved rest parents fields methods cls className |
 	exprs := aListNode expressions.
 	(err := self requireArgs: 2 from: exprs forForm: 'defclass') ifNotNil: [ ^ err ].
 	resolved := self requireNameFrom: exprs forForm: 'defclass'.
 	(resolved isKindOf: ZealCompileError) ifTrue: [ ^ resolved ].
+	className := self stripClassPrefix: (resolved at: #name).
 	rest := exprs allButFirst allButFirst. 
 	parents := OrderedCollection new.
 	
 	"Check for [extensions] vector"
 	(rest notEmpty and: [ rest first isKindOf: ZealVectorNode ]) ifTrue: [
-		rest first expressions do: [:e | parents add: e value value ].
+		rest first expressions do: [:e | parents add: (self stripClassPrefix: e value value) ].
 		rest := rest allButFirst ]
 	ifFalse: [
-		"Check for common mistake: (parent) instead of [parent]"
 		(rest notEmpty and: [ rest first isKindOf: ZealListNode ]) ifTrue: [
 			| firstList |
 			firstList := rest first.
 			(firstList expressions size = 1 and: [ firstList expressions first isKindOf: ZealSymbolNode ]) ifTrue: [
-				^ ZealCompileError new error: 'defclass ', (resolved at: #name), ' uses (', firstList expressions first value value, ') for parents — use square brackets [', firstList expressions first value value, '] instead' ] ] ].
+				^ ZealCompileError new error: 'defclass ', className, ' uses (', firstList expressions first value value, ') for parents — use square brackets [', firstList expressions first value value, '] instead' ] ] ].
 	
 	fields := OrderedCollection new. methods := OrderedCollection new.
-	rest do: [:item | | built |
+	rest do: [:item | | built items |
 		built := self buildExpression: item.
 		(built isKindOf: ZealCompileError) ifTrue: [ ^ built ].
-		(built isKindOf: ZealFunction) ifTrue: [ methods add: built ]
-			ifFalse: [ (built isKindOf: ZealVariable)
-				ifTrue: [ fields add: (ZealField new name: built name; type: built type; defaultValue: built value; isMutable: built isMutable) ]
-				ifFalse: [ fields add: built ] ] ].
-	cls := ZealClass new name: (resolved at: #name); specifiers: (resolved at: #specifiers);
+		items := (built isKindOf: Collection) ifTrue: [built] ifFalse: [{built}].
+		items do: [:each |
+			(each isKindOf: ZealFunction) ifTrue: [ methods add: each ]
+			ifFalse: [ | field existing |
+				(each isKindOf: ZealVariable)
+					ifTrue: [ field := ZealField new name: each name; type: each type; defaultValue: each value; isMutable: each isMutable ]
+					ifFalse: [ (each isKindOf: ZealFunctionCall) ifTrue: [
+						^ ZealCompileError new error: 'Archetype constructors like (', each functionName, ' ...) must be inside a method body, not at class level' ].
+					field := each ].
+				existing := fields detect: [:f | (f respondsTo: #name) and: [f name = field name]] ifNone: [nil].
+				existing ifNotNil: [ fields at: (fields indexOf: existing) put: field ]
+					ifNil: [ fields add: field ] ] ] ].
+	cls := ZealClass new name: className; specifiers: (resolved at: #specifiers);
 		superclass: (parents isEmpty ifTrue: [nil] ifFalse: [parents first]);
 		interfaces: (parents size > 1 ifTrue: [parents allButFirst] ifFalse: [#()]);
 		fields: fields; methods: methods.
@@ -208,15 +216,43 @@ ZealCompiler class >> buildDefer: aListNode [
 	^ ZealDefer new body: (aListNode expressions allButFirst collect: [:e | self buildExpression: e])
 ]
 
-{ #category : 'building' }
+{ #category : 'special forms' }
 ZealCompiler class >> buildDefinterface: aListNode [
-	| exprs rest methods |
+	"(definterface @name [parents...] body...)"
+	| exprs resolved rest parents methods iface className |
 	exprs := aListNode expressions.
+	(exprs size < 2) ifTrue: [ ^ self error: 'definterface requires a name' ].
+	resolved := self resolveNameNode: exprs second.
+	(resolved isKindOf: ZealCompileError) ifTrue: [ ^ resolved ].
+	className := self stripClassPrefix: (resolved at: #name).
 	rest := exprs allButFirst allButFirst.
-	methods := rest collect: [:e | self buildExpression: e].
-	^ ZealInterface new
-		name: exprs second value value;
-		methods: methods
+	parents := OrderedCollection new.
+	
+	(rest notEmpty and: [ rest first isKindOf: ZealVectorNode ]) ifTrue: [
+		rest first expressions do: [:e | parents add: (self stripClassPrefix: e value value) ].
+		rest := rest allButFirst ]
+	ifFalse: [
+		(rest notEmpty and: [ rest first isKindOf: ZealListNode ]) ifTrue: [
+			| firstList |
+			firstList := rest first.
+			(firstList expressions size = 1 and: [ firstList expressions first isKindOf: ZealSymbolNode ]) ifTrue: [
+				^ ZealCompileError new error: 'definterface ', className, ' uses parens for parents — use brackets' ] ] ].
+	
+	methods := OrderedCollection new.
+	rest do: [:e | 
+		| built items |
+		built := self buildExpression: e.
+		(built isKindOf: ZealCompileError) ifTrue: [ ^ built ].
+		items := (built isKindOf: Collection) ifTrue: [built] ifFalse: [{built}].
+		items do: [:each | methods add: each] ].
+	
+	iface := ZealInterface new
+		name: className;
+		specifiers: (resolved at: #specifiers);
+		methods: methods.
+	(iface respondsTo: #interfaces:) ifTrue: [iface interfaces: parents asArray].
+	methods do: [:m | m parent: iface].
+	^ iface
 ]
 
 { #category : 'building' }
@@ -319,17 +355,28 @@ ZealCompiler class >> buildFromAST: aProgramNode [
 	^ results
 ]
 
-{ #category : 'building' }
+{ #category : 'special forms' }
 ZealCompiler class >> buildFunctionCall: aListNode [
-	| exprs head headStr |
+	| exprs head headStr args |
 	exprs := aListNode expressions.
 	head := exprs first.
 	headStr := (head isKindOf: ZealColonChainNode)
 		ifTrue: [ (ZealColonChainResolver resolve: head value value) at: #name ]
 		ifFalse: [ head value value ].
+	args := exprs allButFirst collect: [:e | self buildExpression: e].
+	
+	"@ prefix = archetype constructor"
+	(headStr beginsWith: '@') ifTrue: [
+		| typeRef |
+		typeRef := ZealSymbolRef new.
+		typeRef instVarNamed: 'name' put: headStr.
+		^ ZealFunctionCall new
+			functionName: 'archetype';
+			arguments: ({ typeRef }, args) asOrderedCollection ].
+	
 	^ ZealFunctionCall new
 		functionName: headStr;
-		arguments: (exprs allButFirst collect: [:e | self buildExpression: e])
+		arguments: args
 ]
 
 { #category : 'special forms' }
@@ -728,21 +775,20 @@ ZealCompiler class >> inferType: aZealNode [
 { #category : 'type inference' }
 ZealCompiler class >> inferTypeFromCall: aFunctionCall [
 	"Infer type from a function call.
-	 Archetype: functionName = 'archetype', first arg is the type name."
+	 Archetype: functionName = 'archetype', first arg is the type name (strip @)."
 	| fname |
 	
-	"Archetype instantiation: (class-name :field val ...)"
 	aFunctionCall functionName = 'archetype' ifTrue: [
-		| firstArg |
+		| firstArg typeName |
 		firstArg := aFunctionCall arguments first.
 		(firstArg isKindOf: ZealSymbolRef) ifTrue: [
-			^ firstArg instVarNamed: 'name' ] ].
+			typeName := firstArg instVarNamed: 'name'.
+			^ self stripClassPrefix: typeName ] ].
 	
-	"Direct call where name looks like a type and has keyword args"
 	fname := aFunctionCall functionName.
 	fname ifNil: [ ^ nil ].
 	(aFunctionCall arguments anySatisfy: [:a | 
-		(a isKindOf: ZealOperator) and: [a operator = ':=']]) ifTrue: [ ^ fname ].
+		(a isKindOf: ZealOperator) and: [a operator = ':=']]) ifTrue: [ ^ self stripClassPrefix: fname ].
 	
 	^ nil
 ]
@@ -839,6 +885,13 @@ ZealCompiler class >> specialFormBuilders [
 		at: 'break' put: #buildBreak:; at: 'return' put: #buildReturn:;
 		at: 'str' put: #buildStr:;
 		yourself
+]
+
+{ #category : 'utilities' }
+ZealCompiler class >> stripClassPrefix: aName [
+	"Strip @ prefix from class name if present"
+	(aName notNil and: [aName beginsWith: '@']) ifTrue: [ ^ aName allButFirst ].
+	^ aName
 ]
 
 { #category : 'validation' }

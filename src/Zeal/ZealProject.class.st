@@ -208,6 +208,22 @@ ZealProject >> loadDigestFile: aFileRef into: aModule [
 	aModule definitions: defs asArray
 ]
 
+{ #category : 'loading' }
+ZealProject >> loadFieldsFromMethods: aNode from: aClass [
+	| fieldArrays |
+	fieldArrays := [aClass zealFields] on: Error do: [#()].
+	aNode fields: (fieldArrays collect: [:arr |
+		| f |
+		f := ZealField new.
+		f name: arr first.
+		f type: arr second.
+		f isMutable: (arr size >= 3 ifTrue: [arr third] ifFalse: [false]).
+		(arr size >= 4 and: [arr fourth notNil and: [arr fourth notEmpty]]) ifTrue: [
+			[f defaultValue: (ZealCompiler compile: arr fourth)] on: Error do: []].
+		f parent: aNode.
+		f]) asOrderedCollection
+]
+
 { #category : 'scanning' }
 ZealProject >> loadFromCache [
 	"Rebuild project tree from generated Smalltalk class hierarchy.
@@ -229,10 +245,36 @@ ZealProject >> loadFromCache [
 	^ modules notEmpty
 ]
 
-{ #category : 'scanning' }
+{ #category : 'loading' }
+ZealProject >> loadMethodsFromMethods: aNode from: aClass [
+	| methodArrays |
+	methodArrays := [aClass zealMethods] on: Error do: [#()].
+	aNode methods: (methodArrays collect: [:arr |
+		| src compiled |
+		src := (arr size >= 6) ifTrue: [arr sixth] ifFalse: [''].
+		compiled := nil.
+		(src notNil and: [src notEmpty]) ifTrue: [
+			[compiled := ZealCompiler compile: src.
+			 compiled := (compiled isKindOf: Collection) ifTrue: [compiled first] ifFalse: [compiled]]
+				on: Error do: []].
+		compiled ifNil: [
+			compiled := ZealFunction new
+				name: arr first;
+				type: (arr size >= 2 ifTrue: [arr second] ifFalse: [nil]);
+				parameters: ((arr size >= 5 ifTrue: [arr fifth] ifFalse: [#()]) 
+					collect: [:p | ZealParameter new name: p first; type: p second]);
+				body: OrderedCollection new].
+		compiled specifiers: (arr size >= 3 ifTrue: [arr third] ifFalse: [#()]).
+		(compiled respondsTo: #effects:) ifTrue: [
+			compiled effects: (arr size >= 4 ifTrue: [arr fourth] ifFalse: [#()])].
+		compiled parent: aNode.
+		compiled]) asOrderedCollection
+]
+
+{ #category : 'loading' }
 ZealProject >> loadModuleFromCache: parentClass into: aModule [
 	"Load definitions and sub-modules from generated class hierarchy.
-	 TZealModule = sub-module, TZealNamespace = old namespace (flatten into parent), others = definitions."
+	 Tries metadata class variables first, falls back to zealSource parsing."
 	| defs |
 	defs := OrderedCollection new.
 	
@@ -241,23 +283,72 @@ ZealProject >> loadModuleFromCache: parentClass into: aModule [
 			| subMod subName |
 			subName := self pascalToSnake: (childClass name allButFirst: parentClass name size + 1).
 			subMod := ZealModule new name: subName; kind: #folder.
+			subMod generatedClass: childClass.
 			self loadModuleFromCache: childClass into: subMod.
 			defs add: subMod ]
-		ifFalse: [ (childClass traits includes: TZealNamespace) ifTrue: [
-			"Old namespace — flatten its children into this module"
-			self loadModuleFromCache: childClass into: aModule ]
 		ifFalse: [
-			| zealSource compiled |
-			zealSource := [childClass zealSource] on: Error do: [nil].
-			zealSource ifNotNil: [
-				[ compiled := ZealCompiler compile: zealSource.
-				  compiled := (compiled isKindOf: Collection) ifTrue: [compiled first] ifFalse: [compiled].
-				  compiled generatedClass: childClass.
-				  defs add: compiled ]
-				on: Error do: [ ] ] ] ] ].
+			| node |
+			"Try metadata first"
+			node := self loadNodeFromMetadata: childClass.
+			node ifNil: [
+				"Fall back to zealSource parsing"
+				| zealSource |
+				zealSource := [childClass zealSource] on: Error do: [nil].
+				zealSource ifNotNil: [
+					[node := ZealCompiler compile: zealSource.
+					 node := (node isKindOf: Collection) ifTrue: [node first] ifFalse: [node].
+					 node generatedClass: childClass.
+					 "Restore usings from old-style storage"
+					 [(childClass usingPaths) ifNotNil: [:paths |
+						node usings: (paths collect: [:p | ZealUsing new path: p])]]
+							on: Error do: []]
+						on: Error do: [] ] ].
+			node ifNotNil: [defs add: node] ] ].
 	
-	"Merge defs into aModule's existing definitions (for namespace flattening)"
 	aModule definitions: (aModule definitions asOrderedCollection addAll: defs; yourself) asArray
+]
+
+{ #category : 'loading' }
+ZealProject >> loadNodeFromMetadata: aClass [
+	"Reconstruct a ZealNode from class-side metadata methods (all zealPrefixed). Returns nil if no metadata."
+	| nodeType node usingPaths params |
+	nodeType := [aClass zealNodeType] on: Error do: [nil].
+	nodeType ifNil: [^ nil].
+	
+	node := (Smalltalk globals at: nodeType asSymbol ifAbsent: [nil]) ifNotNil: [:cls | cls new] ifNil: [^ nil].
+	
+	node name: ([aClass zealName] on: Error do: ['']).
+	node specifiers: ([aClass zealSpecifiers] on: Error do: [#()]).
+	(node respondsTo: #usings:) ifTrue: [
+		usingPaths := [aClass zealUsings] on: Error do: [#()].
+		node usings: (usingPaths collect: [:p | ZealUsing new path: p]) ].
+	node generatedClass: aClass.
+	
+	(node isKindOf: ZealFunction) ifTrue: [
+		node type: ([aClass zealReturnType] on: Error do: [nil]).
+		params := [aClass zealParams] on: Error do: [#()].
+		node parameters: (params collect: [:arr | ZealParameter new name: arr first; type: arr second]).
+		(node respondsTo: #effects:) ifTrue: [
+			node effects: ([aClass zealEffects] on: Error do: [#()])].
+		[| src compiled |
+		src := aClass zealSource.
+		compiled := ZealCompiler compile: src.
+		compiled := (compiled isKindOf: Collection) ifTrue: [compiled first] ifFalse: [compiled].
+		(compiled isKindOf: ZealFunction) ifTrue: [node body: compiled body]] on: Error do: [] ].
+	
+	(node isKindOf: ZealVariable) ifTrue: [
+		node type: ([aClass zealVarType] on: Error do: [nil]).
+		node isMutable: ([aClass zealIsMutable] on: Error do: [false]) ].
+	
+	((node isKindOf: ZealClass) or: [node isKindOf: ZealInterface]) ifTrue: [
+		(node respondsTo: #superclass:) ifTrue: [
+			node superclass: ([aClass zealSuperclass] on: Error do: [nil])].
+		(node respondsTo: #interfaces:) ifTrue: [
+			node interfaces: ([aClass zealInterfaces] on: Error do: [#()])].
+		self loadFieldsFromMethods: node from: aClass.
+		self loadMethodsFromMethods: node from: aClass ].
+	
+	^ node
 ]
 
 { #category : 'scanning' }

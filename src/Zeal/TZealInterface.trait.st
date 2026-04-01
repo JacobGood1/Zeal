@@ -6,18 +6,6 @@ Trait {
 	#package : 'Zeal'
 }
 
-{ #category : 'accessing' }
-TZealInterface >> definitionKind [ ^ #interface
-]
-
-{ #category : 'testing' }
-TZealInterface >> isInterface [ ^ true
-]
-
-{ #category : 'accessing' }
-TZealInterface >> methods [ ^ self zealNode methods
-]
-
-{ #category : 'accessing' }
-TZealInterface >> parents [ ^ self zealNode parents
+{ #category : 'metadata' }
+TZealInterface classSide >> definitionKind [ ^ #interface
 ]

@@ -221,30 +221,28 @@ ZealTheme class >> parenColor [
 	^ Color fromHexString: '9580FF'
 ]
 
-{ #category : 'highlighting' }
+{ #category : 'expanders' }
 ZealTheme class >> resolveExpander: word with: aResolver [
-	"Resolve a word to a ZealNode for expanding. Handles:
-	 - function calls: find-all → FindAll
-	 - class constructors: were-cat → were_cat
-	 - member access: obj/method → find method in any class"
+	"Resolve a word to a ZealNode for expanding. Returns nil if not found."
 	| node kebab pascal |
+	aResolver ifNil: [ ^ nil ].
 	
 	"Member access: obj/method"
 	(word includes: $/) ifTrue: [
 		| methodPart methodPascal |
 		methodPart := word copyAfterLast: $/.
 		methodPascal := '' join: ((methodPart substrings: '-') collect: [:s | s capitalized]).
-		node := aResolver findMethodAnywhere: methodPascal.
+		node := [aResolver findMethodAnywhere: methodPascal] on: Error do: [nil].
 		^ node ].
 	
 	"Function: kebab-case → PascalCase"
 	kebab := word copyReplaceAll: '/' with: '-'.
 	pascal := '' join: ((kebab substrings: '-') collect: [:s | s capitalized]).
-	node := aResolver findFunction: pascal.
+	node := [aResolver findFunction: pascal] on: Error do: [nil].
 	node ifNotNil: [ ^ node ].
 	
 	"Class: kebab-case → snake_case"
-	node := aResolver findClass: (word copyReplaceAll: '-' with: '_').
+	node := [aResolver findClass: (word copyReplaceAll: '-' with: '_')] on: Error do: [nil].
 	^ node
 ]
 

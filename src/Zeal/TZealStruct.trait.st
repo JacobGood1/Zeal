@@ -6,14 +6,6 @@ Trait {
 	#package : 'Zeal'
 }
 
-{ #category : 'accessing' }
-TZealStruct >> definitionKind [ ^ #struct
-]
-
-{ #category : 'accessing' }
-TZealStruct >> fields [ ^ self zealNode fields
-]
-
-{ #category : 'testing' }
-TZealStruct >> isStruct [ ^ true
+{ #category : 'metadata' }
+TZealStruct classSide >> definitionKind [ ^ #struct
 ]

@@ -349,7 +349,7 @@ ZealBot >> recolorLabels: aText [
 
 { #category : 'actions' }
 ZealBot >> runClaude: userText [
-	"Run claude CLI with GT MCP server, streaming, and conversation continuity"
+	"Run claude CLI with GT MCP server, streaming, and --continue for history"
 	| builder child stdout stderr done |
 	builder := GtExternalProcessBuilder new
 		command: 'claude';
@@ -359,15 +359,16 @@ ZealBot >> runClaude: userText [
 		arg: '--dangerously-skip-permissions';
 		arg: '--mcp-config'; arg: 'C:\projects\gt-mcp\.claude-chat-mcp.json'.
 	
-	"Continue conversation if we have a session ID"
+	"After first message, use --continue for conversation history"
 	conversationId ifNotNil: [
-		builder arg: '--resume'; arg: conversationId ].
+		builder arg: '--continue' ].
 	
 	(systemPrompt notNil and: [systemPrompt notEmpty]) ifTrue: [
 		builder arg: '--system-prompt'; arg: systemPrompt ].
 	
 	builder arg: userText.
 	builder pipeStdout. builder pipeStderr.
+	builder workingDirectory: 'C:\projects\gt-mcp'.
 	
 	child := builder spawn.
 	currentProcess := child.
@@ -387,7 +388,7 @@ ZealBot >> runClaude: userText [
 		currentProcess := nil
 	] on: Error do: [:e |
 		self enqueueTask: (BlTaskAction new action: [
-			self updateLastResponse: 'Error: ', e messageText ]).
+			self updateLastResponse: (String streamContents: [:s | s nextPutAll: 'Error: '; nextPutAll: e messageText])]).
 		currentProcess := nil ]
 ]
 

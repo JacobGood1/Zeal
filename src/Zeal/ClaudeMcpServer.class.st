@@ -169,7 +169,8 @@ ClaudeMcpServer >> addAllTools [
 	self addZealListDefinitionsTool.
 	self addZealSyntaxReferenceTool.
 	self addZealAddToClassTool.
-	self addZealUpdateDefinitionTool
+	self addZealUpdateDefinitionTool.
+	self addZealSetUsingsTool
 ]
 
 { #category : 'tools' }
@@ -480,11 +481,7 @@ ClaudeMcpServer >> addZealAddToClassTool [
 	self addTool: (GtLlmFunctionTool new
 		name: 'zealAddToClass';
 		parameters: {'className'. 'zealCode'};
-		description: 'Adds a field or method to a Zeal class, or replaces the entire class definition.
-For fields: zealAddToClass("mega-cat", "(def health :int 100)")
-For methods: zealAddToClass("mega-cat", "(defn attack :void [] (console/print \"Scratch!\"))")
-For whole class: zealAddToClass("mega-cat", "(defclass mega-cat [were-beast] ...)")
-If a class with the same name exists, it is replaced. Returns a plain text result.';
+		description: 'Adds a field or method to a class, or replaces the entire class. Persists changes.';
 		block: [ :functionCall |
 			[
 				| args className code browser selectedClass compiled result |
@@ -499,9 +496,9 @@ If a class with the same name exists, it is replaced. Returns a plain text resul
 						((d isKindOf: ZealClass) or: [(d isKindOf: ZealInterface)]) ifTrue: [
 							(d name = className or: [d name = (ZealNode new toKebabCase: className)]) ifTrue: [
 								selectedClass := d ] ] ] ].
-				selectedClass ifNil: [ ^ 'Error: Class not found: ', className ].
+				selectedClass ifNil: [ ^ String streamContents: [:s | s nextPutAll: 'Error: Class not found: '; nextPutAll: className] ].
 				compiled := ZealCompiler compile: code.
-				(compiled isKindOf: ZealCompileError) ifTrue: [ ^ 'Compile error: ', compiled printString ].
+				(compiled isKindOf: ZealCompileError) ifTrue: [ ^ String streamContents: [:s | s nextPutAll: 'Compile error: '; nextPutAll: compiled printString] ].
 				compiled := (compiled isKindOf: Collection) ifTrue: [compiled first] ifFalse: [compiled].
 				
 				((compiled isKindOf: ZealClass) or: [(compiled isKindOf: ZealInterface)]) ifTrue: [
@@ -514,21 +511,19 @@ If a class with the same name exists, it is replaced. Returns a plain text resul
 					defs at: (defs indexOf: selectedClass) put: compiled.
 					compiled generatedClass: selectedClass generatedClass.
 					mod instVarNamed: 'definitions' put: defs asArray.
-					browser enqueueTask: (BlTaskAction new action: [
-						browser rebuildTree.
-						browser selectNode: compiled.
-						[browser persistDefinition: compiled inNamespace: nil] on: Error do: [:e2 | ] ]).
-					result := 'Replaced class ', compiled name ]
+					selectedClass := compiled.
+					result := String streamContents: [:s | s nextPutAll: 'Replaced '; nextPutAll: (compiled class name copyReplaceAll: 'Zeal' with: ''); nextPutAll: ' "'; nextPutAll: compiled name; nextPutAll: '"'] ]
 				ifFalse: [
 					((compiled isKindOf: ZealFunction) or: [(compiled isKindOf: ZealVariable)]) ifFalse: [
-						^ 'Error: Expected def/var/defn/defclass, got ', compiled class name ].
+						^ String streamContents: [:s | s nextPutAll: 'Error: Expected def/var/defn/defclass, got '; nextPutAll: compiled class name] ].
 					browser addCompiled: compiled to: selectedClass.
-					browser enqueueTask: (BlTaskAction new action: [
-						browser selectNode: selectedClass.
-						[browser persistDefinition: selectedClass inNamespace: nil] on: Error do: [:e2 | ] ]).
-					result := 'Added ', compiled class name allButFirst: 4, ' "', compiled name, '" to ', className ].
+					result := String streamContents: [:s | s nextPutAll: 'Added '; nextPutAll: (compiled class name copyReplaceAll: 'Zeal' with: ''); nextPutAll: ' "'; nextPutAll: compiled name; nextPutAll: '" to '; nextPutAll: className] ].
+				
+				browser persistNode: selectedClass.
+				browser enqueueTask: (BlTaskAction new action: [
+					browser rebuildTree. browser selectNode: selectedClass ]).
 				result
-			] on: Error do: [:e | 'Error: ', e messageText ] ])
+			] on: Error do: [:e | String streamContents: [:s | s nextPutAll: 'Error: '; nextPutAll: e messageText] ] ])
 ]
 
 { #category : 'tools - zeal' }
@@ -544,7 +539,7 @@ ClaudeMcpServer >> addZealCompileTool [
 			  result := (result isKindOf: Collection) ifTrue: [result first] ifFalse: [result].
 			  result compileToVerse ]
 				on: Error
-				do: [ :e | 'Compile error: ', e messageText ] ])
+				do: [ :e | String streamContents: [:s | s nextPutAll: 'Compile error: '; nextPutAll: e messageText] ] ])
 ]
 
 { #category : 'tools - zeal' }
@@ -552,35 +547,10 @@ ClaudeMcpServer >> addZealDefinitionTool [
 	self addTool: (GtLlmFunctionTool new
 		name: 'zealGetDefinition';
 		parameters: {'name'};
-		description: 'Gets the full Zeal source code for a definition (class, function, interface, etc.) by name. Returns the complete (defclass ...) or (defn ...) form. Use this to look up any definition before modifying it.';
+		description: 'Gets structured info about a definition — type, fields, methods, usings, and source.';
 		block: [ :functionCall |
-			[
-				| name found kebabName allDefs |
-				name := functionCall arguments at: 'name'.
-				kebabName := ZealNode new toKebabCase: name.
-				found := nil.
-				allDefs := OrderedCollection new.
-				ZealBrowser allInstances do: [:b |
-					found ifNil: [
-						(b instVarNamed: 'project') modules do: [:mod |
-							(mod instVarNamed: 'definitions') do: [:d |
-								allDefs add: d name.
-								(d name = name or: [d name = kebabName]) ifTrue: [
-									found := d ] ] ] ] ].
-				found ifNil: [
-					"Fuzzy match — find closest"
-					| closest |
-					closest := allDefs detect: [:n | n includesSubstring: name caseSensitive: false] ifNone: [nil].
-					closest ifNotNil: [ 'Definition "', name, '" not found. Did you mean "', closest, '"?' ]
-						ifNil: [ 'Definition "', name, '" not found' ] ]
-				ifNotNil: [
-					| src |
-					src := [found compileToZeal] on: Error do: ['(error compiling zeal)'].
-					'Type: ', found class name allButFirst: 4, String lf,
-					'Name: ', found name, String lf,
-					'Zeal source:', String lf, src, String lf, String lf,
-					'Verse output:', String lf, ([found compileToVerse] on: Error do: ['(error)']) ]
-			] on: Error do: [:e | 'Error: ', e messageText ] ])
+			[self handleGetDefinition: (functionCall arguments at: 'name')]
+				on: Error do: [:e | String streamContents: [:s | s nextPutAll: 'Error: '; nextPutAll: e messageText]] ])
 ]
 
 { #category : 'tools - zeal' }
@@ -610,60 +580,118 @@ ClaudeMcpServer >> addZealListDefinitionsTool [
 ]
 
 { #category : 'tools - zeal' }
+ClaudeMcpServer >> addZealSetUsingsTool [
+	self addTool: (GtLlmFunctionTool new
+		name: 'zealSetUsings';
+		parameters: {'name'. 'usings'};
+		description: 'Sets the using declarations on a definition. Pass the definition name and a comma-separated list of module paths.
+Example: zealSetUsings("cute-kitty", "/Verse.org/Random, /Fortnite.com/Devices")
+Pass empty string to clear all usings.';
+		block: [ :functionCall |
+			[
+				| args defName usingStr browser proj found paths |
+				args := functionCall arguments.
+				defName := args at: 'name'.
+				usingStr := args at: 'usings'.
+				browser := ZealBrowser allInstances detect: [:b | b isAttachedToSceneGraph] ifNone: [nil].
+				browser ifNil: [ ^ 'Error: No active ZealBrowser' ].
+				proj := browser instVarNamed: 'project'.
+				
+				found := nil.
+				proj modules do: [:mod |
+					(mod instVarNamed: 'definitions') do: [:d |
+						(d name = defName or: [d name = (ZealNode new toKebabCase: defName)]) ifTrue: [
+							found := d ] ] ].
+				found ifNil: [ ^ String streamContents: [:s | s nextPutAll: 'Error: Definition "'; nextPutAll: defName; nextPutAll: '" not found'] ].
+				
+				"Parse comma-separated paths"
+				paths := (usingStr substrings: ',') collect: [:p | p trimBoth].
+				paths := paths reject: [:p | p isEmpty].
+				found usings: (paths collect: [:p | ZealUsing new path: p]).
+				
+				"Persist"
+				found generatedClass ifNotNil: [:genClass |
+					| zealSrc verseSrc |
+					zealSrc := [found compileToZeal] on: Error do: [''].
+					verseSrc := [found compileToVerse] on: Error do: [''].
+					genClass class compile: (String streamContents: [:s | s nextPutAll: 'zealSource'; lf; tab; nextPutAll: '^ '; nextPutAll: zealSrc printString]) classified: 'zeal'.
+					genClass class compile: (String streamContents: [:s | s nextPutAll: 'verseSource'; lf; tab; nextPutAll: '^ '; nextPutAll: verseSrc printString]) classified: 'zeal' ].
+				
+				browser enqueueTask: (BlTaskAction new action: [browser selectNode: found]).
+				
+				paths isEmpty
+					ifTrue: [ 'Cleared usings on "', defName, '"' ]
+					ifFalse: [ String streamContents: [:s | s nextPutAll: 'Set usings on "'; nextPutAll: defName; nextPutAll: '": '; nextPutAll: (', ' join: paths)] ]
+			] on: Error do: [:e | String streamContents: [:s | s nextPutAll: 'Error: '; nextPutAll: e messageText] ] ])
+]
+
+{ #category : 'tools - zeal' }
 ClaudeMcpServer >> addZealSyntaxReferenceTool [
 	self addTool: (GtLlmFunctionTool new
 		name: 'zealSyntaxReference';
 		parameters: #();
-		description: 'Returns the Zeal language syntax reference. Use this to learn how Zeal code should be written.';
+		description: 'Returns the Zeal language syntax reference.';
 		block: [ :functionCall |
 '# Zeal Language Reference
 
 Zeal is a Lisp-syntax language that transpiles to Epic Verse (UEFN).
 Code blocks should use ```zeal (NOT clojure or lisp).
 
+## Class names use @ prefix
+All class, interface, struct, and enum names are prefixed with @.
+This distinguishes types from functions/variables.
+
 ## Definitions
 (defn name:specifiers:return-type [param1:type1 param2:type2] body)
-(defclass name [parent1 parent2] body)
-(definterface name [parent1] body)
-(defstruct name body)
-(defenum name body)
+(defclass @name [@parent1 @parent2] body)
+(definterface @name [@parent1] body)
+(defstruct @name [field1:type default] [field2:type default])
+(defenum @name val1 val2 val3)
 (def name:type value)          — immutable field
 (var name:type value)          — mutable field
-(defmodule name)                — module declaration
+(defmodule name)               — module declaration
+
+## Constructor / Archetype
+(@class-name :field1 val1 :field2 val2) — creates an instance
 
 ## Control Flow
-(if cond then)                  -- just a single true branch
-(if cond then-expr else-expr)   —  if expression (positional)
-(for (x collection-or-range predicates) body)    —  for loop
-(loop body)                     — infinite loop
+(if cond then)                 — single branch
+(if cond then-expr else-expr)  — if/else (positional)
+(for [x 1..10] body)          — for with range
+(for [item collection] body)  — for with collection
+(for [x 1..10 (> x 3) (< x 8)] body) — for with predicates
+(loop body)                    — infinite loop
 (case val (pattern1 expr1) (pattern2 expr2)) — pattern match
-(block body)                    — block expression
-(defer expr)                    — deferred execution
-(break)                         — break from loop
-(return expr)                   — early return
+(block body)                   — block expression
+(defer expr)                   — deferred execution
+(break)                        — break from loop
+(return expr)                  — early return
 
 ## Member Access
-obj/field                       — property access (-> obj.Field in Verse)
-(obj/method args)               — method call (-> obj.Method(args) in Verse)
+obj/field                      — property access (-> obj.Field in Verse)
+(obj/method args)              — method call (-> obj.Method(args) in Verse)
 
 ## Operators
-(+ a b) (- a b) (* a b) (/ a b) — arithmetic
+(+ a b) (- a b) (* a b) (/ a b) — arithmetic (wrapped in parens)
 (= a b) (<> a b) (< a b) (> a b) — comparison
-(? something)                    - query
-(and a b) (or a b) (not a)      — logical
-(set x value)                   — mutation
-(def name value)                 — binding
+(? something)                  — query/failable
+(and a b) (or a b) (not a)    — logical
+(set x value)                  — mutation
+(:= name value)                — binding
 
 ## Types
 :int :float :string :logic :void :char — basic types
-:type?                          — optional type (-> ?type in Verse)
-[]:type                         — array type
+:type?                         — optional type (-> ?type in Verse)
+[]:type                        — array type
+Type inference: (var x 42) infers :int, (var d (@my-class :field 1)) infers :@my-class
 
 ## Abstract Methods
-(defn name:return-type [])            — empty body = abstract (no = {} in Verse output)
+(defn name:type [])            — empty body = abstract
 
-## Specifiers
-:public :private :internal :final :abstract :override :unique :transacts :decides :suspends :varies :converges :computes :epic_internal
+## Specifiers (colon chain on name)
+name:public:override:suspends:void
+<public> <private> <internal> <final> <abstract> <override> <unique>
+<transacts> <decides> <suspends> <varies> <converges> <computes>
 ' ])
 ]
 
@@ -672,10 +700,7 @@ ClaudeMcpServer >> addZealUpdateDefinitionTool [
 	self addTool: (GtLlmFunctionTool new
 		name: 'zealUpdateDefinition';
 		parameters: {'name'. 'zealCode'};
-		description: 'Updates or replaces any top-level definition (function, class, interface, struct, enum, variable) by name. Pass the full new Zeal source. If a definition with the same name exists, it is replaced.
-Examples:
-  zealUpdateDefinition("bombtastic", "(defn bombtastic:suspends:void [] (print \"boom!\"))")
-  zealUpdateDefinition("my-class", "(defclass my-class [parent] (def x:int 0))")';
+		description: 'Updates or replaces any top-level definition by name. Pass the full new Zeal source. Persists to generated class and .verse file.';
 		block: [ :functionCall |
 			[
 				| args name code browser proj found foundMod compiled |
@@ -686,47 +711,44 @@ Examples:
 				browser ifNil: [ ^ 'Error: No active ZealBrowser' ].
 				proj := browser instVarNamed: 'project'.
 				
-				"Find existing definition"
 				found := nil. foundMod := nil.
 				proj modules do: [:mod |
-					| defs |
-					defs := mod instVarNamed: 'definitions'.
-					defs do: [:d |
+					(mod instVarNamed: 'definitions') do: [:d |
 						(d name = name or: [d name = (ZealNode new toKebabCase: name)]) ifTrue: [
 							found := d. foundMod := mod ] ] ].
 				
-				"Compile new code"
 				compiled := ZealCompiler compile: code.
-				(compiled isKindOf: ZealCompileError) ifTrue: [ ^ 'Compile error: ', compiled printString ].
+				(compiled isKindOf: ZealCompileError) ifTrue: [ 
+					^ String streamContents: [:s | s nextPutAll: 'Compile error: '; nextPutAll: compiled printString] ].
 				compiled := (compiled isKindOf: Collection) ifTrue: [compiled first] ifFalse: [compiled].
 				
 				found ifNotNil: [
-					"Replace existing"
 					| defs idx |
 					compiled generatedClass: found generatedClass.
 					defs := (foundMod instVarNamed: 'definitions') asOrderedCollection.
 					idx := defs indexOf: found.
-					idx > 0 ifTrue: [ defs at: idx put: compiled ]
-						ifFalse: [ defs add: compiled ].
-					foundMod instVarNamed: 'definitions' put: defs asArray.
-					browser enqueueTask: (BlTaskAction new action: [
-						browser rebuildTree.
-						browser selectNode: compiled.
-						[browser persistDefinition: compiled inNamespace: nil] on: Error do: [:e2 | ] ]).
-					'Replaced ', compiled class name allButFirst: 4, ' "', compiled name, '"' ]
+					idx > 0 ifTrue: [ defs at: idx put: compiled ] ifFalse: [ defs add: compiled ].
+					foundMod instVarNamed: 'definitions' put: defs asArray ]
 				ifNil: [
-					"Add new to first module"
 					| mod defs |
 					mod := proj modules first.
 					defs := (mod instVarNamed: 'definitions') asOrderedCollection.
 					defs add: compiled.
-					mod instVarNamed: 'definitions' put: defs asArray.
-					browser enqueueTask: (BlTaskAction new action: [
-						browser rebuildTree.
-						browser selectNode: compiled.
-						[browser persistDefinition: compiled inNamespace: nil] on: Error do: [:e2 | ] ]).
-					'Added new ', compiled class name allButFirst: 4, ' "', compiled name, '"' ]
-			] on: Error do: [:e | 'Error: ', e messageText ] ])
+					mod instVarNamed: 'definitions' put: defs asArray ].
+				
+				"Persist using browser's unified method"
+				browser persistNode: compiled.
+				
+				browser enqueueTask: (BlTaskAction new action: [
+					browser instVarNamed: 'selectedNode' put: nil.
+					browser rebuildTree.
+					browser selectNode: compiled ]).
+				
+				String streamContents: [:s |
+					s nextPutAll: (found ifNotNil: ['Replaced '] ifNil: ['Added new ']).
+					s nextPutAll: (compiled class name copyReplaceAll: 'Zeal' with: '').
+					s nextPutAll: ' "'; nextPutAll: compiled name; nextPutAll: '"' ]
+			] on: Error do: [:e | String streamContents: [:s | s nextPutAll: 'Error: '; nextPutAll: e messageText] ] ])
 ]
 
 { #category : 'accessing' }
@@ -784,6 +806,51 @@ ClaudeMcpServer >> buildTableCode: colDefs rows: rowData [
 
 	stream nextPutAll: 'view asElement'.
 	^ stream contents
+]
+
+{ #category : 'tools - zeal' }
+ClaudeMcpServer >> emitClassInfo: aNode on: s lf: lf [
+	"Emit structured class/interface info"
+	(aNode respondsTo: #superclass) ifTrue: [
+		aNode superclass ifNotNil: [:sc | s nextPutAll: 'Extends: '; nextPutAll: sc; nextPutAll: lf]].
+	((aNode respondsTo: #interfaces) and: [aNode interfaces notNil]) ifTrue: [
+		aNode interfaces notEmpty ifTrue: [
+			s nextPutAll: 'Interfaces: '; nextPutAll: (aNode interfaces joinUsing: ', '); nextPutAll: lf]].
+	
+	"Fields"
+	((aNode respondsTo: #fields) and: [aNode fields notNil]) ifTrue: [
+		aNode fields notEmpty ifTrue: [
+			s nextPutAll: lf; nextPutAll: 'Fields:'; nextPutAll: lf.
+			aNode fields do: [:f |
+				| mut |
+				mut := (f respondsTo: #isMutable) ifTrue: [f isMutable] ifFalse: [false].
+				s nextPutAll: '  '.
+				mut ifTrue: [s nextPutAll: 'var '] ifFalse: [s nextPutAll: 'def '].
+				s nextPutAll: f name.
+				(f respondsTo: #type) ifTrue: [f type ifNotNil: [:t | s nextPutAll: ':'; nextPutAll: t]].
+				s nextPutAll: lf ] ] ].
+	
+	"Methods"
+	((aNode respondsTo: #methods) and: [aNode methods notNil]) ifTrue: [
+		aNode methods notEmpty ifTrue: [
+			s nextPutAll: lf; nextPutAll: 'Methods:'; nextPutAll: lf.
+			aNode methods do: [:m |
+				s nextPutAll: '  '; nextPutAll: m name.
+				m type ifNotNil: [:t | s nextPutAll: ':'; nextPutAll: t].
+				s nextPutAll: '('.
+				s nextPutAll: ((m parameters collect: [:p | 
+					p name, ':', (p type ifNil: ['any'])]) joinUsing: ', ').
+				s nextPutAll: ')'; nextPutAll: lf ] ] ]
+]
+
+{ #category : 'tools - zeal' }
+ClaudeMcpServer >> emitFunctionInfo: aNode on: s lf: lf [
+	"Emit structured function info"
+	s nextPutAll: 'Return: '; nextPutAll: (aNode type ifNil: ['void']); nextPutAll: lf.
+	s nextPutAll: 'Params: '.
+	s nextPutAll: ((aNode parameters collect: [:p | 
+		p name, ':', (p type ifNil: ['any'])]) joinUsing: ', ').
+	s nextPutAll: lf
 ]
 
 { #category : 'gt-actions' }
@@ -934,6 +1001,56 @@ ClaudeMcpServer >> gtToolsFor: aView [
 		priority: 2;
 		object: [ server tools ];
 		view: #gtItemsFor:
+]
+
+{ #category : 'tools - zeal' }
+ClaudeMcpServer >> handleGetDefinition: name [
+	"Look up a Zeal definition and return structured info"
+	| found kebabName allDefs lf typeName |
+	kebabName := ZealNode new toKebabCase: name.
+	found := nil.
+	allDefs := OrderedCollection new.
+	ZealBrowser allInstances do: [:b |
+		found ifNil: [
+			(b instVarNamed: 'project') modules do: [:mod |
+				(mod instVarNamed: 'definitions') do: [:d |
+					allDefs add: d name.
+					(d name = name or: [d name = kebabName]) ifTrue: [found := d]]]]].
+	
+	found ifNil: [
+		| closest |
+		closest := allDefs detect: [:n | n includesSubstring: name caseSensitive: false] ifNone: [nil].
+		^ closest 
+			ifNotNil: ['Not found. Did you mean "', closest, '"?']
+			ifNil: ['Definition "', name, '" not found']].
+	
+	lf := String lf.
+	typeName := found class name copyReplaceAll: 'Zeal' with: ''.
+	
+	^ String streamContents: [:s |
+		s nextPutAll: 'Type: '; nextPutAll: typeName; nextPutAll: lf.
+		s nextPutAll: 'Name: '; nextPutAll: found name; nextPutAll: lf.
+		
+		found usings notEmpty ifTrue: [
+			s nextPutAll: 'Usings: '.
+			s nextPutAll: ((found usings collect: [:u | (u respondsTo: #path) ifTrue: [u path] ifFalse: [u printString]]) joinUsing: ', ').
+			s nextPutAll: lf].
+		
+		found specifiers notEmpty ifTrue: [
+			s nextPutAll: 'Specifiers: '; nextPutAll: (found specifiers joinUsing: ', '); nextPutAll: lf].
+		
+		"Class/Interface"
+		((found isKindOf: ZealClass) or: [found isKindOf: ZealInterface]) ifTrue: [
+			self emitClassInfo: found on: s lf: lf].
+		
+		"Function"
+		(found isKindOf: ZealFunction) ifTrue: [
+			self emitFunctionInfo: found on: s lf: lf].
+		
+		s nextPutAll: lf; nextPutAll: 'Zeal source:'; nextPutAll: lf.
+		s nextPutAll: ([found compileToZeal] on: Error do: ['(error)']); nextPutAll: lf.
+		s nextPutAll: lf; nextPutAll: 'Verse output:'; nextPutAll: lf.
+		s nextPutAll: ([found compileToVerse] on: Error do: ['(error)'])]
 ]
 
 { #category : 'initialization' }
