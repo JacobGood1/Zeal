@@ -5,10 +5,12 @@ Class {
 	#package : 'BaselineOfZeal'
 }
 
-{ #category : 'baseline' }
+{ #category : 'baselines' }
 BaselineOfZeal >> baseline: spec [
 	<baseline>
-		^ spec for: #common do: [
-			spec package: 'Zeal'
-		]
+	
+	^ spec for: #common do: [
+		spec package: 'Zeal'.
+		spec package: 'GDZeal' with: [ spec requires: #('Zeal') ]
+	]
 ]

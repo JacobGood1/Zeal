@@ -7,7 +7,7 @@ Class {
 
 { #category : 'generated-accessing' }
 ZealParser class >> cacheId [
-	^'2026-03-23T21:25:13.933-04:00'
+	^'2026-04-04T20:25:55.607-04:00'
 ]
 
 { #category : 'generated' }
@@ -26,7 +26,7 @@ ZealParser class >> definitionComment [
 <charLiteral> : \' ([^'\\] | \\ .) \' ;
 <range> : [0-9]+ \.\. [0-9]+ ;
 <colonChain> : [a-zA-Z_] [a-zA-Z0-9_\-]* (\: \[\] [a-zA-Z_] [a-zA-Z0-9_\-\?]* | \: [a-zA-Z_@\?] [a-zA-Z0-9_\-\?]*)+ ;
-<symbol> : [a-zA-Z_!\+\-\*\/\=\<\>\&\.\?\@\#] [a-zA-Z0-9_!\+\-\*\/\=\<\>\&\.\?\-]* ;
+<symbol> : [a-zA-Z_!\+\-\*\/\=\<\>\&\.\?\@\#] [a-zA-Z0-9_!\+\-\*\/\=\<\>\&\.\?\@\#\-]* ;
 <keyword> : \: [a-zA-Z_] [a-zA-Z0-9_\-]* ;
 <leftParen> : \( ;
 <rightParen> : \) ;
@@ -59,28 +59,28 @@ Atom
 { #category : 'generated' }
 ZealParser class >> reduceTable [
 ^#(
-	#(20 0 #reduceActionForExpressions1: 764929 false) 
-	#(19 1 #reduceActionForProgram1: 735233 false) 
-	#(27 1 #reduceActionForAtom1: 1197057 false) 
-	#(27 1 #reduceActionForAtom2: 1197058 false) 
-	#(27 1 #reduceActionForAtom3: 1197059 false) 
-	#(27 1 #reduceActionForAtom4: 1197060 false) 
-	#(27 1 #reduceActionForAtom5: 1197061 false) 
-	#(27 1 #reduceActionForAtom6: 1197062 false) 
-	#(27 1 #reduceActionForAtom7: 1197063 false) 
-	#(27 1 #reduceActionForAtom8: 1197064 false) 
-	#(27 1 #reduceActionForAtom9: 1197065 false) 
-	#(25 0 #reduceActionForExpressions1: 1102849 false) 
-	#(20 2 #reduceActionForExpressions2: 764930 false) 
-	#(21 1 #liftFirstValue: 820226 false) 
-	#(21 1 #liftFirstValue: 820227 false) 
-	#(21 1 #liftFirstValue: 820228 false) 
-	#(21 1 #liftFirstValue: 820225 false) 
-	#(22 3 #reduceActionForList1: 863233 false) 
-	#(23 3 #reduceActionForVector1: 941057 false) 
-	#(24 3 #reduceActionForMap1: 1029121 false) 
-	#(25 2 #reduceActionForExpressions2: 1102850 false) 
-	#(26 2 #reduceActionForMapPair1: 1142785 false)
+	#(20 0 #reduceActionForExpressions1: 768001 false) 
+	#(19 1 #reduceActionForProgram1: 738305 false) 
+	#(27 1 #reduceActionForAtom1: 1200129 false) 
+	#(27 1 #reduceActionForAtom2: 1200130 false) 
+	#(27 1 #reduceActionForAtom3: 1200131 false) 
+	#(27 1 #reduceActionForAtom4: 1200132 false) 
+	#(27 1 #reduceActionForAtom5: 1200133 false) 
+	#(27 1 #reduceActionForAtom6: 1200134 false) 
+	#(27 1 #reduceActionForAtom7: 1200135 false) 
+	#(27 1 #reduceActionForAtom8: 1200136 false) 
+	#(27 1 #reduceActionForAtom9: 1200137 false) 
+	#(25 0 #reduceActionForExpressions1: 1105921 false) 
+	#(20 2 #reduceActionForExpressions2: 768002 false) 
+	#(21 1 #liftFirstValue: 823298 false) 
+	#(21 1 #liftFirstValue: 823299 false) 
+	#(21 1 #liftFirstValue: 823300 false) 
+	#(21 1 #liftFirstValue: 823297 false) 
+	#(22 3 #reduceActionForList1: 866305 false) 
+	#(23 3 #reduceActionForVector1: 944129 false) 
+	#(24 3 #reduceActionForMap1: 1032193 false) 
+	#(25 2 #reduceActionForExpressions2: 1105922 false) 
+	#(26 2 #reduceActionForMapPair1: 1145857 false)
 	).
 ]
 
