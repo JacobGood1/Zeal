@@ -692,7 +692,7 @@ GDZealBrowser >> selectFile: anAssociation [
 	detailElement addChild: editor
 ]
 
-{ #category : 'actions' }
+{ #category : 'navigation' }
 GDZealBrowser >> selectNode: aNode [
 	"Show detail editor for selected definition"
 	| header editor statusLabel compileBtn typeLabel |
@@ -700,11 +700,11 @@ GDZealBrowser >> selectNode: aNode [
 	detailElement removeChildren.
 	
 	"Header"
-	typeLabel := aNode isKindOf: ZealClass
+	typeLabel := (aNode isKindOf: ZealClass)
 		ifTrue: [ aNode superclass ]
 		ifFalse: [ aNode class name allButFirst: 4 "strip Zeal" ].
 	statusLabel := BrLabel new
-		aptitude: (BrGlamorousLabelAptitude new foreground: GDZealTheme commentColor; fontSize: 11);
+		aptitude: (BrGlamorousLabelAptitude new foreground: self themeClass commentColor; fontSize: 11);
 		text: '';
 		margin: (BlInsets left: 12).
 	header := BlElement new
@@ -712,11 +712,11 @@ GDZealBrowser >> selectNode: aNode [
 		constraintsDo: [ :c | c horizontal matchParent. c vertical fitContent ];
 		padding: (BlInsets bottom: 8).
 	header addChild: (BrLabel new
-		aptitude: (BrGlamorousLabelAptitude new foreground: GDZealTheme operatorColor; fontSize: 11);
+		aptitude: (BrGlamorousLabelAptitude new foreground: self themeClass operatorColor; fontSize: 11);
 		text: typeLabel;
 		margin: (BlInsets right: 8)).
 	header addChild: (BrLabel new
-		aptitude: (BrGlamorousLabelAptitude new foreground: GDZealTheme definitionNameColor; fontSize: 14; bold);
+		aptitude: (BrGlamorousLabelAptitude new foreground: self themeClass definitionNameColor; fontSize: 14; bold);
 		text: aNode name).
 	compileBtn := BrButton new
 		aptitude: (BrGlamorousButtonWithLabelAptitude new);
@@ -956,4 +956,9 @@ GDZealBrowser >> swapForm: anEditor up: isUp [
 	anEditor editor inserter at: 0; string: result; withoutCursorUpdate; insert.
 	suppressRehighlight := false.
 	anEditor editor navigator moveTo: ((newCursorPos max: 0) min: result size); apply
+]
+
+{ #category : 'hooks' }
+GDZealBrowser >> themeClass [
+	^ GDZealTheme
 ]

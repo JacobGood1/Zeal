@@ -93,12 +93,6 @@ VZealTheme class >> cursorWidth [
 ]
 
 { #category : 'colors' }
-VZealTheme class >> definitionNameColor [
-	"Pink/purple for definition names"
-	^ Color fromHexString: 'E876B0'
-]
-
-{ #category : 'colors' }
 VZealTheme class >> foregroundColor [
 	^ Color fromHexString: 'CDD7DC'
 ]
@@ -222,11 +216,6 @@ VZealTheme class >> resolveExpander: word with: aResolver [
 { #category : 'colors' }
 VZealTheme class >> selectionColor [
 	^ self cursorColor alpha: 0.3
-]
-
-{ #category : 'colors' }
-VZealTheme class >> specialFormColor [
-	^ Color fromHexString: 'FF3D7F'
 ]
 
 { #category : 'highlighting' }

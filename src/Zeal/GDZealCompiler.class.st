@@ -1,8 +1,8 @@
 Class {
 	#name : 'GDZealCompiler',
-	#superclass : 'ZealCompiler',
-	#category : 'Zeal',
-	#package : 'Zeal'
+	#superclass : 'Object',
+	#category : 'GDZeal',
+	#package : 'GDZeal'
 }
 
 { #category : 'building - forms' }
@@ -13,6 +13,12 @@ GDZealCompiler class >> buildAs: aListNode [
 	^ ZealFunctionCall new
 		functionName: 'as';
 		arguments: (exprs allButFirst collect: [ :e | self buildExpression: e ])
+]
+
+{ #category : 'helpers' }
+GDZealCompiler class >> buildBody: exprs [
+	"Build body expressions"
+	^ exprs collect: [ :e | self buildExpression: e ]
 ]
 
 { #category : 'building - GECS' }
@@ -213,6 +219,23 @@ GDZealCompiler class >> buildDefsystem: aListNode [
 	^ cls
 ]
 
+{ #category : 'compiling' }
+GDZealCompiler class >> buildExpression: aNode [
+	"Dispatch — lists go through our buildList, atoms/vectors/maps delegate to ZealCompiler"
+	(aNode isKindOf: ZealListNode) ifTrue: [ ^ self buildList: aNode ].
+	^ ZealCompiler buildExpression: aNode
+]
+
+{ #category : 'compiling' }
+GDZealCompiler class >> buildFromAST: aZealProgramNode [
+	"Walk AST and build ZealNode objects"
+	| results |
+	results := aZealProgramNode expressions collect: [ :expr |
+		self buildExpression: expr ].
+	results size = 1 ifTrue: [ ^ results first ].
+	^ results
+]
+
 { #category : 'helpers' }
 GDZealCompiler class >> buildInitParams: aVectorNode [
 	"Parse init params: [name:type default name:type default ...]"
@@ -246,9 +269,9 @@ GDZealCompiler class >> buildInitParams: aVectorNode [
 	^ params
 ]
 
-{ #category : 'building' }
+{ #category : 'compiling' }
 GDZealCompiler class >> buildList: aListNode [
-	"Check GDZeal forms first via specialFormBuilders (now merged), then delegate to super for everything else"
+	"Check GDZeal forms first, then delegate to ZealCompiler for everything else"
 	| exprs head headStr |
 	exprs := aListNode expressions.
 	exprs isEmpty ifTrue: [ ^ ZealLiteral new value: '()'; literalType: #unit ].
@@ -257,12 +280,11 @@ GDZealCompiler class >> buildList: aListNode [
 	(head isKindOf: ZealSymbolNode) ifTrue: [ headStr := head value value ].
 	(head isKindOf: ZealColonChainNode) ifTrue: [
 		headStr := (ZealColonChainResolver resolve: head value value) at: #name ].
-	headStr ifNil: [ ^ self buildFunctionCall: aListNode ].
-	"All forms (GDZeal + base) in one lookup"
+	headStr ifNil: [ ^ ZealCompiler buildFunctionCall: aListNode ].
+	"GDZeal-specific forms"
 	self specialFormBuilders at: headStr ifPresent: [ :sel | ^ self perform: sel with: aListNode ].
-	"Slash dispatch for GDZeal"
-	(headStr includes: $/) ifTrue: [ ^ self buildFunctionCall: aListNode ].
-	^ self buildFunctionCall: aListNode
+	"Everything else -> ZealCompiler"
+	^ ZealCompiler buildList: aListNode
 ]
 
 { #category : 'building - forms' }
@@ -315,17 +337,26 @@ GDZealCompiler class >> compileToGDScript: aString withRegistry: aRegistry [
 	^ GDZealCodeGenerator compile: aString withRegistry: aRegistry
 ]
 
-{ #category : 'building' }
+{ #category : 'helpers' }
+GDZealCompiler class >> resolveNameNode: aNode [
+	^ ZealCompiler resolveNameNode: aNode
+]
+
+{ #category : 'compiling' }
 GDZealCompiler class >> specialFormBuilders [
-	"GDZeal forms merged with base Zeal forms"
-	| base |
-	base := super specialFormBuilders copy.
-	base at: 'defcomp' put: #buildDefcomp:.
-	base at: 'defentity' put: #buildDefentity:.
-	base at: 'defsystem' put: #buildDefsystem:.
-	base at: 'defobserver' put: #buildDefobserver:.
-	base at: 'when' put: #buildWhen:.
-	base at: 'match' put: #buildMatch:.
-	base at: 'as' put: #buildAs:.
-	^ base
+	"Only GDZeal-specific forms. Shared forms delegate to ZealCompiler."
+	^ Dictionary new
+		at: 'defcomp' put: #buildDefcomp:;
+		at: 'defentity' put: #buildDefentity:;
+		at: 'defsystem' put: #buildDefsystem:;
+		at: 'defobserver' put: #buildDefobserver:;
+		at: 'when' put: #buildWhen:;
+		at: 'match' put: #buildMatch:;
+		at: 'as' put: #buildAs:;
+		yourself
+]
+
+{ #category : 'helpers' }
+GDZealCompiler class >> stripClassPrefix: aName [
+	^ ZealCompiler stripClassPrefix: aName
 ]

@@ -94,8 +94,8 @@ ZealTheme class >> cursorWidth [
 
 { #category : 'colors' }
 ZealTheme class >> definitionNameColor [
-	"Pink/purple for definition names"
-	^ Color fromHexString: 'E876B0'
+	"Light purple for def/var names across all dialects"
+	^ Color fromHexString: 'D4AAFF'
 ]
 
 { #category : 'colors' }
@@ -120,11 +120,12 @@ ZealTheme class >> highlight: aString [
 
 { #category : 'highlighting' }
 ZealTheme class >> highlightDefinitionNames: aString text: text [
-	"Color definition names after def-forms."
-	| defForms size |
+	"Color definition names and colon-chain name parts."
+	| defForms size i |
 	defForms := (self specialForms select: [ :f | f beginsWith: 'def' ]) asOrderedCollection.
 	defForms addAll: #('def' 'var').
 	size := aString size.
+	"Pass 1: color definition names after def-forms"
 	defForms do: [ :form |
 		| searchFrom |
 		searchFrom := 1.
@@ -141,7 +142,19 @@ ZealTheme class >> highlightDefinitionNames: aString text: text [
 					[ nameEnd <= size and: [ | c | c := aString at: nameEnd. c isLetter or: [ c isDigit or: [ '_-?!:/@' includes: c ] ] ] ] whileTrue: [ nameEnd := nameEnd + 1 ].
 					nameEnd > nameStart ifTrue: [
 						(text from: nameStart to: nameEnd - 1) foreground: self definitionNameColor ] ].
-				searchFrom := afterForm ] ] ]
+				searchFrom := afterForm ] ] ].
+	"Pass 2: color name part of colon chains (name before first :type)"
+	i := 1.
+	[ i <= size ] whileTrue: [
+		| ch start |
+		ch := aString at: i.
+		(ch isLetter or: [ ch = $_ ]) ifTrue: [
+			start := i.
+			[ i <= size and: [ | c | c := aString at: i. c isLetter or: [ c isDigit or: [ '_-?!' includes: c ] ] ] ] whileTrue: [ i := i + 1 ].
+			(i <= size and: [ (aString at: i) = $: and: [ i + 1 <= size and: [ (aString at: i + 1) isLetter ] ] ]) ifTrue: [
+				(text from: start to: i - 1) foreground: self definitionNameColor.
+				[ i <= size and: [ | c | c := aString at: i. c isLetter or: [ c isDigit or: [ '_-?!/@:' includes: c ] ] ] ] whileTrue: [ i := i + 1 ] ] ]
+		ifFalse: [ i := i + 1 ] ]
 ]
 
 { #category : 'highlighting' }
@@ -209,7 +222,8 @@ ZealTheme class >> selectionColor [
 
 { #category : 'colors' }
 ZealTheme class >> specialFormColor [
-	^ Color fromHexString: 'FF3D7F'
+	"Green for all keywords/special forms across all dialects"
+	^ self keywordColor
 ]
 
 { #category : 'language' }

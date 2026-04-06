@@ -1,11 +1,13 @@
 Class {
 	#name : 'GDZealCodeGenerator',
-	#superclass : 'ZealCodeGenerator',
+	#superclass : 'Object',
 	#instVars : [
+		'stream',
+		'indentLevel',
 		'registry'
 	],
-	#category : 'Zeal',
-	#package : 'Zeal'
+	#category : 'GDZeal',
+	#package : 'GDZeal'
 }
 
 { #category : 'compiling' }
@@ -21,6 +23,16 @@ GDZealCodeGenerator class >> compile: aString withRegistry: aRegistry [
 	gen := self new.
 	gen setRegistry: aRegistry.
 	^ gen generate: (ZealParser parse: aString)
+]
+
+{ #category : 'emitting' }
+GDZealCodeGenerator >> dedent [
+	indentLevel := indentLevel - 1
+]
+
+{ #category : 'emitting' }
+GDZealCodeGenerator >> emit: aString [
+	stream nextPutAll: aString
 ]
 
 { #category : 'generating - GECS helpers' }
@@ -355,6 +367,15 @@ GDZealCodeGenerator >> emitSystemSetup: aListNode [
 		self indent.
 		bodyExprs do: [ :e | self nl. self visitExpression: e ].
 		self dedent ]
+]
+
+{ #category : 'generating' }
+GDZealCodeGenerator >> generate: aZealProgramNode [
+	"Main entry point: walk all top-level expressions"
+	aZealProgramNode expressions
+		do: [ :expr | self visitExpression: expr ]
+		separatedBy: [ self nl. self nl ].
+	^ self output
 ]
 
 { #category : 'generating - expressions' }
@@ -901,9 +922,15 @@ GDZealCodeGenerator >> generateWhen: aListNode [
 	self dedent
 ]
 
+{ #category : 'emitting' }
+GDZealCodeGenerator >> indent [
+	indentLevel := indentLevel + 1
+]
+
 { #category : 'initialization' }
 GDZealCodeGenerator >> initialize [
-	super initialize.
+	stream := WriteStream on: String new.
+	indentLevel := 0.
 	registry := GDZealComponentRegistry new
 ]
 
@@ -916,6 +943,11 @@ GDZealCodeGenerator >> isOperator: aString [
 GDZealCodeGenerator >> nl [
 	stream nextPutAll: String crlf.
 	self emitIndent
+]
+
+{ #category : 'accessing' }
+GDZealCodeGenerator >> output [
+	^ stream contents
 ]
 
 { #category : 'accessing' }
@@ -1053,6 +1085,14 @@ GDZealCodeGenerator >> visitAtom: aNode [
 		self emit: 'range(' , (aNode value value copyReplaceAll: '..' with: ', ') , ')'. ^ self ].
 	"All other literals (int, float, hex, string, char)"
 	self emit: aNode value value
+]
+
+{ #category : 'visiting' }
+GDZealCodeGenerator >> visitExpression: aNode [
+	(aNode isKindOf: ZealListNode) ifTrue: [ ^ self visitList: aNode ].
+	(aNode isKindOf: ZealVectorNode) ifTrue: [ ^ self visitVector: aNode ].
+	(aNode isKindOf: ZealMapNode) ifTrue: [ ^ self visitMap: aNode ].
+	^ self visitAtom: aNode
 ]
 
 { #category : 'visiting' }
