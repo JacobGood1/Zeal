@@ -222,6 +222,18 @@ ZealBrowser >> flashEditor: anEditor color: aColor [
 	  [ anEditor border: originalBorder. anEditor background: originalBg ] on: Error do: [] ] fork
 ]
 
+{ #category : 'actions' }
+ZealBrowser >> flashError: anEditor [
+	"Flash editor with error color (red glow)"
+	self flashEditor: anEditor color: (Color red alpha: 0.3)
+]
+
+{ #category : 'actions' }
+ZealBrowser >> flashSuccess: anEditor [
+	"Flash editor with success color (cyan glow)"
+	self flashEditor: anEditor color: (self themeClass cursorColor alpha: 0.2)
+]
+
 { #category : 'parinfer' }
 ZealBrowser >> indentLine: zealEditor [
 	"Smart indent: align to opener column + 1. If already there, add 2 more."
@@ -322,6 +334,49 @@ ZealBrowser >> removeLine: zealEditor [
 	zealEditor editor navigator
 		moveTo: (newCursorPos min: zealEditor editor text size);
 		apply
+]
+
+{ #category : 'navigation' }
+ZealBrowser >> resolveWord: word [
+	"Resolve a word to a ZealNode — type-aware member access, then generic lookup"
+	| resolver node kebab pascal snake objName methodName typeName cls methodPascal |
+	resolver := ZealCompiler currentResolver ifNil: [
+		project ifNotNil: [ ZealTypeResolver forProject: project ] ].
+	resolver ifNil: [ ^ nil ].
+	
+	"Member access: obj/method"
+	(word includes: $/) ifTrue: [
+		objName := word copyUpToLast: $/.
+		methodName := word copyAfterLast: $/.
+		methodPascal := '' join: ((methodName substrings: '-') collect: [:s | s capitalized]).
+		"Try type-aware: find type of obj, find method on that class"
+		typeName := (ZealCompletionStrategy new project: project) findTypeOf: objName in: ''.
+		typeName ifNotNil: [
+			cls := resolver findClass: (typeName copyReplaceAll: '-' with: '_').
+			cls ifNotNil: [
+				node := resolver findMethod: methodPascal inClass: cls name.
+				node ifNotNil: [ ^ node ] ] ].
+		"Fallback: search project classes first, then all"
+		project modules do: [:mod |
+			mod definitions do: [:d |
+				((d respondsTo: #methods) and: [d methods notNil]) ifTrue: [
+					d methods do: [:m |
+						(m name asLowercase = methodPascal asLowercase) ifTrue: [ ^ m ] ] ] ] ].
+		^ resolver findMethodAnywhere: methodPascal ].
+	
+	"Function"
+	kebab := word copyReplaceAll: '/' with: '-'.
+	pascal := '' join: ((kebab substrings: '-') collect: [:s | s capitalized]).
+	node := resolver findFunction: pascal.
+	node ifNotNil: [ ^ node ].
+	
+	"Class"
+	snake := word copyReplaceAll: '-' with: '_'.
+	node := resolver findClass: snake.
+	node ifNotNil: [ ^ node ].
+	
+	"Method"
+	^ resolver findMethodAnywhere: pascal
 ]
 
 { #category : 'highlighting' }

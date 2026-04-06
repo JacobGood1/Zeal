@@ -227,18 +227,18 @@ GDZealBrowser >> buildWelcome [
 		text: 'Select a definition or create a new one'
 ]
 
-{ #category : 'building' }
+{ #category : 'ui' }
 GDZealBrowser >> buildZealEditor: sourceString [
 	"Create a fully configured GDZeal code editor with all Zeal-like features"
 	| editor styler text |
 	styler := GDZealTextStyler new.
 	styler browser: self.
 	"Pre-apply syntax highlighting so text is colored immediately"
-	text := GDZealTheme highlight: sourceString.
+	text := self themeClass highlight: sourceString.
 	editor := BrEditor new
 		aptitude: (BrGlamorousCodeEditorAptitude new);
 		text: text;
-		background: GDZealTheme backgroundColor;
+		background: self themeClass backgroundColor;
 		padding: (BlInsets all: 8);
 		margin: (BlInsets top: 4);
 		constraintsDo: [ :c | c horizontal matchParent. c vertical matchParent ].
@@ -323,10 +323,12 @@ GDZealBrowser >> compileNode: aNode editor: editor statusLabel: statusLabel [
 	  project persistToImage.
 	  "Update selected node reference"
 	  selectedNode := newNode.
-	  statusLabel text: ('Compiled -> ' , gdPath) asRopedText foreground: GDZealTheme keywordColor.
+	  statusLabel text: (('Compiled -> ' , gdPath) asRopedText foreground: self themeClass keywordColor).
+	  self flashSuccess: editor.
 	  self rebuildTree ]
 	on: Error do: [ :e |
-		statusLabel text: ('Error: ' , e messageText) asRopedText foreground: GDZealTheme specialFormColor ]
+		statusLabel text: (('Error: ' , e messageText) asRopedText foreground: (Color red)).
+		self flashError: editor ]
 ]
 
 { #category : 'editor setup' }

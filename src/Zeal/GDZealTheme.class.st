@@ -52,11 +52,6 @@ GDZealTheme class >> cursorWidth [
 ]
 
 { #category : 'colors' }
-GDZealTheme class >> definitionNameColor [
-	^ Color fromHexString: 'E876B0'
-]
-
-{ #category : 'colors' }
 GDZealTheme class >> foregroundColor [
 	^ Color fromHexString: 'CDD7DC'
 ]
@@ -73,34 +68,6 @@ GDZealTheme class >> highlight: aString [
 		i := self highlightTokenAt: i in: aString text: text size: size ].
 	self highlightDefinitionNames: aString text: text.
 	^ text
-]
-
-{ #category : 'highlighting' }
-GDZealTheme class >> highlightDefinitionNames: aString text: text [
-	"Color definition names pink after def-forms: defcomp, defentity, defsystem, defobserver, defn, def, var"
-	| defForms i size |
-	defForms := #('defcomp' 'defentity' 'defsystem' 'defobserver' 'defn' 'def' 'var').
-	i := 1. size := aString size.
-	defForms do: [ :form |
-		| searchFrom |
-		searchFrom := 1.
-		[ searchFrom <= size ] whileTrue: [
-			| pos afterForm nameStart nameEnd |
-			pos := aString findString: form startingAt: searchFrom.
-			pos = 0 ifTrue: [ searchFrom := size + 1 ]
-			ifFalse: [
-				afterForm := pos + form size.
-				"Verify it's preceded by ( or whitespace"
-				(pos = 1 or: [ '( ' includes: (aString at: pos - 1) ]) ifTrue: [
-					"Skip whitespace after form"
-					nameStart := afterForm.
-					[ nameStart <= size and: [ (aString at: nameStart) isSeparator ] ] whileTrue: [ nameStart := nameStart + 1 ].
-					"Scan name"
-					nameEnd := nameStart.
-					[ nameEnd <= size and: [ | c | c := aString at: nameEnd. c isLetter or: [ c isDigit or: [ '_-?!:/@' includes: c ] ] ] ] whileTrue: [ nameEnd := nameEnd + 1 ].
-					nameEnd > nameStart ifTrue: [
-						(text from: nameStart to: nameEnd - 1) foreground: self definitionNameColor ] ].
-				searchFrom := afterForm ] ] ]
 ]
 
 { #category : 'highlighting' }
@@ -201,11 +168,6 @@ GDZealTheme class >> parenColor [
 { #category : 'colors' }
 GDZealTheme class >> selectionColor [
 	^ self cursorColor alpha: 0.3
-]
-
-{ #category : 'colors' }
-GDZealTheme class >> specialFormColor [
-	^ Color fromHexString: 'FF3D7F'
 ]
 
 { #category : 'tokens' }

@@ -420,11 +420,12 @@ GDZealCodeGenerator >> generateDef: aListNode [
 		self visitExpression: valueNode ]
 ]
 
-{ #category : 'generating - GECS' }
+{ #category : 'generators' }
 GDZealCodeGenerator >> generateDefcomp: aListNode [
 	"Two forms:
 	 Shorthand: (defcomp health current:float 100.0 maximum:float 100.0 (init [...] body))
 	 Explicit: (defcomp health (export current:float 100.0) (init [...] body))
+	 Bare atom: (defcomp health current 10.0) — type inferred from literal
 	 Tag: (defcomp dead)"
 	| exprs name bodyForms i |
 	exprs := aListNode expressions.
@@ -460,11 +461,34 @@ GDZealCodeGenerator >> generateDefcomp: aListNode [
 				self visitExpression: (bodyForms at: i + 1).
 				i := i + 1 ] ]
 		ifFalse: [
+			"Bare atom field: symbol followed by literal/boolean default"
+			((item isKindOf: ZealSymbolNode) and: [
+				i + 1 <= bodyForms size and: [
+					| next |
+					next := bodyForms at: i + 1.
+					(next isKindOf: ZealColonChainNode) not and: [
+					(next isKindOf: ZealListNode) not and: [
+					(next isKindOf: ZealSymbolNode)
+						ifTrue: [ #('true' 'false' 'null' 'nil') includes: next value value ]
+						ifFalse: [ true ] ] ] ] ]) ifTrue: [
+				| inferredType |
+				self nl.
+				inferredType := GDZealCompiler inferTypeFromLiteral: 
+					(GDZealCompiler buildExpression: (bodyForms at: i + 1)).
+				self emit: '@export var '.
+				self emit: (self toSnakeCase: item value value).
+				inferredType ifNotNil: [ :t |
+					self emit: ': '.
+					self emit: t ].
+				self emit: ' = '.
+				self visitExpression: (bodyForms at: i + 1).
+				i := i + 1 ]
+			ifFalse: [
 			(item isKindOf: ZealListNode) ifTrue: [
 				| head |
 				head := item expressions first value value.
 				head = 'export' ifTrue: [ self nl. self emitExport: item ].
-				head = 'init' ifTrue: [ self nl. self nl. self emitInit: item ] ] ].
+				head = 'init' ifTrue: [ self nl. self nl. self emitInit: item ] ] ] ].
 		i := i + 1 ]
 ]
 

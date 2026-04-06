@@ -306,10 +306,10 @@ VZealBrowser >> buildAddEditor: aNode inContainer: aContainer [
 				  addEditorText := src.
 				  addEditorCursorPos := cursorPos.
 				  self persistNode: aNode.
-				  self flashEditor: editor color: (ZealTheme cursorColor alpha: 0.2).
+				  self flashSuccess: editor.
 				  self rebuildClassIn: aContainer node: aNode ]
 				on: Error do: [:e | 
-					self flashEditor: editor color: (Color red alpha: 0.3) ] ] ]).
+					self flashError: editor ] ] ]).
 	
 	wrapper addChild: label.
 	wrapper addChild: editor.
@@ -371,13 +371,13 @@ VZealBrowser >> buildAllSlotsEditor: aNode inContainer: aContainer [
 			  "Persist class to generated class and .verse file"
 			  self persistClassNode: aNode.
 			  
-			  self flashEditor: editor color: (ZealTheme cursorColor alpha: 0.2).
+			  self flashSuccess: editor.
 			  self rebuildClassIn: aContainer node: aNode.
 			  editor enqueueTask: (BlTaskAction new action: [
 				  editor requestFocus.
 				  editor editor navigator moveTo: (cursorPos min: editor editor text size); apply ]) ]
 			on: Error do: [:e |
-				self flashEditor: editor color: (Color red alpha: 0.3) ] ]).
+				self flashError: editor ] ]).
 	
 	container addChild: editor.
 	^ container
@@ -557,16 +557,16 @@ VZealBrowser >> buildCommandBar [
 				isModule := cleaned beginsWith: 'defmodule '.
 				isModule ifTrue: [
 					self createModule: (cleaned allButFirst: 10) trimBoth.
-					self flashEditor: editor color: (ZealTheme cursorColor alpha: 0.2) ]
+					self flashSuccess: editor ]
 				ifFalse: [ 
 					[ compiled := ZealCompiler compile: input.
 					  node := (compiled isKindOf: Collection) ifTrue: [compiled first] ifFalse: [compiled].
 					  self createDefinition: input.
-					  self flashEditor: editor color: (ZealTheme cursorColor alpha: 0.2).
+					  self flashSuccess: editor.
 					  resolved := self resolveWord: node name.
 					  resolved ifNotNil: [ self selectNode: resolved ] ]
 					on: Error do: [
-						self flashEditor: editor color: (Color red alpha: 0.3) ] ] ] ]).
+						self flashError: editor ] ] ] ]).
 	
 	wrapper addChild: label.
 	wrapper addChild: editor.
@@ -689,7 +689,7 @@ VZealBrowser >> buildExtendsEditor: aNode inContainer: aContainer [
 			(aNode respondsTo: #parents:) ifTrue: [
 				aNode parents: parts ].
 			self persistNode: aNode.
-			self flashEditor: extensionsEditor color: (ZealTheme cursorColor alpha: 0.2) ]).
+			self flashSuccess: extensionsEditor ]).
 	
 	row addChild: extensionsEditor.
 	^ row
@@ -1166,7 +1166,7 @@ VZealBrowser >> buildUsingEditor: aNode [
 				ifTrue: [ aNode ]
 				ifFalse: [ aNode owningClass ifNil: [ aNode ] ].
 			self persistNode: targetNode.
-			self flashEditor: editor color: (ZealTheme cursorColor alpha: 0.2) ]).
+			self flashSuccess: editor ]).
 	
 	row addChild: editor.
 	^ row
@@ -1287,20 +1287,20 @@ VZealBrowser >> compileAll [
 	Smalltalk globals at: #ZealDebug put: 'Compiled ' , count printString , ' definitions'
 ]
 
-{ #category : 'verse' }
+{ #category : 'actions' }
 VZealBrowser >> compileAndSave: anEditor forNode: aNode [
 	"Compile Zeal → sync node → persist to class and .verse file."
 	| zealSource compiled compiledNodes isExpander oldZeal |
 	zealSource := anEditor editor text asString.
 	
 	[ compiled := ZealCompiler compile: zealSource ] on: Error do: [:e |
-		self flashEditor: anEditor color: (Color red alpha: 0.3). ^ self ].
+		self flashError: anEditor. ^ self ].
 	
 	compiledNodes := (compiled isKindOf: Collection) ifTrue: [compiled] ifFalse: [{compiled}].
 	
 	"Verify verse output compiles"
 	[compiledNodes do: [:n | n compileToVerse]] on: Error do: [:e |
-		self flashEditor: anEditor color: (Color red alpha: 0.3). ^ self ].
+		self flashError: anEditor. ^ self ].
 	
 	aNode rawSource: nil.
 	isExpander := aNode ~~ selectedNode.
@@ -1320,7 +1320,7 @@ VZealBrowser >> compileAndSave: anEditor forNode: aNode [
 		(aNode parent isKindOf: ZealClass) or: [aNode parent isKindOf: ZealInterface]]) ifTrue: [
 		self persistNode: aNode parent ].
 	
-	self flashEditor: anEditor color: (ZealTheme cursorColor alpha: 0.2).
+	self flashSuccess: anEditor.
 	
 	"Surgical update for expander saves"
 	(isExpander and: [zealEditor notNil]) ifTrue: [
@@ -1344,18 +1344,18 @@ VZealBrowser >> compileClassSource: editor forNode: aNode inContainer: aContaine
 	
 	[ compiled := ZealCompiler compile: src.
 	  compiled := (compiled isKindOf: Collection) ifTrue: [compiled first] ifFalse: [compiled] ]
-		on: Error do: [:e | self flashEditor: editor color: (Color red alpha: 0.3). ^ self ].
+		on: Error do: [:e | self flashError: editor. ^ self ].
 	
 	"If they typed a field or method, add it to the class"
 	((compiled isKindOf: ZealFunction) or: [compiled isKindOf: ZealVariable]) ifTrue: [
 		self addCompiled: compiled to: aNode.
 		self persistNode: aNode.
-		self flashEditor: editor color: (ZealTheme cursorColor alpha: 0.2).
+		self flashSuccess: editor.
 		self rebuildClassIn: aContainer node: aNode.
 		^ self ].
 	
 	((compiled isKindOf: ZealClass) or: [compiled isKindOf: ZealInterface]) ifFalse: [
-		self flashEditor: editor color: (Color red alpha: 0.3). ^ self ].
+		self flashError: editor. ^ self ].
 	
 	"Replace the class"
 	compiled generatedClass: aNode generatedClass.
@@ -1888,49 +1888,6 @@ VZealBrowser >> reopenExpanders: nodeNames [
 						a isExpanded ifFalse: [
 							a isExpanded: true.
 							a applyExpandedOrCollapsedAttributesOnText: text ] ] ] ] ] ]
-]
-
-{ #category : 'verse' }
-VZealBrowser >> resolveWord: word [
-	"Resolve a word to a ZealNode — type-aware member access, then generic lookup"
-	| resolver node kebab pascal snake objName methodName typeName cls methodPascal |
-	resolver := ZealCompiler currentResolver ifNil: [
-		project ifNotNil: [ ZealTypeResolver forProject: project ] ].
-	resolver ifNil: [ ^ nil ].
-	
-	"Member access: obj/method"
-	(word includes: $/) ifTrue: [
-		objName := word copyUpToLast: $/.
-		methodName := word copyAfterLast: $/.
-		methodPascal := '' join: ((methodName substrings: '-') collect: [:s | s capitalized]).
-		"Try type-aware: find type of obj, find method on that class"
-		typeName := (ZealCompletionStrategy new project: project) findTypeOf: objName in: ''.
-		typeName ifNotNil: [
-			cls := resolver findClass: (typeName copyReplaceAll: '-' with: '_').
-			cls ifNotNil: [
-				node := resolver findMethod: methodPascal inClass: cls name.
-				node ifNotNil: [ ^ node ] ] ].
-		"Fallback: search project classes first, then all"
-		project modules do: [:mod |
-			mod definitions do: [:d |
-				((d respondsTo: #methods) and: [d methods notNil]) ifTrue: [
-					d methods do: [:m |
-						(m name asLowercase = methodPascal asLowercase) ifTrue: [ ^ m ] ] ] ] ].
-		^ resolver findMethodAnywhere: methodPascal ].
-	
-	"Function"
-	kebab := word copyReplaceAll: '/' with: '-'.
-	pascal := '' join: ((kebab substrings: '-') collect: [:s | s capitalized]).
-	node := resolver findFunction: pascal.
-	node ifNotNil: [ ^ node ].
-	
-	"Class"
-	snake := word copyReplaceAll: '-' with: '_'.
-	node := resolver findClass: snake.
-	node ifNotNil: [ ^ node ].
-	
-	"Method"
-	^ resolver findMethodAnywhere: pascal
 ]
 
 { #category : 'verse' }

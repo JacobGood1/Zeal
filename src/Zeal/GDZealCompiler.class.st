@@ -21,11 +21,12 @@ GDZealCompiler class >> buildBody: exprs [
 	^ exprs collect: [ :e | self buildExpression: e ]
 ]
 
-{ #category : 'building - GECS' }
+{ #category : 'special forms' }
 GDZealCompiler class >> buildDefcomp: aListNode [
 	"Handles shorthand + explicit export forms.
 	 Shorthand: (defcomp health current:float 100.0 maximum:float 100.0 (init ...))
 	 Explicit: (defcomp health (export current:float 100.0) (init ...))
+	 Bare atom: (defcomp health current 10.0) — type inferred from literal
 	 Tag: (defcomp dead)"
 	| exprs name fields methods cls bodyForms i |
 	exprs := aListNode expressions.
@@ -53,9 +54,32 @@ GDZealCompiler class >> buildDefcomp: aListNode [
 				and: [ ((bodyForms at: i + 1) isKindOf: ZealColonChainNode) not
 				and: [ ((bodyForms at: i + 1) isKindOf: ZealListNode) not ] ]) ifTrue: [
 				field defaultValue: (self buildExpression: (bodyForms at: i + 1)).
+				"Infer type from default if not explicitly typed"
+				field type ifNil: [ field type: (self inferTypeFromLiteral: field defaultValue) ].
 				i := i + 1 ].
 			fields add: field ]
 		ifFalse: [
+			"Bare atom field: name followed by a literal/boolean default — infer type"
+			((item isKindOf: ZealSymbolNode) and: [
+				i + 1 <= bodyForms size and: [
+					| next |
+					next := bodyForms at: i + 1.
+					(next isKindOf: ZealColonChainNode) not and: [
+					(next isKindOf: ZealListNode) not and: [
+					"Allow literals and boolean/null symbols as defaults"
+					(next isKindOf: ZealSymbolNode)
+						ifTrue: [ #('true' 'false' 'null' 'nil') includes: next value value ]
+						ifFalse: [ true ] ] ] ] ]) ifTrue: [
+				| field defaultVal |
+				defaultVal := self buildExpression: (bodyForms at: i + 1).
+				field := ZealField new
+					name: item value value;
+					type: (self inferTypeFromLiteral: defaultVal);
+					isMutable: true;
+					defaultValue: defaultVal.
+				fields add: field.
+				i := i + 1 ]
+			ifFalse: [
 			(item isKindOf: ZealListNode) ifTrue: [
 				| head |
 				head := item expressions first value value.
@@ -78,7 +102,7 @@ GDZealCompiler class >> buildDefcomp: aListNode [
 					params := self buildInitParams: item expressions second.
 					bodyExprs := self buildBody: item expressions allButFirst allButFirst.
 					func := ZealFunction new name: '_init'; parameters: params; body: bodyExprs.
-					methods add: func ] ] ].
+					methods add: func ] ] ] ].
 		i := i + 1 ].
 	cls := ZealClass new
 		name: name;
@@ -335,6 +359,21 @@ GDZealCompiler class >> compileToGDScript: aString [
 GDZealCompiler class >> compileToGDScript: aString withRegistry: aRegistry [
 	"Full pipeline with shared component registry"
 	^ GDZealCodeGenerator compile: aString withRegistry: aRegistry
+]
+
+{ #category : 'special forms' }
+GDZealCompiler class >> inferTypeFromLiteral: aNode [
+	"Infer GDScript type from a literal or symbol value"
+	| val |
+	(aNode isKindOf: ZealSymbolRef) ifTrue: [
+		(#('true' 'false') includes: aNode name) ifTrue: [ ^ 'bool' ].
+		^ nil ].
+	(aNode isKindOf: ZealLiteral) ifFalse: [ ^ nil ].
+	val := aNode value asString.
+	(val includes: $.) ifTrue: [ ^ 'float' ].
+	(val allSatisfy: [:c | c isDigit or: [ c = $- ]]) ifTrue: [ ^ 'int' ].
+	((val beginsWith: '"') or: [ val beginsWith: '''' ]) ifTrue: [ ^ 'String' ].
+	^ nil
 ]
 
 { #category : 'helpers' }

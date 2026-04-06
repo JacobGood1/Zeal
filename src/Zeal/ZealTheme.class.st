@@ -135,7 +135,9 @@ ZealTheme class >> highlightDefinitionNames: aString text: text [
 			pos = 0 ifTrue: [ searchFrom := size + 1 ]
 			ifFalse: [
 				afterForm := pos + form size.
-				(pos = 1 or: [ '( ' includes: (aString at: pos - 1) ]) ifTrue: [
+				"Verify preceded by ( or whitespace AND followed by whitespace (word boundary)"
+				((pos = 1 or: [ '( ' includes: (aString at: pos - 1) ]) and: [
+					afterForm > size or: [ (aString at: afterForm) isSeparator ] ]) ifTrue: [
 					nameStart := afterForm.
 					[ nameStart <= size and: [ (aString at: nameStart) isSeparator ] ] whileTrue: [ nameStart := nameStart + 1 ].
 					nameEnd := nameStart.
@@ -143,17 +145,22 @@ ZealTheme class >> highlightDefinitionNames: aString text: text [
 					nameEnd > nameStart ifTrue: [
 						(text from: nameStart to: nameEnd - 1) foreground: self definitionNameColor ] ].
 				searchFrom := afterForm ] ] ].
-	"Pass 2: color name part of colon chains (name before first :type)"
+	"Pass 2: color colon chains — variable name purple, colons white"
 	i := 1.
 	[ i <= size ] whileTrue: [
-		| ch start |
+		| ch |
 		ch := aString at: i.
 		(ch isLetter or: [ ch = $_ ]) ifTrue: [
+			| start wordEnd |
 			start := i.
 			[ i <= size and: [ | c | c := aString at: i. c isLetter or: [ c isDigit or: [ '_-?!' includes: c ] ] ] ] whileTrue: [ i := i + 1 ].
-			(i <= size and: [ (aString at: i) = $: and: [ i + 1 <= size and: [ (aString at: i + 1) isLetter ] ] ]) ifTrue: [
-				(text from: start to: i - 1) foreground: self definitionNameColor.
-				[ i <= size and: [ | c | c := aString at: i. c isLetter or: [ c isDigit or: [ '_-?!/@:' includes: c ] ] ] ] whileTrue: [ i := i + 1 ] ] ]
+			wordEnd := i - 1.
+			(i <= size and: [ (aString at: i) = $: and: [ i + 1 <= size and: [ | nc | nc := aString at: i + 1. nc isLetter or: [ nc = $@ ] ] ] ]) ifTrue: [
+				(text from: start to: wordEnd) foreground: self definitionNameColor.
+				"Color colons white within the chain"
+				[ i <= size and: [ | c | c := aString at: i. c isLetter or: [ c isDigit or: [ '_-?!/@:' includes: c ] ] ] ] whileTrue: [
+					(aString at: i) = $: ifTrue: [ (text from: i to: i) foreground: Color white ].
+					i := i + 1 ] ] ]
 		ifFalse: [ i := i + 1 ] ]
 ]
 
@@ -226,9 +233,9 @@ ZealTheme class >> specialFormColor [
 	^ self keywordColor
 ]
 
-{ #category : 'language' }
+{ #category : 'syntax' }
 ZealTheme class >> specialForms [
-	^ #('def' 'var' 'set' 'defn' 'defstruct' 'defenum' 'defclass' 'definterface' 'if' 'let' 'for' 'loop' 'block' 'defer' 'case' 'module' 'using' 'do' 'break' 'return')
+	^ #('def' 'var' 'set' 'defn' 'defstruct' 'defenum' 'defclass' 'definterface' 'defcomp' 'if' 'let' 'for' 'loop' 'block' 'defer' 'case' 'module' 'using' 'do' 'break' 'return')
 ]
 
 { #category : 'colors' }
