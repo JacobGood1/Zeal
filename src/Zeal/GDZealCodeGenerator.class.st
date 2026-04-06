@@ -422,10 +422,8 @@ GDZealCodeGenerator >> generateDef: aListNode [
 
 { #category : 'generators' }
 GDZealCodeGenerator >> generateDefcomp: aListNode [
-	"Two forms:
-	 Shorthand: (defcomp health current:float 100.0 maximum:float 100.0 (init [...] body))
-	 Explicit: (defcomp health (export current:float 100.0) (init [...] body))
-	 Bare atom: (defcomp health current 10.0) — type inferred from literal
+	"(defcomp name var1 val1 var2 val2 ... (init [...] body))
+	 Fields are pairs: variable on left, value on right.
 	 Tag: (defcomp dead)"
 	| exprs name bodyForms i |
 	exprs := aListNode expressions.
@@ -444,51 +442,47 @@ GDZealCodeGenerator >> generateDefcomp: aListNode [
 	[ i <= bodyForms size ] whileTrue: [
 		| item |
 		item := bodyForms at: i.
-		"Shorthand field: colonChain + default value"
-		(item isKindOf: ZealColonChainNode) ifTrue: [
-			| resolved |
-			self nl.
-			resolved := self resolveColonChain: item value value.
-			self emit: '@export var '.
-			self emit: (self toSnakeCase: (resolved at: #name)).
-			(resolved at: #type) ifNotNil: [ :t |
-				self emit: ': '.
-				self emit: (self resolveType: t) ].
-			(i + 1 <= bodyForms size
-				and: [ ((bodyForms at: i + 1) isKindOf: ZealColonChainNode) not
-				and: [ ((bodyForms at: i + 1) isKindOf: ZealListNode) not ] ]) ifTrue: [
-				self emit: ' = '.
-				self visitExpression: (bodyForms at: i + 1).
-				i := i + 1 ] ]
+		(item isKindOf: ZealListNode) ifTrue: [
+			| head |
+			head := item expressions first value value.
+			head = 'export' ifTrue: [ self nl. self emitExport: item ].
+			head = 'init' ifTrue: [ self nl. self nl. self emitInit: item ] ]
 		ifFalse: [
-			"Bare atom field: symbol followed by literal/boolean default"
-			((item isKindOf: ZealSymbolNode) and: [
-				i + 1 <= bodyForms size and: [
-					| next |
-					next := bodyForms at: i + 1.
-					(next isKindOf: ZealColonChainNode) not and: [
-					(next isKindOf: ZealListNode) not and: [
-					(next isKindOf: ZealSymbolNode)
-						ifTrue: [ #('true' 'false' 'null' 'nil') includes: next value value ]
-						ifFalse: [ true ] ] ] ] ]) ifTrue: [
-				| inferredType |
-				self nl.
-				inferredType := GDZealCompiler inferTypeFromLiteral: 
-					(GDZealCompiler buildExpression: (bodyForms at: i + 1)).
-				self emit: '@export var '.
-				self emit: (self toSnakeCase: item value value).
-				inferredType ifNotNil: [ :t |
-					self emit: ': '.
-					self emit: t ].
-				self emit: ' = '.
-				self visitExpression: (bodyForms at: i + 1).
-				i := i + 1 ]
+			"Field: variable + value pair"
+			| fieldName fieldType |
+			self nl.
+			(item isKindOf: ZealColonChainNode) ifTrue: [
+				| resolved |
+				resolved := self resolveColonChain: item value value.
+				fieldName := resolved at: #name.
+				fieldType := resolved at: #type ]
 			ifFalse: [
-			(item isKindOf: ZealListNode) ifTrue: [
-				| head |
-				head := item expressions first value value.
-				head = 'export' ifTrue: [ self nl. self emitExport: item ].
-				head = 'init' ifTrue: [ self nl. self nl. self emitInit: item ] ] ] ].
+				fieldName := item value value.
+				fieldType := nil ].
+			self emit: '@export var '.
+			self emit: (self toSnakeCase: fieldName).
+			"Consume next item as value if not a new field or list"
+			(i + 1 <= bodyForms size and: [
+				((bodyForms at: i + 1) isKindOf: ZealListNode) not ]) ifTrue: [
+				| nextItem |
+				nextItem := bodyForms at: i + 1.
+				(nextItem isKindOf: ZealColonChainNode)
+					ifFalse: [
+						"Infer type from value if needed"
+						fieldType ifNil: [ fieldType := GDZealCompiler inferTypeFromValue: nextItem ].
+						fieldType ifNotNil: [ :t |
+							self emit: ': '.
+							self emit: (self resolveType: t) ].
+						self emit: ' = '.
+						self visitExpression: nextItem.
+						i := i + 1.
+						"Skip the type emit below"
+						item := nil ] ].
+			"Emit type if we didn't consume a value"
+			item ifNotNil: [
+				fieldType ifNotNil: [ :t |
+					self emit: ': '.
+					self emit: (self resolveType: t) ] ] ].
 		i := i + 1 ]
 ]
 

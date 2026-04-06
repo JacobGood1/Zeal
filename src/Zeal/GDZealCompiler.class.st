@@ -23,12 +23,11 @@ GDZealCompiler class >> buildBody: exprs [
 
 { #category : 'special forms' }
 GDZealCompiler class >> buildDefcomp: aListNode [
-	"Handles shorthand + explicit export forms.
-	 Shorthand: (defcomp health current:float 100.0 maximum:float 100.0 (init ...))
-	 Explicit: (defcomp health (export current:float 100.0) (init ...))
-	 Bare atom: (defcomp health current 10.0) — type inferred from literal
-	 Tag: (defcomp dead)"
-	| exprs name fields methods cls bodyForms i |
+	"(defcomp name var1 val1 var2 val2 ... (init [...] body))
+	 Fields are simply pairs: variable on left, value on right.
+	 Type comes from colon chain (speed:float) or is inferred from value.
+	 Tag form: (defcomp dead) — no fields."
+	| exprs name fields methods bodyForms i cls |
 	exprs := aListNode expressions.
 	name := exprs second value value.
 	fields := OrderedCollection new.
@@ -38,71 +37,54 @@ GDZealCompiler class >> buildDefcomp: aListNode [
 	[ i <= bodyForms size ] whileTrue: [
 		| item |
 		item := bodyForms at: i.
-		"Shorthand field: colonChain + default"
-		(item isKindOf: ZealColonChainNode) ifTrue: [
-			| resolved field |
-			resolved := self resolveNameNode: item.
-			field := ZealField new
-				name: (resolved at: #name);
-				type: (resolved at: #type);
-				isMutable: true.
-			(resolved at: #type) ifNil: [
-				(resolved at: #annotations) ifNotEmpty: [ :anns |
-					(anns detect: [ :a | a beginsWith: '@' ] ifNone: [ nil ])
-						ifNotNil: [ :t | field type: t ] ] ].
-			(i + 1 <= bodyForms size
-				and: [ ((bodyForms at: i + 1) isKindOf: ZealColonChainNode) not
-				and: [ ((bodyForms at: i + 1) isKindOf: ZealListNode) not ] ]) ifTrue: [
-				field defaultValue: (self buildExpression: (bodyForms at: i + 1)).
-				"Infer type from default if not explicitly typed"
-				field type ifNil: [ field type: (self inferTypeFromLiteral: field defaultValue) ].
-				i := i + 1 ].
-			fields add: field ]
-		ifFalse: [
-			"Bare atom field: name followed by a literal/boolean default — infer type"
-			((item isKindOf: ZealSymbolNode) and: [
-				i + 1 <= bodyForms size and: [
-					| next |
-					next := bodyForms at: i + 1.
-					(next isKindOf: ZealColonChainNode) not and: [
-					(next isKindOf: ZealListNode) not and: [
-					"Allow literals and boolean/null symbols as defaults"
-					(next isKindOf: ZealSymbolNode)
-						ifTrue: [ #('true' 'false' 'null' 'nil') includes: next value value ]
-						ifFalse: [ true ] ] ] ] ]) ifTrue: [
-				| field defaultVal |
-				defaultVal := self buildExpression: (bodyForms at: i + 1).
+		"Sublist forms: (init ...), (export ...)"
+		(item isKindOf: ZealListNode) ifTrue: [
+			| head |
+			head := item expressions first value value.
+			head = 'export' ifTrue: [
+				| resolved field |
+				resolved := self resolveNameNode: item expressions second.
 				field := ZealField new
-					name: item value value;
-					type: (self inferTypeFromLiteral: defaultVal);
-					isMutable: true;
-					defaultValue: defaultVal.
-				fields add: field.
-				i := i + 1 ]
+					name: (resolved at: #name);
+					type: (resolved at: #type);
+					isMutable: true.
+				item expressions size > 2 ifTrue: [
+					field defaultValue: (self buildExpression: item expressions third) ].
+				fields add: field ].
+			head = 'init' ifTrue: [
+				| params bodyExprs func |
+				params := self buildInitParams: item expressions second.
+				bodyExprs := self buildBody: item expressions allButFirst allButFirst.
+				func := ZealFunction new name: '_init'; parameters: params; body: bodyExprs.
+				methods add: func ] ]
+		ifFalse: [
+			"Field pair: variable (this item) + value (next item)"
+			| field fieldName fieldType |
+			(item isKindOf: ZealColonChainNode) ifTrue: [
+				| resolved |
+				resolved := self resolveNameNode: item.
+				fieldName := resolved at: #name.
+				fieldType := resolved at: #type.
+				fieldType ifNil: [
+					(resolved at: #annotations) ifNotEmpty: [ :anns |
+						(anns detect: [ :a | a beginsWith: '@' ] ifNone: [ nil ])
+							ifNotNil: [ :t | fieldType := t ] ] ] ]
 			ifFalse: [
-			(item isKindOf: ZealListNode) ifTrue: [
-				| head |
-				head := item expressions first value value.
-				head = 'export' ifTrue: [
-					| resolved field |
-					resolved := self resolveNameNode: item expressions second.
-					field := ZealField new
-						name: (resolved at: #name);
-						type: (resolved at: #type);
-						isMutable: true.
-					(resolved at: #type) ifNil: [
-						(resolved at: #annotations) ifNotEmpty: [ :anns |
-							(anns detect: [ :a | a beginsWith: '@' ] ifNone: [ nil ])
-								ifNotNil: [ :t | field type: t ] ] ].
-					item expressions size > 2 ifTrue: [
-						field defaultValue: (self buildExpression: item expressions third) ].
-					fields add: field ].
-				head = 'init' ifTrue: [
-					| params bodyExprs func |
-					params := self buildInitParams: item expressions second.
-					bodyExprs := self buildBody: item expressions allButFirst allButFirst.
-					func := ZealFunction new name: '_init'; parameters: params; body: bodyExprs.
-					methods add: func ] ] ] ].
+				fieldName := item value value.
+				fieldType := nil ].
+			field := ZealField new name: fieldName; type: fieldType; isMutable: true.
+			"Consume next item as default value if available and not a new field/list"
+			(i + 1 <= bodyForms size and: [
+				((bodyForms at: i + 1) isKindOf: ZealListNode) not ]) ifTrue: [
+				| nextItem |
+				nextItem := bodyForms at: i + 1.
+				"Next is a colon chain → it's a new field, not a value"
+				(nextItem isKindOf: ZealColonChainNode)
+					ifFalse: [
+						field defaultValue: (self buildExpression: nextItem).
+						fieldType ifNil: [ field type: (self inferTypeFromValue: nextItem) ].
+						i := i + 1 ] ].
+			fields add: field ].
 		i := i + 1 ].
 	cls := ZealClass new
 		name: name;
@@ -372,6 +354,32 @@ GDZealCompiler class >> inferTypeFromLiteral: aNode [
 	val := aNode value asString.
 	(val includes: $.) ifTrue: [ ^ 'float' ].
 	(val allSatisfy: [:c | c isDigit or: [ c = $- ]]) ifTrue: [ ^ 'int' ].
+	((val beginsWith: '"') or: [ val beginsWith: '''' ]) ifTrue: [ ^ 'String' ].
+	^ nil
+]
+
+{ #category : 'special forms' }
+GDZealCompiler class >> inferTypeFromValue: aParseNode [
+	"Infer type from a raw parse node value.
+	 10.0 → float, 42 → int, true → bool, @vector2/RIGHT → @vector2"
+	| val |
+	val := aParseNode value value.
+	"@class reference — type is the class"
+	(val beginsWith: '@') ifTrue: [
+		(val includes: $/) 
+			ifTrue: [ ^ '@', (val allButFirst copyUpTo: $/) ]
+			ifFalse: [ ^ val ] ].
+	"Boolean"
+	(#('true' 'false') includes: val) ifTrue: [ ^ 'bool' ].
+	"Float literal"
+	(aParseNode isKindOf: ZealFloatLiteralNode) ifTrue: [ ^ 'float' ].
+	"Integer literal"  
+	(aParseNode isKindOf: ZealIntegerLiteralNode) ifTrue: [ ^ 'int' ].
+	"Number with dot"
+	(val includes: $.) ifTrue: [ ^ 'float' ].
+	"All digits"
+	(val allSatisfy: [:c | c isDigit or: [ c = $- ]]) ifTrue: [ ^ 'int' ].
+	"String"
 	((val beginsWith: '"') or: [ val beginsWith: '''' ]) ifTrue: [ ^ 'String' ].
 	^ nil
 ]

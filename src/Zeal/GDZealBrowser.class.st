@@ -1,6 +1,9 @@
 Class {
 	#name : 'GDZealBrowser',
 	#superclass : 'ZealBrowser',
+	#instVars : [
+		'typeSystem'
+	],
 	#category : 'Zeal',
 	#package : 'Zeal'
 }
@@ -21,6 +24,7 @@ GDZealBrowser class >> openOn: aGodotPath [
 	proj loadFromDirectory.
 	browser := self new.
 	browser project: proj.
+	browser typeSystem: (GDZealTypeSystem forProject: proj).
 	space := BlSpace new.
 	space title: 'GDZeal // ' , proj name.
 	space extent: 1100@700.
@@ -321,6 +325,8 @@ GDZealBrowser >> compileNode: aNode editor: editor statusLabel: statusLabel [
 	  gdPath := project compileDefinition: newNode.
 	  "Persist to image"
 	  project persistToImage.
+	  "Rescan types after compile"
+	  typeSystem ifNotNil: [ typeSystem rescan ].
 	  "Update selected node reference"
 	  selectedNode := newNode.
 	  statusLabel text: (('Compiled -> ' , gdPath) asRopedText foreground: self themeClass keywordColor).
@@ -956,4 +962,14 @@ GDZealBrowser >> swapForm: anEditor up: isUp [
 { #category : 'hooks' }
 GDZealBrowser >> themeClass [
 	^ GDZealTheme
+]
+
+{ #category : 'accessing' }
+GDZealBrowser >> typeSystem [
+	^ typeSystem
+]
+
+{ #category : 'accessing' }
+GDZealBrowser >> typeSystem: aGDZealTypeSystem [
+	typeSystem := aGDZealTypeSystem
 ]

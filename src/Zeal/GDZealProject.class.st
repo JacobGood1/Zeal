@@ -65,6 +65,12 @@ GDZealProject >> compileDefinition: aNode [
 	^ gdPath
 ]
 
+{ #category : 'accessing' }
+GDZealProject >> externalModules [
+	"GDZeal has no external modules"
+	^ #()
+]
+
 { #category : 'private' }
 GDZealProject >> extractDefName: source [
 	| forms |
