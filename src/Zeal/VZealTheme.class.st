@@ -1,12 +1,12 @@
 Class {
-	#name : 'ZealTheme',
-	#superclass : 'Object',
+	#name : 'VZealTheme',
+	#superclass : 'ZealTheme',
 	#category : 'Zeal',
 	#package : 'Zeal'
 }
 
 { #category : 'highlighting' }
-ZealTheme class >> attachExpanders: text source: aString resolver: aResolver browser: aBrowser nested: isNested [
+VZealTheme class >> attachExpanders: text source: aString resolver: aResolver browser: aBrowser nested: isNested [
 	"Find function/class/method references and attach inline expanders."
 	| i size |
 	aResolver ifNil: [ ^ self ].
@@ -52,133 +52,150 @@ ZealTheme class >> attachExpanders: text source: aString resolver: aResolver bro
 ]
 
 { #category : 'colors' }
-ZealTheme class >> backgroundColor [
+VZealTheme class >> backgroundColor [
 	^ Color fromHexString: '17171F'
 ]
 
 { #category : 'colors' }
-ZealTheme class >> braceColor [
+VZealTheme class >> braceColor [
 	^ Color fromHexString: '4CC9F0'
 ]
 
 { #category : 'colors' }
-ZealTheme class >> bracketColor [
+VZealTheme class >> bracketColor [
 	"Bright green for brackets — #50FA7B"
 	^ Color fromHexString: '50FA7B'
 ]
 
 { #category : 'colors' }
-ZealTheme class >> colonChainColor [
+VZealTheme class >> colonChainColor [
 	^ Color fromHexString: '88DCF6'
 ]
 
 { #category : 'colors' }
-ZealTheme class >> commentColor [
+VZealTheme class >> commentColor [
 	^ Color fromHexString: 'A1A1BA'
 ]
 
-{ #category : 'dimensions' }
-ZealTheme class >> cursorAlpha [
+{ #category : 'colors' }
+VZealTheme class >> cursorAlpha [
 	^ 0.5
 ]
 
 { #category : 'colors' }
-ZealTheme class >> cursorColor [
+VZealTheme class >> cursorColor [
 	^ Color fromHexString: '00FFFF'
 ]
 
-{ #category : 'dimensions' }
-ZealTheme class >> cursorWidth [
+{ #category : 'colors' }
+VZealTheme class >> cursorWidth [
 	^ 8
 ]
 
 { #category : 'colors' }
-ZealTheme class >> definitionNameColor [
+VZealTheme class >> definitionNameColor [
 	"Pink/purple for definition names"
 	^ Color fromHexString: 'E876B0'
 ]
 
 { #category : 'colors' }
-ZealTheme class >> foregroundColor [
+VZealTheme class >> foregroundColor [
 	^ Color fromHexString: 'CDD7DC'
 ]
 
 { #category : 'highlighting' }
-ZealTheme class >> highlight: aString [
-	"Tokenize and colorize Zeal source, return a BlRopedText with attributes.
-	Template method — subclasses provide highlightTokenAt:in:text:size: and color accessors."
-	| text i size |
-	text := aString asRopedText.
-	text foreground: self symbolColor.
-	i := 1.
-	size := aString size.
-	[ i <= size ] whileTrue: [
-		i := self highlightTokenAt: i in: aString text: text size: size ].
-	self highlightDefinitionNames: aString text: text.
-	^ text
-]
-
-{ #category : 'highlighting' }
-ZealTheme class >> highlightDefinitionNames: aString text: text [
-	"Color definition names after def-forms."
-	| defForms size |
-	defForms := (self specialForms select: [ :f | f beginsWith: 'def' ]) asOrderedCollection.
-	defForms addAll: #('def' 'var').
-	size := aString size.
-	defForms do: [ :form |
-		| searchFrom |
-		searchFrom := 1.
-		[ searchFrom <= size ] whileTrue: [
-			| pos afterForm nameStart nameEnd |
-			pos := aString findString: form startingAt: searchFrom.
-			pos = 0 ifTrue: [ searchFrom := size + 1 ]
-			ifFalse: [
-				afterForm := pos + form size.
-				(pos = 1 or: [ '( ' includes: (aString at: pos - 1) ]) ifTrue: [
-					nameStart := afterForm.
-					[ nameStart <= size and: [ (aString at: nameStart) isSeparator ] ] whileTrue: [ nameStart := nameStart + 1 ].
-					nameEnd := nameStart.
-					[ nameEnd <= size and: [ | c | c := aString at: nameEnd. c isLetter or: [ c isDigit or: [ '_-?!:/@' includes: c ] ] ] ] whileTrue: [ nameEnd := nameEnd + 1 ].
-					nameEnd > nameStart ifTrue: [
-						(text from: nameStart to: nameEnd - 1) foreground: self definitionNameColor ] ].
-				searchFrom := afterForm ] ] ]
-]
-
-{ #category : 'highlighting' }
-ZealTheme class >> highlightTokenAt: i in: aString text: text size: size [
-	"Default tokenizer — subclasses may override for dialect-specific tokens."
-	self subclassResponsibility
+VZealTheme class >> highlightTokenAt: i in: aString text: text size: size [
+	"Highlight one token starting at i, return next position."
+	| ch start j word |
+	ch := aString at: i.
+	"Comments"
+	ch = $; ifTrue: [
+		start := i. j := i.
+		[ j <= size and: [ (aString at: j) ~= Character cr and: [ (aString at: j) ~= Character lf ] ] ] whileTrue: [ j := j + 1 ].
+		(text from: start to: j - 1) foreground: self commentColor.
+		^ j ].
+	"Strings"
+	ch = $" ifTrue: [
+		start := i. j := i + 1.
+		[ j <= size and: [ (aString at: j) ~= $" ] ] whileTrue: [ j := j + 1 ].
+		j <= size ifTrue: [ j := j + 1 ].
+		(text from: start to: j - 1) foreground: self stringColor.
+		^ j ].
+	"Parens"
+	(ch = $( or: [ ch = $) ]) ifTrue: [
+		(text from: i to: i) foreground: self parenColor. ^ i + 1 ].
+	"Brackets"
+	(ch = $[ or: [ ch = $] ]) ifTrue: [
+		(text from: i to: i) foreground: self bracketColor. ^ i + 1 ].
+	"Braces"
+	(ch = ${ or: [ ch = $} ]) ifTrue: [
+		(text from: i to: i) foreground: self braceColor. ^ i + 1 ].
+	"Numbers"
+	(ch isDigit or: [ ch = $- and: [ i + 1 <= size and: [ (aString at: i + 1) isDigit ] ] ]) ifTrue: [
+		start := i. j := i + 1.
+		[ j <= size and: [ (aString at: j) isDigit or: [ (aString at: j) = $. or: [ (aString at: j) = $x ] ] ] ] whileTrue: [ j := j + 1 ].
+		(text from: start to: j - 1) foreground: self numberColor.
+		^ j ].
+	"Keywords :name"
+	ch = $: ifTrue: [
+		start := i. j := i + 1.
+		[ j <= size and: [ (aString at: j) isLetter or: [ (aString at: j) = $- ] ] ] whileTrue: [ j := j + 1 ].
+		j > (start + 1)
+			ifTrue: [ (text from: start to: j - 1) foreground: self keywordColor ]
+			ifFalse: [ (text from: start to: start) foreground: self operatorColor ].
+		^ j ].
+	"Words: symbols, special forms, operators (@ is a word start in Verse)"
+	(ch isLetter or: [ ch = $_ or: [ ch = $@ or: [ ch = $? ] ] ]) ifTrue: [
+		start := i. j := i.
+		[ j <= size and: [ | c | c := aString at: j. c isLetter or: [ c isDigit or: [ '_-?!/@' includes: c ] ] ] ] whileTrue: [ j := j + 1 ].
+		word := aString copyFrom: start to: j - 1.
+		"Colon chain name:type:spec"
+		(j <= size and: [ (aString at: j) = $: ]) ifTrue: [
+			[ j <= size and: [ | c | c := aString at: j. c isLetter or: [ c isDigit or: [ '_-?!/@:' includes: c ] ] ] ] whileTrue: [ j := j + 1 ].
+			(text from: start to: j - 1) foreground: self colonChainColor. ^ j ].
+		(self specialForms includes: word)
+			ifTrue: [ (text from: start to: j - 1) foreground: self specialFormColor. ^ j ].
+		(self operators includes: word)
+			ifTrue: [ (text from: start to: j - 1) foreground: self operatorColor. ^ j ].
+		(text from: start to: j - 1) foreground: self symbolColor. ^ j ].
+	"Operator chars"
+	('+-*/<>=!' includes: ch) ifTrue: [
+		start := i. j := i.
+		[ j <= size and: [ '+-*/<>=!' includes: (aString at: j) ] ] whileTrue: [ j := j + 1 ].
+		(text from: start to: j - 1) foreground: self operatorColor. ^ j ].
+	"Skip"
+	^ i + 1
 ]
 
 { #category : 'colors' }
-ZealTheme class >> keywordColor [
+VZealTheme class >> keywordColor [
 	^ Color fromHexString: '69F0AE'
 ]
 
 { #category : 'colors' }
-ZealTheme class >> numberColor [
+VZealTheme class >> numberColor [
 	^ Color fromHexString: 'ACDBFF'
 ]
 
 { #category : 'colors' }
-ZealTheme class >> operatorColor [
+VZealTheme class >> operatorColor [
 	"Bright cyan for operators — #8BE9FD"
 	^ Color fromHexString: '8BE9FD'
 ]
 
-{ #category : 'language' }
-ZealTheme class >> operators [
+{ #category : 'highlighting' }
+VZealTheme class >> operators [
 	^ #('+' '-' '*' '/' '=' '<>' '<' '>' '<=' '>=')
 ]
 
 { #category : 'colors' }
-ZealTheme class >> parenColor [
+VZealTheme class >> parenColor [
 	"Dimmed purple for parens — #9580FF"
 	^ Color fromHexString: '9580FF'
 ]
 
-{ #category : 'expanders' }
-ZealTheme class >> resolveExpander: word with: aResolver [
+{ #category : 'highlighting' }
+VZealTheme class >> resolveExpander: word with: aResolver [
 	"Resolve a word to a ZealNode for expanding. Returns nil if not found."
 	| node kebab pascal |
 	aResolver ifNil: [ ^ nil ].
@@ -203,27 +220,27 @@ ZealTheme class >> resolveExpander: word with: aResolver [
 ]
 
 { #category : 'colors' }
-ZealTheme class >> selectionColor [
+VZealTheme class >> selectionColor [
 	^ self cursorColor alpha: 0.3
 ]
 
 { #category : 'colors' }
-ZealTheme class >> specialFormColor [
+VZealTheme class >> specialFormColor [
 	^ Color fromHexString: 'FF3D7F'
 ]
 
-{ #category : 'language' }
-ZealTheme class >> specialForms [
+{ #category : 'highlighting' }
+VZealTheme class >> specialForms [
 	^ #('def' 'var' 'set' 'defn' 'defstruct' 'defenum' 'defclass' 'definterface' 'if' 'let' 'for' 'loop' 'block' 'defer' 'case' 'module' 'using' 'do' 'break' 'return')
 ]
 
 { #category : 'colors' }
-ZealTheme class >> stringColor [
+VZealTheme class >> stringColor [
 	^ Color fromHexString: '94FFCD'
 ]
 
-{ #category : 'styling' }
-ZealTheme class >> styler [
+{ #category : 'highlighting' }
+VZealTheme class >> styler [
 	| styler |
 	styler := GtSmaCCParserStyler forParser: ZealParser.
 	styler addStylerRule: (GtSmaCCTokenStylerRule tokenName: '<comment>' styleBlock: [:s | s foreground: self commentColor]).
@@ -250,7 +267,7 @@ ZealTheme class >> styler [
 ]
 
 { #category : 'colors' }
-ZealTheme class >> symbolColor [
+VZealTheme class >> symbolColor [
 	"Light lilac purple for symbols — #D4AAFF"
 	^ Color fromHexString: 'D4AAFF'
 ]
