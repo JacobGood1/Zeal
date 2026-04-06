@@ -1,13 +1,6 @@
 Class {
 	#name : 'GDZealBrowser',
-	#superclass : 'BlElement',
-	#instVars : [
-		'project',
-		'treeElement',
-		'detailElement',
-		'selectedNode',
-		'keyChord'
-	],
+	#superclass : 'ZealBrowser',
 	#category : 'Zeal',
 	#package : 'Zeal'
 }

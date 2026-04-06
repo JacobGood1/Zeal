@@ -1,9 +1,6 @@
 Class {
 	#name : 'GDZealTextStyler',
-	#superclass : 'BlTextStyler',
-	#instVars : [
-		'browser'
-	],
+	#superclass : 'ZealTextStyler',
 	#category : 'Zeal',
 	#package : 'Zeal'
 }

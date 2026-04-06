@@ -1,6 +1,6 @@
 Class {
 	#name : 'GDZealTheme',
-	#superclass : 'Object',
+	#superclass : 'ZealTheme',
 	#category : 'Zeal',
 	#package : 'Zeal'
 }

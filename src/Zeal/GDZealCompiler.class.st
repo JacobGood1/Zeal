@@ -1,6 +1,6 @@
 Class {
 	#name : 'GDZealCompiler',
-	#superclass : 'Object',
+	#superclass : 'ZealCompiler',
 	#category : 'Zeal',
 	#package : 'Zeal'
 }

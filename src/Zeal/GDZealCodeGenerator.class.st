@@ -1,9 +1,7 @@
 Class {
 	#name : 'GDZealCodeGenerator',
-	#superclass : 'Object',
+	#superclass : 'ZealCodeGenerator',
 	#instVars : [
-		'stream',
-		'indentLevel',
 		'registry'
 	],
 	#category : 'Zeal',
