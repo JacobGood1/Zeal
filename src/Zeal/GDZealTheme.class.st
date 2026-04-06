@@ -1,8 +1,8 @@
 Class {
 	#name : 'GDZealTheme',
 	#superclass : 'Object',
-	#category : 'GDZeal',
-	#package : 'GDZeal'
+	#category : 'Zeal',
+	#package : 'Zeal'
 }
 
 { #category : 'colors' }

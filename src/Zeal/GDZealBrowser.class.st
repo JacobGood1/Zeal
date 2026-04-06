@@ -8,8 +8,8 @@ Class {
 		'selectedNode',
 		'keyChord'
 	],
-	#category : 'GDZeal',
-	#package : 'GDZeal'
+	#category : 'Zeal',
+	#package : 'Zeal'
 }
 
 { #category : 'opening' }

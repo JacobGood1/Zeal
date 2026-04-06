@@ -6,8 +6,8 @@ Class {
 		'indentLevel',
 		'registry'
 	],
-	#category : 'GDZeal',
-	#package : 'GDZeal'
+	#category : 'Zeal',
+	#package : 'Zeal'
 }
 
 { #category : 'compiling' }

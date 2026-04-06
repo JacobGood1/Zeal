@@ -21,6 +21,23 @@ ZealNode >> annotations [ ^ annotations
 ZealNode >> annotations: anArray [ annotations := anArray
 ]
 
+{ #category : 'gdscript' }
+ZealNode >> compileToGDScript [
+	"Compile this node to GDScript string.
+	 Default: use rawSource through GDZealCodeGenerator"
+	^ self compileToGDScript: (WriteStream on: String new) indent: 0
+]
+
+{ #category : 'gdscript' }
+ZealNode >> compileToGDScript: stream indent: level [
+	"Default: emit rawSource or subclass override"
+	rawSource ifNotNil: [
+		stream nextPutAll: (GDZealCodeGenerator compile: rawSource).
+		^ stream ].
+	stream nextPutAll: '/* uncompilable: ' , self class name , ' */'.
+	^ stream
+]
+
 { #category : 'compiling' }
 ZealNode >> compileToVerse [
 	rawSource ifNotNil: [ ^ rawSource ].
@@ -74,6 +91,12 @@ ZealNode >> emitIndent: level on: stream [
 { #category : 'compiling' }
 ZealNode >> emitSpecifiers: specs on: stream [
 	specs do: [:s | stream nextPutAll: '<', s, '>' ]
+]
+
+{ #category : 'gdscript' }
+ZealNode >> gdScriptString [
+	"Convenience: compile to GDScript and return string"
+	^ (self compileToGDScript: (WriteStream on: String new) indent: 0) contents
 ]
 
 { #category : 'accessing' }

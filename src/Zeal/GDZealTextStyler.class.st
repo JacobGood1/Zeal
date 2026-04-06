@@ -4,8 +4,8 @@ Class {
 	#instVars : [
 		'browser'
 	],
-	#category : 'GDZeal',
-	#package : 'GDZeal'
+	#category : 'Zeal',
+	#package : 'Zeal'
 }
 
 { #category : 'instance creation' }

@@ -1,8 +1,8 @@
 Class {
 	#name : 'GDZealCompiler',
 	#superclass : 'Object',
-	#category : 'GDZeal',
-	#package : 'GDZeal'
+	#category : 'Zeal',
+	#package : 'Zeal'
 }
 
 { #category : 'building - forms' }
