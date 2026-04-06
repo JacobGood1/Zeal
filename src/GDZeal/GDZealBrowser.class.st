@@ -237,12 +237,14 @@ GDZealBrowser >> buildWelcome [
 { #category : 'building' }
 GDZealBrowser >> buildZealEditor: sourceString [
 	"Create a fully configured GDZeal code editor with all Zeal-like features"
-	| editor styler |
+	| editor styler text |
 	styler := GDZealTextStyler new.
 	styler browser: self.
+	"Pre-apply syntax highlighting so text is colored immediately"
+	text := GDZealTheme highlight: sourceString.
 	editor := BrEditor new
 		aptitude: (BrGlamorousCodeEditorAptitude new);
-		text: sourceString asRopedText;
+		text: text;
 		background: GDZealTheme backgroundColor;
 		padding: (BlInsets all: 8);
 		margin: (BlInsets top: 4);
