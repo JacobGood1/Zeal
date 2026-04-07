@@ -172,7 +172,7 @@ GDZealTheme class >> selectionColor [
 
 { #category : 'tokens' }
 GDZealTheme class >> specialForms [
-	^ #('def' 'var' 'set' 'defn' 'defcomp' 'defentity' 'defsystem' 'defobserver' 'if' 'when' 'let' 'for' 'match' 'do' 'return' 'as' 'export' 'init' 'query' 'process' 'components' 'watch' 'deps' 'setup' 'on-ready' 'on-destroy' 'on-enable' 'on-disable' 'on-added' 'on-removed' 'on-changed' 'with-all' 'with-any' 'with-none' 'iterate' 'enabled' 'disabled')
+	^ #('def' 'var' 'set' 'defn' 'defcomp' 'deffsm' 'defentity' 'defsystem' 'defobserver' 'if' 'when' 'let' 'for' 'match' 'do' 'return' 'as' 'export' 'init' 'query' 'process' 'components' 'watch' 'deps' 'setup' 'on-ready' 'on-destroy' 'on-enable' 'on-disable' 'on-added' 'on-removed' 'on-changed' 'with-all' 'with-any' 'with-none' 'iterate' 'enabled' 'disabled' 'wait' 'loop' 'sync' 'race')
 ]
 
 { #category : 'colors' }

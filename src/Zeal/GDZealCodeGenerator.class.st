@@ -2,7 +2,10 @@ Class {
 	#name : 'GDZealCodeGenerator',
 	#superclass : 'ZealCodeGenerator',
 	#instVars : [
-		'registry'
+		'registry',
+		'currentBindings',
+		'currentStateVar',
+		'currentTimerVar'
 	],
 	#category : 'Zeal',
 	#package : 'Zeal'
@@ -79,6 +82,122 @@ GDZealCodeGenerator >> emitExport: aListNode [
 	exprs size > 2 ifTrue: [
 		self emit: ' = '.
 		self visitExpression: exprs third ]
+]
+
+{ #category : 'codegen-fsm' }
+GDZealCodeGenerator >> emitFsmState: state index: i totalStates: total [
+	"Emit the body of one match arm. Assumes we're already at the right indent.
+	 Uses currentStateVar / currentTimerVar so the same emitter works for the main FSM
+	 and for inlined lane bodies inside sync/race controllers.
+	 Kinds:
+	   normal/waitFrame/loopEnd/joinJump: emit stmts, <state> = next
+	   waitTime: stmts run once on entry (sentinel), then countdown
+	   terminal: emit stmts, no advance (use pass if empty)
+	   branch: emit if cond: <state> = then else: <state> = else
+	   sync: tick ALL lanes each frame, advance when ALL done (and-join, no short-circuit)
+	   race: tick lanes in order, SHORT-CIRCUIT — skip remaining lanes once one finishes.
+	         Both perf win and a semantic fix: prevents tied-frame double-fire."
+	| stmts kind nextIdx sv tv |
+	stmts := state at: #stmts.
+	kind := state at: #kind.
+	nextIdx := (state at: #next) ifNil: [ i + 1 ].
+	sv := currentStateVar.
+	tv := currentTimerVar.
+	
+	"BRANCH"
+	kind = #branch ifTrue: [
+		stmts do: [ :stmt | self visitExpression: stmt. self nl ].
+		self emit: 'if '. self visitExpression: (state at: #branchCond). self emit: ':'.
+		self indent. self nl.
+		self emit: sv , ' = '. self emit: (state at: #thenIndex) asString.
+		self dedent. self nl.
+		self emit: 'else:'.
+		self indent. self nl.
+		self emit: sv , ' = '. self emit: (state at: #elseIndex) asString.
+		self dedent.
+		^ self ].
+	
+	"WAIT-TIME"
+	kind = #waitTime ifTrue: [
+		self emit: 'if ' , tv , ' <= 0.0:'.
+		self indent. self nl.
+		stmts do: [ :stmt | self visitExpression: stmt. self nl ].
+		self emit: tv , ' = '. self visitExpression: (state at: #waitDuration).
+		self dedent. self nl.
+		self emit: tv , ' -= delta'. self nl.
+		self emit: 'if ' , tv , ' <= 0.0:'.
+		self indent. self nl.
+		self emit: sv , ' = '. self emit: nextIdx asString.
+		self dedent.
+		^ self ].
+	
+	"SYNC controller — inlined lanes, no short-circuit (need ALL to finish)"
+	kind = #sync ifTrue: [
+		| lanes |
+		lanes := state at: #lanes.
+		lanes do: [ :lane | self emitInlineLane: lane ].
+		self emit: 'if '.
+		lanes withIndexDo: [ :lane :idx |
+			idx > 1 ifTrue: [ self emit: ' and ' ].
+			self emit: 'd_l' , (lane at: #laneId) asString ].
+		self emit: ':'.
+		self indent. self nl.
+		self emitLaneResetBlock: lanes advanceVar: sv toIndex: nextIdx.
+		self dedent.
+		^ self ].
+	
+	"RACE controller — short-circuit: stop ticking lanes after the first one finishes.
+	 Generates a flag-based flat structure that scales linearly with lane count."
+	kind = #race ifTrue: [
+		| lanes |
+		lanes := state at: #lanes.
+		self emit: 'var _won = false'. self nl.
+		lanes do: [ :lane |
+			| pfx savedSv savedTv laneStates sentinelIdx |
+			pfx := '_l' , (lane at: #laneId) asString.
+			laneStates := lane at: #states.
+			sentinelIdx := laneStates size.
+			self emit: 'if not _won:'.
+			self indent. self nl.
+			savedSv := currentStateVar.
+			savedTv := currentTimerVar.
+			currentStateVar := pfx , '_state'.
+			currentTimerVar := pfx , '_timer'.
+			laneStates withIndexDo: [ :st :j |
+				j = 1
+					ifTrue: [ self emit: 'if ' , currentStateVar , ' == 0:' ]
+					ifFalse: [ self emit: 'elif ' , currentStateVar , ' == ' , (j - 1) asString , ':' ].
+				self indent. self nl.
+				self emitFsmState: st index: j - 1 totalStates: laneStates size.
+				self dedent.
+				self nl ].
+			currentStateVar := savedSv.
+			currentTimerVar := savedTv.
+			self emit: 'if ' , pfx , '_state >= ' , sentinelIdx asString , ':'.
+			self indent. self nl.
+			self emit: '_won = true'.
+			self dedent.
+			self dedent. self nl ].
+		self emit: 'if _won:'.
+		self indent. self nl.
+		self emitLaneResetBlock: lanes advanceVar: sv toIndex: nextIdx.
+		self dedent.
+		^ self ].
+	
+	"TERMINAL"
+	kind = #terminal ifTrue: [
+		stmts isEmpty 
+			ifTrue: [ self emit: 'pass' ]
+			ifFalse: [ stmts withIndexDo: [ :stmt :idx |
+				idx > 1 ifTrue: [ self nl ].
+				self visitExpression: stmt ] ].
+		^ self ].
+	
+	"NORMAL/WAITFRAME/LOOPEND/JOINJUMP"
+	stmts withIndexDo: [ :stmt :idx |
+		self visitExpression: stmt.
+		self nl ].
+	self emit: sv , ' = '. self emit: nextIdx asString
 ]
 
 { #category : 'generating - control flow' }
@@ -162,6 +281,83 @@ GDZealCodeGenerator >> emitInitParam: aNode [
 		^ self ].
 	"Plain value (used as default in paired parsing)"
 	self visitExpression: aNode
+]
+
+{ #category : 'codegen-fsm' }
+GDZealCodeGenerator >> emitInlineLane: lane [
+	"Emit one lane's state machine inline (no helper function), followed by its done flag.
+	 Used by sync controllers — race needs custom code with the won-flag short-circuit
+	 so it doesn't use this helper."
+	| pfx laneStates savedSv savedTv sentinelIdx |
+	pfx := '_l' , (lane at: #laneId) asString.
+	laneStates := lane at: #states.
+	savedSv := currentStateVar.
+	savedTv := currentTimerVar.
+	currentStateVar := pfx , '_state'.
+	currentTimerVar := pfx , '_timer'.
+	sentinelIdx := laneStates size.
+	laneStates withIndexDo: [ :st :j |
+		j = 1
+			ifTrue: [ self emit: 'if ' , currentStateVar , ' == 0:' ]
+			ifFalse: [ self emit: 'elif ' , currentStateVar , ' == ' , (j - 1) asString , ':' ].
+		self indent. self nl.
+		self emitFsmState: st index: j - 1 totalStates: laneStates size.
+		self dedent.
+		self nl ].
+	self emit: 'var d' , pfx , ' = ' , currentStateVar , ' >= ' , sentinelIdx asString.
+	self nl.
+	currentStateVar := savedSv.
+	currentTimerVar := savedTv
+]
+
+{ #category : 'codegen-fsm' }
+GDZealCodeGenerator >> emitLaneHelper: lane [
+	"Emit a func _tick_lN(delta, <bindings>) -> bool helper for one lane.
+	 Returns true when _state has advanced past the last real state (sentinel = laneStates size)."
+	| pfx laneStates savedSv savedTv sentinelIdx |
+	pfx := '_l' , (lane at: #laneId) asString.
+	laneStates := lane at: #states.
+	savedSv := currentStateVar.
+	savedTv := currentTimerVar.
+	currentStateVar := pfx , '_state'.
+	currentTimerVar := pfx , '_timer'.
+	sentinelIdx := laneStates size.
+	
+	self nl.
+	self emit: 'func _tick' , pfx , '(delta: float'.
+	currentBindings do: [ :b |
+		self emit: ', '.
+		self emit: (b at: #name).
+		self emit: ': '.
+		self emit: (self resolveType: (b at: #type)) ].
+	self emit: ') -> bool:'.
+	self indent. self nl.
+	self emit: 'match ' , currentStateVar , ':'.
+	self indent. self nl.
+	laneStates withIndexDo: [ :state :i |
+		self emit: (i - 1) asString. self emit: ':'.
+		self indent. self nl.
+		self emitFsmState: state index: i - 1 totalStates: laneStates size.
+		self dedent.
+		i < laneStates size ifTrue: [ self nl ] ].
+	self dedent. self nl.
+	self emit: 'return ' , currentStateVar , ' >= ' , sentinelIdx asString.
+	self dedent.
+	
+	currentStateVar := savedSv.
+	currentTimerVar := savedTv
+]
+
+{ #category : 'codegen-fsm' }
+GDZealCodeGenerator >> emitLaneResetBlock: lanes advanceVar: sv toIndex: nextIdx [
+	"Reset all lanes to state 0 / timer 0, then advance the controller's state var.
+	 Shared by sync (after the and-join fires) and race (after the won flag fires)."
+	lanes do: [ :lane |
+		| pfx |
+		pfx := '_l' , (lane at: #laneId) asString.
+		self emit: pfx , '_state = 0'. self nl.
+		self emit: pfx , '_timer = 0.0'. self nl ].
+	self emit: sv , ' = '. self emit: nextIdx asString
 ]
 
 { #category : 'generating - GECS helpers' }
@@ -448,7 +644,6 @@ GDZealCodeGenerator >> generateDefcomp: aListNode [
 			head = 'export' ifTrue: [ self nl. self emitExport: item ].
 			head = 'init' ifTrue: [ self nl. self nl. self emitInit: item ] ]
 		ifFalse: [
-			"Field: variable + value pair"
 			| fieldName fieldType |
 			self nl.
 			(item isKindOf: ZealColonChainNode) ifTrue: [
@@ -461,14 +656,12 @@ GDZealCodeGenerator >> generateDefcomp: aListNode [
 				fieldType := nil ].
 			self emit: '@export var '.
 			self emit: (self toSnakeCase: fieldName).
-			"Consume next item as value if not a new field or list"
 			(i + 1 <= bodyForms size and: [
 				((bodyForms at: i + 1) isKindOf: ZealListNode) not ]) ifTrue: [
 				| nextItem |
 				nextItem := bodyForms at: i + 1.
 				(nextItem isKindOf: ZealColonChainNode)
 					ifFalse: [
-						"Infer type from value if needed"
 						fieldType ifNil: [ fieldType := GDZealCompiler inferTypeFromValue: nextItem ].
 						fieldType ifNotNil: [ :t |
 							self emit: ': '.
@@ -476,9 +669,7 @@ GDZealCodeGenerator >> generateDefcomp: aListNode [
 						self emit: ' = '.
 						self visitExpression: nextItem.
 						i := i + 1.
-						"Skip the type emit below"
 						item := nil ] ].
-			"Emit type if we didn't consume a value"
 			item ifNotNil: [
 				fieldType ifNotNil: [ :t |
 					self emit: ': '.
@@ -511,6 +702,74 @@ GDZealCodeGenerator >> generateDefentity: aListNode [
 		head = 'on-destroy' ifTrue: [ self nl. self nl. self emitEntityHook: 'on_destroy' body: form expressions allButFirst ].
 		head = 'on-enable' ifTrue: [ self nl. self nl. self emitEntityHook: 'on_enable' body: form expressions allButFirst ].
 		head = 'on-disable' ifTrue: [ self nl. self nl. self emitEntityHook: 'on_disable' body: form expressions allButFirst ] ]
+]
+
+{ #category : 'codegen-fsm' }
+GDZealCodeGenerator >> generateDeffsm: aListNode [
+	"(deffsm name body...)
+	 (deffsm name [bindings...] body...)
+	 Emits the FSM component with optional bindings as tick parameters.
+	 Body may include (sync ...) and (race ...) for concurrent lanes — the lane code
+	 is INLINED into the controller arm rather than calling helper functions, saving
+	 ~300 ns/controller-frame of GDScript function-call overhead.
+	 State dispatch uses if/elif chains rather than match because GDScript's match
+	 is significantly slower (~2x) for integer dispatch."
+	| exprs name bodyForms bindings third splitResult states lanes |
+	exprs := aListNode expressions.
+	name := exprs second value value.
+	bindings := OrderedCollection new.
+	bodyForms := exprs allButFirst allButFirst.
+	bodyForms isEmpty ifFalse: [
+		third := bodyForms first.
+		(third isKindOf: ZealVectorNode) ifTrue: [
+			bindings := GDZealCompiler parseFsmBindings: third.
+			bodyForms := bodyForms allButFirst ] ].
+	
+	registry register: name.
+	splitResult := GDZealCompiler fsmSplitBody: bodyForms.
+	states := splitResult at: #states.
+	lanes := splitResult at: #lanes.
+	currentBindings := bindings.
+	currentStateVar := '_state'.
+	currentTimerVar := '_timer'.
+	
+	"Class header"
+	self emit: 'class_name C_'.
+	self emit: (self toPascalCase: name).
+	self nl.
+	self emit: 'extends Component'.
+	self nl. self nl.
+	
+	"State + timer fields"
+	self emit: '@export var _state: int = 0'. self nl.
+	self emit: '@export var _timer: float = 0.0'. self nl.
+	"Per-lane fields (still needed — must persist across frames)"
+	lanes do: [ :lane |
+		| pfx |
+		pfx := '_l' , (lane at: #laneId) asString.
+		self emit: '@export var ' , pfx , '_state: int = 0'. self nl.
+		self emit: '@export var ' , pfx , '_timer: float = 0.0'. self nl ].
+	self nl.
+	
+	"Tick method signature with bindings as parameters"
+	self emit: 'func tick(entity: Entity, delta: float'.
+	bindings do: [ :b |
+		self emit: ', '.
+		self emit: (b at: #name).
+		self emit: ': '.
+		self emit: (self resolveType: (b at: #type)) ].
+	self emit: ') -> void:'.
+	self indent. self nl.
+	"if/elif dispatch on _state"
+	states withIndexDo: [ :state :i |
+		i = 1
+			ifTrue: [ self emit: 'if _state == 0:' ]
+			ifFalse: [ self emit: 'elif _state == ' , (i - 1) asString , ':' ].
+		self indent. self nl.
+		self emitFsmState: state index: i - 1 totalStates: states size.
+		self dedent.
+		i < states size ifTrue: [ self nl ] ].
+	self dedent
 ]
 
 { #category : 'generating - definitions' }
@@ -1014,7 +1273,7 @@ GDZealCodeGenerator >> setRegistry: aRegistry [
 	registry := aRegistry
 ]
 
-{ #category : 'private' }
+{ #category : 'generators' }
 GDZealCodeGenerator >> specialForms [
 	^ Dictionary new
 		at: 'def' put: #generateDef:;
@@ -1022,6 +1281,7 @@ GDZealCodeGenerator >> specialForms [
 		at: 'set' put: #generateSet:;
 		at: 'defn' put: #generateDefn:;
 		at: 'defcomp' put: #generateDefcomp:;
+		at: 'deffsm' put: #generateDeffsm:;
 		at: 'defentity' put: #generateDefentity:;
 		at: 'defsystem' put: #generateDefsystem:;
 		at: 'defobserver' put: #generateDefobserver:;

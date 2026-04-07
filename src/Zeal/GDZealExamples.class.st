@@ -355,6 +355,374 @@ GDZealExamples >> exampleFor [
 	^ result
 ]
 
+{ #category : 'examples-fsm' }
+GDZealExamples >> exampleFsmDetectsFsmSource [
+	<gtExample>
+	"isDeffsm: detects the deffsm form"
+	self assert: (GDZealCompiler isDeffsm: '(deffsm kek (loop (wait)))').
+	self assert: (GDZealCompiler isDeffsm: '(defcomp velocity speed:float 200.0)') not.
+	self assert: (GDZealCompiler isDeffsm: '(defcomp dead)') not.
+	^ true
+]
+
+{ #category : 'examples-fsm' }
+GDZealExamples >> exampleFsmEmpty [
+	<gtExample>
+	"FSM with no body — just generates the class header and state field."
+	| result |
+	result := GDZealCompiler compileToGDScript: '(deffsm ticker)'.
+	self assert: (result includesSubstring: 'class_name C_Ticker').
+	self assert: (result includesSubstring: '@export var _state: int = 0').
+	self assert: (result includesSubstring: '@export var _timer: float = 0.0').
+	self assert: (result includesSubstring: 'func tick(entity: Entity, delta: float) -> void:').
+	^ result
+]
+
+{ #category : 'examples-fsm' }
+GDZealExamples >> exampleFsmIfInline [
+	<gtExample>
+	"(if cond then else) without waits compiles to a single inline if/else."
+	| result |
+	result := GDZealCompiler compileToGDScript: '(deffsm simple
+  (loop
+    (wait 1.0)
+    (if (> hp 0) (heal) (die))))'.
+	self assert: (result includesSubstring: 'if hp > 0:').
+	self assert: (result includesSubstring: 'heal()').
+	self assert: (result includesSubstring: 'die()').
+	self assert: (result includesSubstring: '_state = 2') not.
+	^ result
+]
+
+{ #category : 'examples-fsm' }
+GDZealExamples >> exampleFsmIfWithWait [
+	<gtExample>
+	"(if cond then else) where then has a wait — splits into branch states."
+	| result |
+	result := GDZealCompiler compileToGDScript: '(deffsm boss
+  (loop
+    (if low-health
+      (do (wait 0.5) (panic-attack))
+      (do (wait 2.0) (normal-attack)))))'.
+	self assert: (result includesSubstring: 'if low_health:').
+	self assert: (result includesSubstring: 'panic_attack()').
+	self assert: (result includesSubstring: 'normal_attack()').
+	self assert: (result includesSubstring: '_timer = 0.5').
+	self assert: (result includesSubstring: '_timer = 2.0').
+	^ result
+]
+
+{ #category : 'examples-fsm-concurrency' }
+GDZealExamples >> exampleFsmLaneTerminalRunsOnce [
+	<gtExample>
+	"Lane final stmts must run exactly once: emitted state advances to the sentinel
+	 (laneStates size), and the inline done check is _state >= sentinel."
+	| result |
+	result := GDZealCompiler compileToGDScript: '(deffsm one
+  (sync
+    (do (wait 0.5) (boom))))'.
+	self assert: (result includesSubstring: 'boom()').
+	self assert: (result includesSubstring: '_l0_state = 2').
+	self assert: (result includesSubstring: 'var d_l0 = _l0_state >= 2').
+	^ result
+]
+
+{ #category : 'examples-fsm' }
+GDZealExamples >> exampleFsmLoop [
+	<gtExample>
+	"(loop body) makes the last state jump back to the loop start."
+	| result |
+	result := GDZealCompiler compileToGDScript: '(deffsm ticker
+  (loop
+    (wait)
+    (tick-once)))'.
+	self assert: (result includesSubstring: 'tick_once()').
+	self assert: (result includesSubstring: '_state = 0').
+	^ result
+]
+
+{ #category : 'examples-fsm' }
+GDZealExamples >> exampleFsmMultipleBindings [
+	<gtExample>
+	"deffsm with multiple bindings — all appear as tick parameters."
+	| reg result |
+	reg := GDZealComponentRegistry new.
+	reg register: 'health'.
+	reg register: 'velocity'.
+	result := GDZealCodeGenerator compile: '(deffsm ai [health:@health vel:@velocity]
+  (loop
+    (when (< health/current 10)
+      (set vel/speed 0.0))
+    (wait 0.5)))' withRegistry: reg.
+	self assert: (result includesSubstring: 'func tick(entity: Entity, delta: float, health: C_Health, vel: C_Velocity)').
+	self assert: (result includesSubstring: 'health.current < 10').
+	self assert: (result includesSubstring: 'vel.speed = 0.0').
+	^ result
+]
+
+{ #category : 'examples-fsm' }
+GDZealExamples >> exampleFsmNoBindings [
+	<gtExample>
+	"deffsm without bindings still works — tick(entity, delta) only."
+	| result |
+	result := GDZealCompiler compileToGDScript: '(deffsm tick-only
+  (loop
+    (wait 1.0)
+    (do-thing)))'.
+	self assert: (result includesSubstring: 'func tick(entity: Entity, delta: float) -> void:').
+	self assert: (result includesSubstring: 'do_thing()').
+	^ result
+]
+
+{ #category : 'examples-fsm' }
+GDZealExamples >> exampleFsmNonFsmStillWorks [
+	<gtExample>
+	"Existing (defcomp name field val ...) syntax still works without :fsm."
+	| result |
+	result := GDZealCompiler compileToGDScript: '(defcomp velocity
+  direction @vector2/RIGHT
+  speed:float 200.0)'.
+	self assert: (result includesSubstring: 'class_name C_Velocity').
+	self assert: (result includesSubstring: '@export var direction: Vector2 = Vector2.RIGHT').
+	self assert: (result includesSubstring: '@export var speed: float = 200.0').
+	"Should NOT have FSM artifacts"
+	self assert: (result includesSubstring: '_state') not.
+	self assert: (result includesSubstring: 'func tick') not.
+	^ result
+]
+
+{ #category : 'examples-fsm-concurrency' }
+GDZealExamples >> exampleFsmRaceFirstWins [
+	<gtExample>
+	"(race ...) short-circuits — once any lane finishes, remaining lanes are skipped.
+	 The generated code uses a _won flag with 'if not _won:' guards rather than
+	 ticking all lanes and joining with 'or'."
+	| result |
+	result := GDZealCompiler compileToGDScript: '(deffsm racer
+  (race
+    (do (wait 0.5) (fast))
+    (do (wait 5.0) (slow))))'.
+	self assert: (result includesSubstring: 'var _won = false').
+	self assert: (result includesSubstring: 'if not _won:').
+	self assert: (result includesSubstring: '_won = true').
+	self assert: (result includesSubstring: 'if _won:').
+	self assert: (result includesSubstring: 'fast()').
+	self assert: (result includesSubstring: 'slow()').
+	^ result
+]
+
+{ #category : 'examples-fsm-concurrency' }
+GDZealExamples >> exampleFsmRaceThreeLanes [
+	<gtExample>
+	"3-lane race generates three nested 'if not _won:' guards, ensuring each later lane
+	 is skipped once any earlier one finishes."
+	| result wonGuardCount |
+	result := GDZealCompiler compileToGDScript: '(deffsm three-way
+  (race
+    (do (wait 0.3) (a))
+    (do (wait 0.6) (b))
+    (do (wait 0.9) (c))))'.
+	wonGuardCount := (result substrings: String cr) inject: 0 into: [ :sum :ln |
+		(ln includesSubstring: 'if not _won:') ifTrue: [ sum + 1 ] ifFalse: [ sum ] ].
+	self assert: wonGuardCount = 3.
+	self assert: (result includesSubstring: 'a()').
+	self assert: (result includesSubstring: 'b()').
+	self assert: (result includesSubstring: 'c()').
+	self assert: (result includesSubstring: '_l0_state').
+	self assert: (result includesSubstring: '_l1_state').
+	self assert: (result includesSubstring: '_l2_state').
+	^ result
+]
+
+{ #category : 'examples-fsm-concurrency' }
+GDZealExamples >> exampleFsmRaceTiedFrameLoserSkipped [
+	<gtExample>
+	"In a tie (both lanes finishing on the same frame), the FIRST DECLARED lane wins
+	 and the loser's body must NOT execute. The structural guarantee is that each lane's
+	 body is inside an 'if not _won:' guard, so once lane 0 sets _won, lane 1's if/elif
+	 chain is skipped entirely."
+	| result lines lane1Idx wonAssignIdx |
+	result := GDZealCompiler compileToGDScript: '(deffsm tied
+  (race
+    (do (wait 0.5) (winner))
+    (do (wait 0.5) (loser))))'.
+	self assert: (result includesSubstring: 'winner()').
+	self assert: (result includesSubstring: 'loser()').
+	lines := result lines.
+	lane1Idx := lines findFirst: [ :ln | ln includesSubstring: 'loser()' ].
+	self assert: lane1Idx > 0.
+	wonAssignIdx := 0.
+	(lane1Idx - 1 to: 1 by: -1) do: [ :j |
+		(wonAssignIdx = 0 and: [ (lines at: j) includesSubstring: 'if not _won:' ])
+			ifTrue: [ wonAssignIdx := j ] ].
+	self assert: wonAssignIdx > 0.
+	self assert: ((1 to: wonAssignIdx) anySatisfy: [ :j | (lines at: j) includesSubstring: '_won = true' ]).
+	^ result
+]
+
+{ #category : 'examples-fsm-concurrency' }
+GDZealExamples >> exampleFsmSyncResetsLanesOnAdvance [
+	<gtExample>
+	"When a sync controller advances out, it resets each lane's state and timer
+	 so re-entry (e.g. via loop) starts clean."
+	| result |
+	result := GDZealCompiler compileToGDScript: '(deffsm cycler
+  (loop
+    (sync
+      (do (wait 0.5) (a))
+      (do (wait 0.5) (b)))
+    (after)))'.
+	"Reset assignments under the controller's join branch"
+	self assert: (result includesSubstring: '_l0_state = 0').
+	self assert: (result includesSubstring: '_l0_timer = 0.0').
+	self assert: (result includesSubstring: '_l1_state = 0').
+	self assert: (result includesSubstring: '_l1_timer = 0.0').
+	"After-sync code runs in a follow-up state"
+	self assert: (result includesSubstring: 'after()').
+	^ result
+]
+
+{ #category : 'examples-fsm-concurrency' }
+GDZealExamples >> exampleFsmSyncTwoBranches [
+	<gtExample>
+	"(sync ...) generates per-lane state fields and inlines each lane's state machine
+	 directly into the controller arm — no helper functions."
+	| result |
+	result := GDZealCompiler compileToGDScript: '(deffsm dual
+  (sync
+    (do (wait 0.5) (a))
+    (do (wait 1.0) (b))))'.
+	self assert: (result includesSubstring: '_l0_state').
+	self assert: (result includesSubstring: '_l1_state').
+	self assert: (result includesSubstring: '_l0_timer').
+	self assert: (result includesSubstring: '_l1_timer').
+	self assert: (result includesSubstring: 'func _tick_l') not.
+	self assert: (result includesSubstring: 'if _l0_state == 0:').
+	self assert: (result includesSubstring: 'if _l1_state == 0:').
+	self assert: (result includesSubstring: 'var d_l0 = _l0_state >=').
+	self assert: (result includesSubstring: 'var d_l1 = _l1_state >=').
+	self assert: (result includesSubstring: 'if d_l0 and d_l1').
+	self assert: (result includesSubstring: 'a()').
+	self assert: (result includesSubstring: 'b()').
+	^ result
+]
+
+{ #category : 'examples-fsm-concurrency' }
+GDZealExamples >> exampleFsmSyncWithBindings [
+	<gtExample>
+	"Bindings are accessible inside the inlined lane bodies (no separate helpers)."
+	| reg result |
+	reg := GDZealComponentRegistry new.
+	reg register: 'velocity'. reg register: 'health'.
+	result := GDZealCodeGenerator compile: '(deffsm dual [vel:@velocity health:@health]
+  (sync
+    (do (wait 1.0) (set vel/speed += 10))
+    (do (wait 0.5) (set health/current += 5))))' withRegistry: reg.
+	self assert: (result includesSubstring: 'func tick(entity: Entity, delta: float, vel: C_Velocity, health: C_Health)').
+	self assert: (result includesSubstring: 'func _tick_l') not.
+	self assert: (result includesSubstring: 'vel.speed += 10').
+	self assert: (result includesSubstring: 'health.current += 5').
+	self assert: (result includesSubstring: 'if _l0_state == 0:').
+	self assert: (result includesSubstring: 'if _l1_state == 0:').
+	^ result
+]
+
+{ #category : 'examples-fsm' }
+GDZealExamples >> exampleFsmSystemCodegen [
+	<gtExample>
+	"compileFsmSystemFor: generates a sibling System class that ticks the FSM"
+	| sys |
+	sys := GDZealCompiler compileFsmSystemFor: 'fsm-test'.
+	self assert: (sys includesSubstring: 'class_name FsmTestSystem').
+	self assert: (sys includesSubstring: 'extends System').
+	self assert: (sys includesSubstring: 'q.with_all([C_FsmTest])').
+	self assert: (sys includesSubstring: 'iterate([C_FsmTest])').
+	self assert: (sys includesSubstring: 'fsm.tick(entity, delta)').
+	^ sys
+]
+
+{ #category : 'examples-fsm' }
+GDZealExamples >> exampleFsmSystemWithBindings [
+	<gtExample>
+	"compileFsmSystemFor:withBindings: queries for all binding components and passes them to tick."
+	| bindings sys |
+	bindings := GDZealCompiler deffsmBindings: '(deffsm regen [health:@health vel:@velocity] (loop (wait 1.0)))'.
+	sys := GDZealCompiler compileFsmSystemFor: 'regen' withBindings: bindings.
+	"Query should include all components"
+	self assert: (sys includesSubstring: 'q.with_all([C_Regen, C_Health, C_Velocity])').
+	self assert: (sys includesSubstring: 'iterate([C_Regen, C_Health, C_Velocity])').
+	"Tick call should pass all binding components"
+	self assert: (sys includesSubstring: 'fsm.tick(entity, delta, health_arr[_i], vel_arr[_i])').
+	^ sys
+]
+
+{ #category : 'examples-fsm' }
+GDZealExamples >> exampleFsmWaitFrame [
+	<gtExample>
+	"(wait) creates a single-frame state boundary."
+	| result |
+	result := GDZealCompiler compileToGDScript: '(deffsm pause
+  (print "before")
+  (wait)
+  (print "after"))'.
+	self assert: (result includesSubstring: 'print("before")').
+	self assert: (result includesSubstring: 'print("after")').
+	self assert: (result includesSubstring: '0:').
+	self assert: (result includesSubstring: '1:').
+	^ result
+]
+
+{ #category : 'examples-fsm' }
+GDZealExamples >> exampleFsmWaitTime [
+	<gtExample>
+	"(wait n) creates a timed countdown state."
+	| result |
+	result := GDZealCompiler compileToGDScript: '(deffsm delay
+  (print "go")
+  (wait 1.5)
+  (print "done"))'.
+	self assert: (result includesSubstring: 'if _timer <= 0.0:').
+	self assert: (result includesSubstring: '_timer = 1.5').
+	self assert: (result includesSubstring: '_timer -= delta').
+	self assert: (result includesSubstring: 'print("go")').
+	self assert: (result includesSubstring: 'print("done")').
+	^ result
+]
+
+{ #category : 'examples-fsm' }
+GDZealExamples >> exampleFsmWhenWithWait [
+	<gtExample>
+	"(when cond body) with waits inside splits into a branch with no else."
+	| result |
+	result := GDZealCompiler compileToGDScript: '(deffsm regen
+  (loop
+    (when (> hp 0)
+      (wait 1.0)
+      (heal-by 5))))'.
+	self assert: (result includesSubstring: 'if hp > 0:').
+	self assert: (result includesSubstring: 'heal_by(5)').
+	self assert: (result includesSubstring: '_timer = 1.0').
+	^ result
+]
+
+{ #category : 'examples-fsm' }
+GDZealExamples >> exampleFsmWithBindings [
+	<gtExample>
+	"deffsm with [name:@type] bindings adds them as tick parameters."
+	| reg result |
+	reg := GDZealComponentRegistry new.
+	reg register: 'health'.
+	result := GDZealCodeGenerator compile: '(deffsm regen [health:@health]
+  (loop
+    (wait 1.0)
+    (set health/current += 5)))' withRegistry: reg.
+	"tick should accept the health binding"
+	self assert: (result includesSubstring: 'func tick(entity: Entity, delta: float, health: C_Health)').
+	"body should reference the binding"
+	self assert: (result includesSubstring: 'health.current += 5').
+	^ result
+]
+
 { #category : 'examples - control flow' }
 GDZealExamples >> exampleIf [
 	<gtExample>
