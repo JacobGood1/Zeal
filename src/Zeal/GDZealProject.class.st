@@ -53,7 +53,7 @@ GDZealProject >> compileAll [
 GDZealProject >> compileDefinition: aNode [
 	"Compile a single definition to GDScript and write to Godot project.
 	 For defcosystem components, also writes a sibling system file in systems/."
-	| gdScript gdPath snakeName folder source |
+	| gdScript gdPath snakeName folder source absRef |
 	folder := self folderFor: aNode.
 	snakeName := aNode name copyReplaceAll: '-' with: '_'.
 	folder = 'components' ifTrue: [ gdPath := 'components/c_' , snakeName , '.gd' ].
@@ -63,16 +63,20 @@ GDZealProject >> compileDefinition: aNode [
 	gdPath ifNil: [ gdPath := 'scripts/' , snakeName , '.gd' ].
 	source := aNode rawSource.
 	gdScript := GDZealCodeGenerator compile: source withRegistry: registry.
-	(path , '/' , gdPath) asFileReference
+	absRef := (path , '/' , gdPath) asFileReference.
+	absRef parent ensureCreateDirectory.
+	absRef
 		ensureDelete;
 		writeStreamDo: [ :s | s nextPutAll: gdScript ].
 	"defcosystem components also generate a sibling system"
 	(GDZealCompiler isDefcosystem: source) ifTrue: [
-		| systemSrc systemPath bindings |
+		| systemSrc systemPath bindings sysRef |
 		bindings := GDZealCompiler defcosystemBindings: source.
 		systemSrc := GDZealCompiler compileFsmSystemFor: aNode name withBindings: bindings.
 		systemPath := 'systems/' , snakeName , '_system.gd'.
-		(path , '/' , systemPath) asFileReference
+		sysRef := (path , '/' , systemPath) asFileReference.
+		sysRef parent ensureCreateDirectory.
+		sysRef
 			ensureDelete;
 			writeStreamDo: [ :s | s nextPutAll: systemSrc ] ].
 	^ gdPath
@@ -149,7 +153,9 @@ GDZealProject >> folderFor: aNode [
 GDZealProject >> initialize [
 	modules := OrderedDictionary new.
 	registry := GDZealComponentRegistry new.
-	#('components' 'entities' 'systems' 'observers') do: [ :folder |
+	"'scripts' is the home for top-level (defn ...) helper functions that aren't
+	 GECS components/systems/entities/observers."
+	#('components' 'entities' 'systems' 'observers' 'scripts') do: [ :folder |
 		| mod |
 		mod := ZealModule new name: folder; kind: #folder; definitions: OrderedCollection new.
 		modules at: folder put: mod ]

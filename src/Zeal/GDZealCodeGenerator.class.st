@@ -1,11 +1,14 @@
 Class {
 	#name : 'GDZealCodeGenerator',
-	#superclass : 'ZealCodeGenerator',
+	#superclass : 'Object',
 	#instVars : [
+		'stream',
+		'indentLevel',
 		'registry',
 		'currentBindings',
 		'currentStateVar',
-		'currentTimerVar'
+		'currentTimerVar',
+		'localScope'
 	],
 	#category : 'Zeal',
 	#package : 'Zeal'
@@ -24,6 +27,13 @@ GDZealCodeGenerator class >> compile: aString withRegistry: aRegistry [
 	gen := self new.
 	gen setRegistry: aRegistry.
 	^ gen generate: (ZealParser parse: aString)
+]
+
+{ #category : 'scope' }
+GDZealCodeGenerator >> bindLocal: aName [
+	"Add a name to the topmost scope frame."
+	aName ifNil: [ ^ self ].
+	localScope last add: aName asString
 ]
 
 { #category : 'emitting' }
@@ -594,13 +604,22 @@ GDZealCodeGenerator >> generateAs: aListNode [
 				ifFalse: [ self emit: '.' , (self toSnakeCase: seg) ] ] ]
 ]
 
-{ #category : 'generating - definitions' }
+{ #category : 'generation' }
 GDZealCodeGenerator >> generateDef: aListNode [
-	"(def name:type value) -> const name: type = value"
+	"(def name:type value) -> const name: type = value
+	 Top-level (def name (fn ...)) is not allowed — use (defn name [params] body)
+	 for a real function. We refuse it here so the call-site rule (named function
+	 vs Callable) stays unambiguous at the module level."
 	| exprs nameNode valueNode |
 	exprs := aListNode expressions.
 	nameNode := exprs second.
 	valueNode := exprs third.
+	"Reject top-level lambda binding"
+	((valueNode isKindOf: ZealListNode)
+		and: [ valueNode expressions notEmpty
+		and: [ (valueNode expressions first isKindOf: ZealSymbolNode)
+		and: [ valueNode expressions first value value = 'fn' ] ] ]) ifTrue: [
+			self error: 'top-level (def name (fn ...)) is not allowed — use (defn name [params] body) for a real function' ].
 	self emit: 'const '.
 	(nameNode isKindOf: ZealColonChainNode) ifTrue: [
 		| resolved |
@@ -794,13 +813,14 @@ GDZealCodeGenerator >> generateDefentity: aListNode [
 		head = 'on-disable' ifTrue: [ self nl. self nl. self emitEntityHook: 'on_disable' body: form expressions allButFirst ] ]
 ]
 
-{ #category : 'generating - definitions' }
+{ #category : 'generation' }
 GDZealCodeGenerator >> generateDefn: aListNode [
-	"(defn name [params] :retType body...) -> func name(params) -> retType:"
+	"(defn name [params] :retType body...) -> func name(params) -> retType:
+	 Pushes a fresh scope frame containing the param names so calls inside the
+	 body to a parameter route through .call(...) (e.g. higher-order functions)."
 	| exprs nameNode name params bodyExprs retType |
 	exprs := aListNode expressions.
 	nameNode := exprs second.
-	"Resolve name and optional return type from colon chain"
 	retType := nil.
 	(nameNode isKindOf: ZealColonChainNode) ifTrue: [
 		| resolved |
@@ -809,18 +829,15 @@ GDZealCodeGenerator >> generateDefn: aListNode [
 		retType := resolved at: #type ]
 	ifFalse: [
 		name := nameNode value value ].
-	"Find params vector and body"
 	params := nil.
 	bodyExprs := OrderedCollection new.
 	exprs allButFirst allButFirst do: [ :e |
 		(params isNil and: [ e isKindOf: ZealVectorNode ])
 			ifTrue: [ params := e ]
 			ifFalse: [
-				"Keyword as return type hint"
 				(retType isNil and: [ e isKindOf: ZealKeywordNode ])
 					ifTrue: [ retType := e value value allButFirst ]
 					ifFalse: [ bodyExprs add: e ] ] ].
-	"Emit"
 	self emit: 'func '.
 	self emit: (self toSnakeCase: name).
 	self emit: '('.
@@ -833,12 +850,17 @@ GDZealCodeGenerator >> generateDefn: aListNode [
 		self emit: ' -> '.
 		self emit: (self resolveType: retType) ].
 	self emit: ':'.
-	bodyExprs isEmpty ifTrue: [
+	"Push scope and bind params for the duration of the body"
+	self pushScope.
+	[ params ifNotNil: [
+		params expressions do: [ :p | self bindLocal: (self paramName: p) ] ].
+	  bodyExprs isEmpty ifTrue: [
 		self indent. self nl. self emit: 'pass'. self dedent ]
-	ifFalse: [
+	  ifFalse: [
 		self indent.
 		bodyExprs do: [ :e | self nl. self visitExpression: e ].
-		self dedent ]
+		self dedent ] ]
+		ensure: [ self popScope ]
 ]
 
 { #category : 'generating - GECS' }
@@ -983,32 +1005,89 @@ GDZealCodeGenerator >> generateDo: aListNode [
 		separatedBy: [ self nl ]
 ]
 
-{ #category : 'generating - control flow' }
+{ #category : 'generation' }
+GDZealCodeGenerator >> generateFn: aListNode [
+	"(fn [params...] body...) -> func(params): body
+	 The last body expression is implicitly returned (unless it's a statement-only
+	 form like set/var/if/for/when/match which can't be the operand of return).
+	 A single (do ...) body is unwrapped so the do's last child becomes the
+	 implicit return.
+	 Pushes a fresh scope frame containing the param names so calls in the body
+	 referencing them route through .call instead of name(...)."
+	| exprs params bodyExprs singleExpr |
+	exprs := aListNode expressions.
+	params := exprs second.
+	bodyExprs := exprs allButFirst allButFirst.
+	"Unwrap a top-level (do ...) so its children become the lambda body."
+	(bodyExprs size = 1
+		and: [ (bodyExprs first isKindOf: ZealListNode)
+		and: [ bodyExprs first expressions notEmpty
+		and: [ (bodyExprs first expressions first isKindOf: ZealSymbolNode)
+		and: [ bodyExprs first expressions first value value = 'do' ] ] ] ]) ifTrue: [
+			bodyExprs := bodyExprs first expressions allButFirst asOrderedCollection ].
+	self emit: 'func('.
+	params expressions
+		do: [ :p | self emitParam: p ]
+		separatedBy: [ self emit: ', ' ].
+	self emit: '):'.
+	self pushScope.
+	[ params expressions do: [ :p | self bindLocal: (self paramName: p) ].
+	  bodyExprs isEmpty
+		ifTrue: [ self emit: ' pass' ]
+		ifFalse: [
+			singleExpr := bodyExprs size = 1 and: [ (self isStatementForm: bodyExprs first) not ].
+			singleExpr
+				ifTrue: [
+					self emit: ' return '.
+					self visitExpression: bodyExprs first ]
+				ifFalse: [
+					self indent.
+					bodyExprs doWithIndex: [ :e :i |
+						self nl.
+						(i = bodyExprs size and: [ (self isStatementForm: e) not ])
+							ifTrue: [ self emit: 'return '. self visitExpression: e ]
+							ifFalse: [ self visitExpression: e ] ].
+					self dedent ] ] ]
+		ensure: [ self popScope ]
+]
+
+{ #category : 'generation' }
 GDZealCodeGenerator >> generateFor: aListNode [
-	"(for [x coll] body...) -> for x in coll: body"
-	| exprs bindingVec bodyExprs items |
+	"(for [x coll] body...) -> for x in coll: body.
+	 The loop variable enters scope for the duration of the body."
+	| exprs bindingVec bodyExprs items loopVar |
 	exprs := aListNode expressions.
 	bindingVec := exprs second.
 	bodyExprs := exprs allButFirst allButFirst.
 	items := bindingVec expressions.
+	loopVar := self toSnakeCase: items first value value.
 	self emit: 'for '.
-	self emit: (self toSnakeCase: items first value value).
+	self emit: loopVar.
 	self emit: ' in '.
 	self visitExpression: items second.
 	self emit: ':'.
-	self indent.
-	bodyExprs do: [ :e | self nl. self visitExpression: e ].
-	self dedent
+	self pushScope.
+	[ self bindLocal: loopVar.
+	  self indent.
+	  bodyExprs do: [ :e | self nl. self visitExpression: e ].
+	  self dedent ]
+		ensure: [ self popScope ]
 ]
 
-{ #category : 'generating - expressions' }
+{ #category : 'generation' }
 GDZealCodeGenerator >> generateFunctionCall: aListNode [
-	"(func args...) -> func(args)"
-	| exprs head |
+	"(func args...) -> func(args)
+	 If func is a name currently bound in lexical scope, treat it as a Callable
+	 and emit func.call(args) instead — that's how GDScript invokes lambda values."
+	| exprs head headStr |
 	exprs := aListNode expressions.
 	head := exprs first.
+	headStr := nil.
+	(head isKindOf: ZealSymbolNode) ifTrue: [ headStr := head value value ].
 	self visitExpression: head.
-	self emit: '('.
+	(headStr notNil and: [ self isLocal: (self toSnakeCase: headStr) ])
+		ifTrue: [ self emit: '.call(' ]
+		ifFalse: [ self emit: '(' ].
 	exprs allButFirst
 		do: [ :arg | self visitExpression: arg ]
 		separatedBy: [ self emit: ', ' ].
@@ -1023,35 +1102,38 @@ GDZealCodeGenerator >> generateIf: aListNode [
 	self emitIfChain: args first: true
 ]
 
-{ #category : 'generating - control flow' }
+{ #category : 'generation' }
 GDZealCodeGenerator >> generateLet: aListNode [
-	"(let [var1 val1 var2 val2] body...) -> var declarations + body"
+	"(let [var1 val1 var2 val2] body...) -> var declarations + body.
+	 Each binding name is added to the current scope so subsequent calls to it
+	 within the body emit .call(...) instead of name(...)."
 	| exprs bindingVec bodyExprs items i |
 	exprs := aListNode expressions.
 	bindingVec := exprs second.
 	bodyExprs := exprs allButFirst allButFirst.
 	items := bindingVec expressions.
-	"Emit bindings as var declarations"
 	i := 1.
 	[ i + 1 <= items size ] whileTrue: [
-		| nameNode valNode |
+		| nameNode valNode bindName |
 		nameNode := items at: i.
 		valNode := items at: i + 1.
 		self emit: 'var '.
 		(nameNode isKindOf: ZealColonChainNode) ifTrue: [
 			| resolved |
 			resolved := self resolveColonChain: nameNode value value.
-			self emit: (self toSnakeCase: (resolved at: #name)).
+			bindName := self toSnakeCase: (resolved at: #name).
+			self emit: bindName.
 			(resolved at: #type) ifNotNil: [ :t |
 				self emit: ': '.
 				self emit: (self resolveType: t) ] ]
 		ifFalse: [
-			self emit: (self toSnakeCase: nameNode value value) ].
+			bindName := self toSnakeCase: nameNode value value.
+			self emit: bindName ].
 		self emit: ' = '.
 		self visitExpression: valNode.
+		self bindLocal: bindName.
 		self nl.
 		i := i + 2 ].
-	"Emit body"
 	bodyExprs do: [ :e | self visitExpression: e ] separatedBy: [ self nl ]
 ]
 
@@ -1231,12 +1313,36 @@ GDZealCodeGenerator >> indent [
 GDZealCodeGenerator >> initialize [
 	stream := WriteStream on: String new.
 	indentLevel := 0.
-	registry := GDZealComponentRegistry new
+	registry := GDZealComponentRegistry new.
+	"Stack of scopes — each entry is a Set of locally-bound names. Used to decide
+	 whether a call's head is a local variable holding a Callable (emit .call) or
+	 a named function (emit plain call)."
+	localScope := OrderedCollection new.
+	localScope add: Set new
+]
+
+{ #category : 'scope' }
+GDZealCodeGenerator >> isLocal: aName [
+	"True if aName is bound in any currently-visible scope frame."
+	aName ifNil: [ ^ false ].
+	^ localScope anySatisfy: [ :frame | frame includes: aName asString ]
 ]
 
 { #category : 'private' }
 GDZealCodeGenerator >> isOperator: aString [
 	^ #('+' '-' '*' '%' '=' '<>' '<' '>' '<=' '>=' 'and' 'or' 'not' '+=' '-=' '*=' '/=') includes: aString
+]
+
+{ #category : 'generation' }
+GDZealCodeGenerator >> isStatementForm: aNode [
+	"True if aNode is a special form that emits as a GDScript statement (not an
+	 expression) and therefore can't be the operand of `return`."
+	| head |
+	(aNode isKindOf: ZealListNode) ifFalse: [ ^ false ].
+	aNode expressions isEmpty ifTrue: [ ^ false ].
+	head := aNode expressions first.
+	(head isKindOf: ZealSymbolNode) ifFalse: [ ^ false ].
+	^ #('set' 'var' 'if' 'when' 'for' 'while' 'match' 'do' 'return') includes: head value value
 ]
 
 { #category : 'emitting' }
@@ -1248,6 +1354,28 @@ GDZealCodeGenerator >> nl [
 { #category : 'accessing' }
 GDZealCodeGenerator >> output [
 	^ stream contents
+]
+
+{ #category : 'generation' }
+GDZealCodeGenerator >> paramName: aNode [
+	"Snake-cased name of a parameter node, stripping any colon-chain type annotation."
+	(aNode isKindOf: ZealColonChainNode) ifTrue: [
+		| resolved |
+		resolved := self resolveColonChain: aNode value value.
+		^ self toSnakeCase: (resolved at: #name) ].
+	^ self toSnakeCase: aNode value value
+]
+
+{ #category : 'scope' }
+GDZealCodeGenerator >> popScope [
+	localScope size > 1 ifTrue: [ localScope removeLast ]
+]
+
+{ #category : 'scope' }
+GDZealCodeGenerator >> pushScope [
+	"Push a fresh local-scope frame. Names bound while this frame is on top are
+	 visible until the matching popScope."
+	localScope add: Set new
 ]
 
 { #category : 'accessing' }
@@ -1298,7 +1426,7 @@ GDZealCodeGenerator >> setRegistry: aRegistry [
 	registry := aRegistry
 ]
 
-{ #category : 'special forms' }
+{ #category : 'generation' }
 GDZealCodeGenerator >> specialForms [
 	^ Dictionary new
 		at: 'def' put: #generateDef:;
@@ -1311,6 +1439,7 @@ GDZealCodeGenerator >> specialForms [
 		at: 'defentity' put: #generateDefentity:;
 		at: 'defsystem' put: #generateDefsystem:;
 		at: 'defobserver' put: #generateDefobserver:;
+		at: 'fn' put: #generateFn:;
 		at: 'if' put: #generateIf:;
 		at: 'when' put: #generateWhen:;
 		at: 'for' put: #generateFor:;
