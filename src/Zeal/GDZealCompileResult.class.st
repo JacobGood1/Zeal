@@ -47,6 +47,7 @@ GDZealCompileResult >> gtCompiledFor: aView [
 	^ aView textEditor
 		title: 'GDScript';
 		priority: 20;
+		styler: GDScriptTextStyler new;
 		text: [ generated ifNil: [ '' ] ];
 		actionUpdateButton
 ]
