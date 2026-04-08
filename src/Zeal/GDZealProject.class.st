@@ -78,6 +78,32 @@ GDZealProject >> compileDefinition: aNode [
 	^ gdPath
 ]
 
+{ #category : 'definitions' }
+GDZealProject >> deleteDefinition: aNode [
+	"Remove a definition from the project: deletes the .zeal source file (so it
+	 won't be reloaded next session), the generated .gd file, and the sibling
+	 _system.gd for defcosystems. Removes the node from its module."
+	| folder snakeName gdPath sysPath src zealPath |
+	(aNode isKindOf: ZealDefinition) ifFalse: [ ^ nil ].
+	folder := self folderFor: aNode.
+	snakeName := aNode name copyReplaceAll: '-' with: '_'.
+	"1. Delete the source .zeal file from gdzeal/<folder>/"
+	zealPath := path , '/gdzeal/' , folder , '/' , aNode name , '.zeal'.
+	zealPath asFileReference ensureDelete.
+	"2. Delete the generated .gd file"
+	folder = 'components'
+		ifTrue: [ gdPath := 'components/c_' , snakeName , '.gd' ]
+		ifFalse: [ gdPath := folder , '/' , snakeName , '.gd' ].
+	(path , '/' , gdPath) asFileReference ensureDelete.
+	"3. defcosystem also writes a sibling system file — clean it up too."
+	src := aNode rawSource.
+	(src notNil and: [ GDZealCompiler isDefcosystem: src ]) ifTrue: [
+		sysPath := 'systems/' , snakeName , '_system.gd'.
+		(path , '/' , sysPath) asFileReference ensureDelete ].
+	self removeDefinition: aNode.
+	^ gdPath
+]
+
 { #category : 'accessing' }
 GDZealProject >> externalModules [
 	"GDZeal has no external modules"

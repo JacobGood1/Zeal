@@ -42,6 +42,23 @@ GDZealBrowser class >> openOn: aGodotPath [
 	^ browser
 ]
 
+{ #category : 'actions' }
+GDZealBrowser >> addDraftFor: aCategory [
+	"Insert a draft expander at the top of the column for the given category, expand
+	 it, and focus its editor. Compiling (Ctrl+S) turns the draft into a real def."
+	| column draftExpander |
+	column := nil.
+	self allChildrenBreadthFirstDo: [ :c |
+		((c userData at: #role ifAbsent: [ nil ]) = #categoryColumn
+		 and: [ (c userData at: #category ifAbsent: [ nil ]) = aCategory ])
+			ifTrue: [ column := c ] ].
+	column ifNil: [ ^ self ].
+	draftExpander := self buildDraftExpander: aCategory.
+	"Insert after the '+ New' button which is at index 1"
+	column addChild: draftExpander at: 2.
+	draftExpander expand
+]
+
 { #category : 'editing' }
 GDZealBrowser >> applyFormat: zealEditor [
 	"Apply full format — normalize indentation + parinfer"
@@ -89,20 +106,38 @@ GDZealBrowser >> barfForward: zealEditor [
 	zealEditor editor navigator moveTo: (cursorPos min: result size); apply
 ]
 
-{ #category : 'building - tabs' }
+{ #category : 'building' }
+GDZealBrowser >> buildAddDefinitionButton: aCategory [
+	"A '+ New' button shown above the cards for a category. Clicking it inserts a
+	 draft expander at the top of the category column with a starter template; the
+	 draft becomes a real definition once the user hits Ctrl+S in its editor."
+	| btn |
+	btn := BrButton new
+		aptitude: BrGlamorousButtonWithLabelAptitude;
+		label: '+ New ' , aCategory capitalized;
+		margin: (BlInsets bottom: 6);
+		action: [ self addDraftFor: aCategory ].
+	^ btn
+]
+
+{ #category : 'building' }
 GDZealBrowser >> buildCategoryContent: aCategory [
-	"Vertically-scrolling column of definition expander cards for the given category."
+	"Vertically-scrolling column of definition expander cards for the given category,
+	 with a '+ New' button at the top so the user can author new definitions inline."
 	| column scroll defs |
 	defs := self definitionsForCategory: aCategory.
 	column := BlElement new
 		layout: BlLinearLayout vertical;
 		constraintsDo: [ :c | c horizontal matchParent. c vertical fitContent ];
 		padding: (BlInsets all: 8).
+	column userData at: #role put: #categoryColumn.
+	column userData at: #category put: aCategory.
+	column addChild: (self buildAddDefinitionButton: aCategory).
 	defs do: [ :d | column addChild: (self buildDefinitionExpander: d) ].
 	defs isEmpty ifTrue: [
 		column addChild: (BrLabel new
-			aptitude: (BrGlamorousLabelAptitude new 
-				foreground: GDZealTheme commentColor; 
+			aptitude: (BrGlamorousLabelAptitude new
+				foreground: GDZealTheme commentColor;
 				fontSize: 12);
 			text: 'No ' , aCategory , ' yet.';
 			margin: (BlInsets all: 12)) ].
@@ -205,10 +240,10 @@ GDZealBrowser >> buildDefinitionExpander: aDef [
 	^ expander
 ]
 
-{ #category : 'building - cards' }
+{ #category : 'building' }
 GDZealBrowser >> buildDefinitionHeader: aDef [
-	"Compact header row: type tag (faded) + bold name."
-	| row typeText |
+	"Compact header row: type tag (faded) + bold name + small delete button on the right."
+	| row typeText spacer deleteBtn |
 	typeText := (aDef isKindOf: ZealClass)
 		ifTrue: [ aDef superclass ifNil: [ '' ] ifNotNil: [ :s | s ] ]
 		ifFalse: [ aDef class name allButFirst: 4 ].
@@ -218,18 +253,36 @@ GDZealBrowser >> buildDefinitionHeader: aDef [
 		padding: (BlInsets top: 2 right: 8 bottom: 2 left: 0).
 	typeText isEmpty ifFalse: [
 		row addChild: (BrLabel new
-			aptitude: (BrGlamorousLabelAptitude new 
+			aptitude: (BrGlamorousLabelAptitude new
 				foreground: GDZealTheme operatorColor;
 				fontSize: 11);
 			text: typeText;
 			margin: (BlInsets right: 8)) ].
 	row addChild: (BrLabel new
-		aptitude: (BrGlamorousLabelAptitude new 
+		aptitude: (BrGlamorousLabelAptitude new
 			foreground: GDZealTheme keywordColor;
 			fontSize: 13;
 			bold);
 		text: aDef name).
+	"Spacer pushes the delete button to the far right"
+	spacer := BlElement new
+		constraintsDo: [ :c |
+			c horizontal matchParent.
+			c vertical fitContent ].
+	row addChild: spacer.
+	deleteBtn := self buildDeleteButtonFor: aDef.
+	row addChild: deleteBtn.
 	^ row
+]
+
+{ #category : 'building' }
+GDZealBrowser >> buildDeleteButtonFor: aDef [
+	"Small minus/x button: deletes the definition (and its .gd file) and rebuilds."
+	^ BrButton new
+		aptitude: BrGlamorousButtonWithLabelAptitude;
+		label: '-';
+		margin: (BlInsets left: 8);
+		action: [ self deleteDefinition: aDef ]
 ]
 
 { #category : 'building' }
@@ -237,6 +290,62 @@ GDZealBrowser >> buildDivider [
 	^ BlElement new
 		constraintsDo: [ :c | c horizontal matchParent. c vertical exact: 1 ];
 		background: (Color fromHexString: '444444')
+]
+
+{ #category : 'building' }
+GDZealBrowser >> buildDraftBody: aCategory [
+	"Editor pre-filled with the category template; Ctrl+S compiles. The aNode arg
+	 to compileNode: is unused for the draft path so passing nil is fine."
+	| body editor |
+	body := BlElement new
+		layout: BlLinearLayout vertical;
+		constraintsDo: [ :c | c horizontal matchParent. c vertical fitContent ];
+		padding: (BlInsets top: 4 left: 12 bottom: 8 right: 8).
+	editor := self buildZealEditor: (self templateFor: aCategory).
+	editor userData at: #defName put: '__draft__'.
+	editor addShortcut: (BlShortcutWithAction new
+		combination: BlKeyCombination primaryS;
+		action: [ self compileNode: nil editor: editor ]).
+	body addChild: editor.
+	^ body
+]
+
+{ #category : 'building' }
+GDZealBrowser >> buildDraftExpander: aCategory [
+	"Inline-expandable card for a brand-new draft definition. Header shows '(new)',
+	 body has an editor pre-filled with the category template; Ctrl+S compiles."
+	| expander |
+	expander := BrExpander new
+		aptitude: BrGlamorousExpanderAptitude new;
+		constraintsDo: [ :c | c horizontal matchParent. c vertical fitContent ];
+		margin: (BlInsets top: 2 bottom: 2);
+		header: [ self buildDraftHeader: aCategory ];
+		content: [ self buildDraftBody: aCategory ];
+		yourself.
+	expander userData at: #defName put: '__draft__'.
+	^ expander
+]
+
+{ #category : 'building' }
+GDZealBrowser >> buildDraftHeader: aCategory [
+	| row |
+	row := BlElement new
+		layout: (BlLinearLayout horizontal alignCenterLeft);
+		constraintsDo: [ :c | c horizontal matchParent. c vertical fitContent ];
+		padding: (BlInsets top: 2 right: 8 bottom: 2 left: 0).
+	row addChild: (BrLabel new
+		aptitude: (BrGlamorousLabelAptitude new
+			foreground: GDZealTheme operatorColor;
+			fontSize: 11);
+		text: 'New ' , aCategory;
+		margin: (BlInsets right: 8)).
+	row addChild: (BrLabel new
+		aptitude: (BrGlamorousLabelAptitude new
+			foreground: GDZealTheme commentColor;
+			fontSize: 13;
+			italic);
+		text: '(unsaved)').
+	^ row
 ]
 
 { #category : 'building' }
@@ -671,6 +780,19 @@ GDZealBrowser >> deindentLine: zealEditor [
 	zealEditor editor navigator
 		moveTo: (cursorPos - 2 max: 0);
 		apply
+]
+
+{ #category : 'actions' }
+GDZealBrowser >> deleteDefinition: aDef [
+	"Delete a definition from the project (and its .gd file on disk), persist, and
+	 rebuild the browser preserving tab/expander state where possible."
+	| state |
+	project deleteDefinition: aDef.
+	project persistToImage.
+	typeSystem ifNotNil: [ typeSystem rescan ].
+	state := self captureUiState.
+	self rebuildTree.
+	self restoreUiState: state
 ]
 
 { #category : 'editing' }
@@ -1232,6 +1354,30 @@ GDZealBrowser >> swapForm: anEditor up: isUp [
 	anEditor editor inserter at: 0; string: result; withoutCursorUpdate; insert.
 	suppressRehighlight := false.
 	anEditor editor navigator moveTo: ((newCursorPos max: 0) min: result size); apply
+]
+
+{ #category : 'templates' }
+GDZealBrowser >> templateFor: aCategory [
+	"Default starter source for a new draft definition in the given category."
+	aCategory = 'components' ifTrue: [
+		^ '(defcomp new-component
+  field 0)' ].
+	aCategory = 'defcosystems' ifTrue: [
+		^ '(defcosystem new-fsm
+  [hp:@health]
+  (when (> hp/current 0)
+    (set hp/current (- hp/current 1))))' ].
+	aCategory = 'systems' ifTrue: [
+		^ '(defsystem new-system [hp:@health]
+  (set hp/current (- hp/current 1)))' ].
+	aCategory = 'entities' ifTrue: [
+		^ '(defentity new-entity
+  (components [@health])
+  (on-ready (print "spawned")))' ].
+	aCategory = 'observers' ifTrue: [
+		^ '(defobserver new-observer
+  (on-changed (print "changed")))' ].
+	^ ''
 ]
 
 { #category : 'hooks' }
