@@ -643,20 +643,14 @@ GDZealBrowser >> compileNode: aNode editor: editor [
 	"Compile the editor content. On success, save and spawn a pager page showing
 	 the GDZeal source + generated GDScript. On error (linter or compiler),
 	 spawn an error pager page that highlights the offending text.
-	 Three navigation cases after a successful compile:
-	  1. Signature changed (new/removed/renamed def) → rebuildTree + restore focus
-	     on the just-compiled def.
-	  2. Signature unchanged but the editor's owner differs from the just-compiled
-	     name (user typed a *different* existing definition's source into this
-	     editor) → no rebuild, but jump focus to the existing card for the new name.
-	  3. Signature unchanged and names match (pure in-place edit) → no-op."
-	| source linterDiags newNode gdPath gdAbsPath gdSource sigBefore sigAfter result cursorPos editorOwner |
+	 Every successful Ctrl+S unconditionally triggers a UI rebuild that focuses the
+	 just-compiled definition (switches to its category tab + expands its card +
+	 puts the cursor back where it was in the source the user just saved)."
+	| source linterDiags newNode gdPath gdAbsPath gdSource result cursorPos state |
 	source := editor editor text asString.
 	"Capture cursor up front from the editor that triggered Ctrl+S — captureUiState
 	 only reads it when the editor still has focus."
 	cursorPos := [ editor editor cursors first position ] on: Error do: [ :e | nil ].
-	editorOwner := editor userData at: #defName ifAbsent: [ nil ].
-	sigBefore := self definitionSignature.
 	"1. Linter pass — catches field typos before codegen."
 	linterDiags := self lintSource: source.
 	linterDiags isNotEmpty ifTrue: [
@@ -687,24 +681,15 @@ GDZealBrowser >> compileNode: aNode editor: editor [
 		yourself.
 	self flashSuccess: editor.
 	self spawnResultPageOn: editor result: result.
-	"4. Navigation."
-	sigAfter := self definitionSignature.
-	sigBefore = sigAfter
-		ifTrue: [
-			"Pure in-place edit on a different existing card — jump focus."
-			editorOwner = newNode name ifFalse: [
-				self focusDefinition: newNode cursorPosition: cursorPos ] ]
-		ifFalse: [
-			"Structural change — rebuild and restore focus on the new def."
-			| state |
-			state := self captureUiState.
-			state at: #targetCategory put: (self categoryFor: newNode).
-			state at: #targetDefName put: newNode name.
-			state at: #focusedName put: newNode name.
-			cursorPos ifNotNil: [ state at: #cursorPosition put: cursorPos ].
-			(state at: #expandedNames) add: newNode name.
-			self rebuildTree.
-			self restoreUiState: state ]
+	"4. Always rebuild and refocus on the just-compiled definition."
+	state := self captureUiState.
+	state at: #targetCategory put: (self categoryFor: newNode).
+	state at: #targetDefName put: newNode name.
+	state at: #focusedName put: newNode name.
+	cursorPos ifNotNil: [ state at: #cursorPosition put: cursorPos ].
+	(state at: #expandedNames) add: newNode name.
+	self rebuildTree.
+	self restoreUiState: state
 ]
 
 { #category : 'editor setup' }
@@ -909,32 +894,6 @@ GDZealBrowser >> extractDefName: source [
 			[ end <= source size and: [ (source at: end) isLetter or: [ (source at: end) isDigit or: [ '-_' includes: (source at: end) ] ] ] ] whileTrue: [ end := end + 1 ].
 			end > start ifTrue: [ ^ source copyFrom: start to: end - 1 ] ] ].
 	^ nil
-]
-
-{ #category : 'actions' }
-GDZealBrowser >> focusDefinition: aNode cursorPosition: cursorPos [
-	"Without rebuilding, navigate to the card for aNode: switch to its category tab,
-	 expand its expander, focus its editor, and place the cursor at cursorPos.
-	 Used after a save where the just-compiled definition is different from the one
-	 the editor previously belonged to but the project's signature didn't change."
-	| tabGroup |
-	tabGroup := nil.
-	self allChildrenBreadthFirstDo: [ :c |
-		(tabGroup isNil and: [ c isKindOf: BrTabGroup ]) ifTrue: [ tabGroup := c ] ].
-	tabGroup ifNotNil: [
-		[ tabGroup selectTabWithLabelString: (self labelForCategory: (self categoryFor: aNode)) ]
-			on: Error do: [ ] ].
-	"Tab content may render lazily — give it a tick before walking for the expander/editor."
-	self enqueueTask: (BlTaskAction new action: [
-		self allChildrenBreadthFirstDo: [ :c |
-			((c isKindOf: BrExpander) and: [ (c userData at: #defName ifAbsent: [ nil ]) = aNode name ])
-				ifTrue: [ c expand ] ].
-		self allChildrenBreadthFirstDo: [ :c |
-			((c isKindOf: BrEditor) and: [ (c userData at: #defName ifAbsent: [ nil ]) = aNode name ])
-				ifTrue: [
-					c requestFocus.
-					cursorPos ifNotNil: [
-						[ c editor moveCursorTo: cursorPos ] on: Error do: [ :e | nil ] ] ] ] ])
 ]
 
 { #category : 'private' }
