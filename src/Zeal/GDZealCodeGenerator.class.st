@@ -900,14 +900,15 @@ GDZealCodeGenerator >> generateDefsystemFull: bodyForms [
 			head = 'setup' ifTrue: [ self nl. self nl. self emitSystemSetup: form ] ] ]
 ]
 
-{ #category : 'generating - GECS' }
+{ #category : 'generating - definitions' }
 GDZealCodeGenerator >> generateDefsystemShorthand: name components: compVector rest: restForms [
 	"Shorthand: vector = with-all + iterate + auto-bind.
 	 compVector entries: @comp or binding:@comp (colon chain).
 	 restForms: optional query modifiers (with-none, enabled, etc.) + body expressions.
-	 delta is always available as a binding in the body."
-	| compRefs bindings queryMods bodyExprs bodyStr usesDelta |
-	"Parse component vector into refs and binding names"
+	 delta is always available as a binding in the body.
+	 Emits explicit type annotations on bindings (Array[C_Foo], var x: C_Foo) so the
+	 GDScript LSP can statically validate field accesses against the component's class."
+	| compRefs bindings classNames queryMods bodyExprs |
 	compRefs := OrderedCollection new.
 	bindings := OrderedCollection new.
 	compVector expressions do: [ :node |
@@ -924,6 +925,8 @@ GDZealCodeGenerator >> generateDefsystemShorthand: name components: compVector r
 				refName := (ref beginsWith: '@') ifTrue: [ ref allButFirst ] ifFalse: [ ref ].
 				bindings add: (self toSnakeCase: refName).
 				compRefs add: ref ] ].
+	"Resolve each compRef once into its actual class name (e.g. health -> C_Health)"
+	classNames := compRefs collect: [ :ref | self resolveClassRef: ref ].
 	"Split rest into query modifiers vs body"
 	queryMods := OrderedCollection new.
 	bodyExprs := OrderedCollection new.
@@ -943,29 +946,29 @@ GDZealCodeGenerator >> generateDefsystemShorthand: name components: compVector r
 	self emit: 'func query() -> QueryBuilder:'.
 	self indent. self nl.
 	self emit: 'return q.with_all(['.
-	compRefs do: [ :ref | self emit: (self resolveClassRef: ref) ] separatedBy: [ self emit: ', ' ].
+	classNames do: [ :cls | self emit: cls ] separatedBy: [ self emit: ', ' ].
 	self emit: ']).iterate(['.
-	compRefs do: [ :ref | self emit: (self resolveClassRef: ref) ] separatedBy: [ self emit: ', ' ].
+	classNames do: [ :cls | self emit: cls ] separatedBy: [ self emit: ', ' ].
 	self emit: '])'.
 	queryMods do: [ :mod | self emitQueryClause: mod ].
 	self dedent.
-	"Emit process — always bind delta (no underscore)"
+	"Emit process — typed bindings so the LSP can statically check field accesses"
 	self nl. self nl.
 	self emit: 'func process(entities: Array[Entity], components: Array, delta: float) -> void:'.
 	self indent.
-	"Bind component arrays"
+	"Bind component arrays with explicit Array[C_Foo] types"
 	1 to: bindings size do: [ :idx |
 		self nl.
-		self emit: 'var ' , (bindings at: idx) , '_arr = components[' , (idx - 1) printString , ']' ].
+		self emit: 'var ' , (bindings at: idx) , '_arr: Array[' , (classNames at: idx) , '] = components[' , (idx - 1) printString , ']' ].
 	"Loop"
 	self nl.
 	self emit: 'for _i in entities.size():'.
 	self indent.
 	self nl.
 	self emit: 'var entity = entities[_i]'.
-	bindings do: [ :binding |
+	bindings withIndexDo: [ :binding :idx |
 		self nl.
-		self emit: 'var ' , binding , ' = ' , binding , '_arr[_i]' ].
+		self emit: 'var ' , binding , ': ' , (classNames at: idx) , ' = ' , binding , '_arr[_i]' ].
 	"Body"
 	bodyExprs do: [ :e | self nl. self visitExpression: e ].
 	self dedent.

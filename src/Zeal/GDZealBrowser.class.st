@@ -2,7 +2,8 @@ Class {
 	#name : 'GDZealBrowser',
 	#superclass : 'ZealBrowser',
 	#instVars : [
-		'typeSystem'
+		'typeSystem',
+		'lspModel'
 	],
 	#category : 'Zeal',
 	#package : 'Zeal'
@@ -16,8 +17,9 @@ GDZealBrowser class >> open [
 
 { #category : 'opening' }
 GDZealBrowser class >> openOn: aGodotPath [
-	"Open a GDZeal browser on a Godot project"
-	| proj browser space |
+	"Open a GDZeal browser on a Godot project, wrapped in a GtPager so that
+	 compile success/error results can be spawned as pager pages."
+	| proj browser pager space |
 	proj := GDZealProject new.
 	proj path: aGodotPath.
 	proj name: aGodotPath asFileReference basename.
@@ -25,12 +27,17 @@ GDZealBrowser class >> openOn: aGodotPath [
 	browser := self new.
 	browser project: proj.
 	browser typeSystem: (GDZealTypeSystem forProject: proj).
+	pager := GtPager createWrappedOn: browser.
+	pager background: GDZealTheme backgroundColor.
+	pager allChildrenBreadthFirstDo: [ :c |
+		(c background isKindOf: BlPaintBackground) ifTrue: [
+			c background paint color = Color white ifTrue: [
+				c background: GDZealTheme backgroundColor ] ] ].
 	space := BlSpace new.
 	space title: 'GDZeal // ' , proj name.
-	space extent: 1100@700.
-	space root layout: BlLinearLayout vertical.
+	space extent: 1100 @ 700.
 	space root background: GDZealTheme backgroundColor.
-	space root addChild: browser.
+	space root addChild: pager.
 	space show.
 	^ browser
 ]
@@ -163,22 +170,21 @@ GDZealBrowser >> buildCompileAllButton [
 			self inform: result key printString , ' compiled, ' , result value printString , ' errors' ]
 ]
 
-{ #category : 'building - cards' }
+{ #category : 'building' }
 GDZealBrowser >> buildDefinitionBody: aDef [
 	"Expanded card body: just the syntax-colored source editor.
-	 Ctrl+S compiles in place; the editor is tagged with #defName so we can find it
-	 after a structure-changing rebuild."
-	| body editor silentStatus |
+	 Compile feedback is shown by spawning a pager page (success or error)
+	 via compileNode:editor: — no inline diagnostics strip."
+	| body editor |
 	body := BlElement new
 		layout: BlLinearLayout vertical;
 		constraintsDo: [ :c | c horizontal matchParent. c vertical fitContent ];
 		padding: (BlInsets top: 4 left: 12 bottom: 8 right: 8).
 	editor := self buildZealEditor: (aDef rawSource ifNil: [ '' ]).
 	editor userData at: #defName put: aDef name.
-	silentStatus := BrLabel new text: ''.
 	editor addShortcut: (BlShortcutWithAction new
 		combination: BlKeyCombination primaryS;
-		action: [ self compileNode: aDef editor: editor statusLabel: silentStatus ]).
+		action: [ self compileNode: aDef editor: editor ]).
 	body addChild: editor.
 	^ body
 ]
@@ -234,6 +240,79 @@ GDZealBrowser >> buildDivider [
 ]
 
 { #category : 'building' }
+GDZealBrowser >> buildErrorPage: anError [
+	"Pager page shown after a compile failure or linter error. Lists the diagnostics
+	 and shows the GDZeal source with the offending text underlined in red."
+	| page header diagsBox sourceEditor text src |
+	page := BlElement new
+		layout: BlLinearLayout vertical;
+		constraintsDo: [ :c | c horizontal matchParent. c vertical matchParent ];
+		background: self themeClass backgroundColor;
+		padding: (BlInsets top: 12 left: 16 bottom: 12 right: 16).
+	header := BrLabel new
+		aptitude: (BrGlamorousLabelAptitude new
+			fontSize: 16;
+			foreground: Color red);
+		text: 'Compile error'.
+	diagsBox := BlElement new
+		layout: BlLinearLayout vertical;
+		constraintsDo: [ :c | c horizontal matchParent. c vertical fitContent ];
+		padding: (BlInsets top: 8 bottom: 8).
+	anError linterDiags do: [ :d |
+		diagsBox addChild: (self buildErrorPageRow: d) ].
+	anError compilerError ifNotNil: [ :e |
+		diagsBox addChild: (self buildErrorPageMessageRow: 'compile: ' , e messageText) ].
+	"Editor with offending ranges underlined in red"
+	src := anError source ifNil: [ '' ].
+	text := self themeClass highlight: src.
+	anError linterDiags do: [ :d |
+		| sp ep |
+		sp := d at: #startPos ifAbsent: [ nil ].
+		ep := d at: #stopPos ifAbsent: [ nil ].
+		(sp notNil and: [ ep notNil and: [ sp <= ep and: [ sp >= 1 and: [ ep <= text size ] ] ] ]) ifTrue: [
+			(text from: sp to: ep)
+				foreground: Color red;
+				attribute: (BlTextDecorationAttribute new
+					underline;
+					color: Color red;
+					thickness: 2) ] ].
+	sourceEditor := BrEditor new
+		aptitude: BrGlamorousCodeEditorAptitude new;
+		text: text;
+		background: self themeClass backgroundColor;
+		constraintsDo: [ :c | c horizontal matchParent. c vertical matchParent ];
+		padding: (BlInsets all: 8).
+	sourceEditor editor beReadOnlyWithSelection.
+	page addChild: header.
+	page addChild: diagsBox.
+	page addChild: sourceEditor.
+	^ page
+]
+
+{ #category : 'building' }
+GDZealBrowser >> buildErrorPageMessageRow: aMessage [
+	^ BrLabel new
+		aptitude: (BrGlamorousLabelAptitude new
+			fontSize: 12;
+			foreground: Color red);
+		text: aMessage;
+		padding: (BlInsets top: 2 bottom: 2)
+]
+
+{ #category : 'building' }
+GDZealBrowser >> buildErrorPageRow: aDiag [
+	| label msg |
+	msg := aDiag at: #message ifAbsent: [ '?' ].
+	label := BrLabel new
+		aptitude: (BrGlamorousLabelAptitude new
+			fontSize: 12;
+			foreground: Color red);
+		text: msg;
+		padding: (BlInsets top: 2 bottom: 2).
+	^ label
+]
+
+{ #category : 'building' }
 GDZealBrowser >> buildFieldItem: aField [
 	| label |
 	label := aField name.
@@ -253,6 +332,52 @@ GDZealBrowser >> buildNewFileButton [
 		label: '+ New';
 		margin: (BlInsets right: 8);
 		action: [ self promptNewFile ]
+]
+
+{ #category : 'building' }
+GDZealBrowser >> buildResultCodeTabLabel: aLabel text: aRopedText [
+	"Build a single tab inside the compile-result page that just shows code in a
+	 read-only editor. The aptitude is created without an explicit foreground so
+	 per-character colors from the highlighter survive."
+	| tab editor |
+	editor := BrEditor new
+		aptitude: BrGlamorousCodeEditorAptitude new;
+		text: aRopedText;
+		background: self themeClass backgroundColor;
+		constraintsDo: [ :c | c horizontal matchParent. c vertical matchParent ];
+		padding: (BlInsets all: 8).
+	editor editor beReadOnlyWithSelection.
+	tab := BrTab new
+		aptitude: BrGlamorousTabAptitude new;
+		label: aLabel;
+		stencil: [ editor ].
+	^ tab
+]
+
+{ #category : 'building' }
+GDZealBrowser >> buildResultPage: aResult [
+	"Pager page shown after a successful compile. Header line + tab group with two
+	 tabs: GDZeal source (syntax-highlighted) and the generated GDScript."
+	| page header tabs zealText |
+	page := BlElement new
+		layout: BlLinearLayout vertical;
+		constraintsDo: [ :c | c horizontal matchParent. c vertical matchParent ];
+		background: self themeClass backgroundColor;
+		padding: (BlInsets top: 12 left: 16 bottom: 12 right: 16).
+	header := BrLabel new
+		aptitude: (BrGlamorousLabelAptitude new
+			fontSize: 16;
+			foreground: self themeClass foregroundColor);
+		text: 'Compiled: ' , aResult definitionName , ' -> ' , aResult gdPath asString.
+	tabs := BrTabGroup new
+		aptitude: BrGlamorousTabGroupAptitude new;
+		constraintsDo: [ :c | c horizontal matchParent. c vertical matchParent ].
+	zealText := self themeClass highlight: (aResult source ifNil: [ '' ]).
+	tabs addTab: (self buildResultCodeTabLabel: 'GDZeal source' text: zealText).
+	tabs addTab: (self buildResultCodeTabLabel: 'GDScript' text: (aResult generated ifNil: [ '' ]) asRopedText).
+	page addChild: header.
+	page addChild: tabs.
+	^ page
 ]
 
 { #category : 'building' }
@@ -439,33 +564,50 @@ GDZealBrowser >> compileCurrentFile: editor statusLabel: statusLabel [
 		statusLabel text: ('Error: ' , e messageText) asRopedText foreground: GDZealTheme specialFormColor ]
 ]
 
-{ #category : 'commands' }
-GDZealBrowser >> compileNode: aNode editor: editor statusLabel: statusLabel [
-	"Compile the editor content, update the object model, save, and deploy .gd.
-	 Only rebuilds the UI if the set of definitions or their categories changed.
-	 If a rebuild happens, captures + restores tab/expander/cursor state so the user
-	 doesn't lose their place."
-	| source newNode gdPath sigBefore sigAfter |
+{ #category : 'actions' }
+GDZealBrowser >> compileNode: aNode editor: editor [
+	"Compile the editor content. On success, save and spawn a pager page showing
+	 the GDZeal source + generated GDScript. On error (linter or compiler),
+	 spawn an error pager page that highlights the offending text.
+	 Structural changes (new/renamed defs) trigger a UI rebuild with state restored."
+	| source linterDiags newNode gdPath gdSource sigBefore sigAfter result |
 	source := editor editor text asString.
 	sigBefore := self definitionSignature.
+	"1. Linter pass — catches field typos before codegen."
+	linterDiags := self lintSource: source.
+	linterDiags isNotEmpty ifTrue: [
+		self flashError: editor.
+		self spawnErrorPageOn: editor source: source linterDiags: linterDiags compilerError: nil.
+		^ self ].
+	"2. Compile pass."
 	[ newNode := GDZealCompiler compile: source.
 	  newNode rawSource: source.
 	  project addDefinition: newNode fromSource: source.
 	  project saveDefinition: newNode.
 	  gdPath := project compileDefinition: newNode.
 	  project persistToImage.
-	  typeSystem ifNotNil: [ typeSystem rescan ].
-	  statusLabel text: (('Compiled -> ' , gdPath) asRopedText foreground: self themeClass keywordColor).
-	  self flashSuccess: editor.
-	  sigAfter := self definitionSignature.
-	  sigBefore = sigAfter ifFalse: [
+	  typeSystem ifNotNil: [ typeSystem rescan ] ]
+		on: Error do: [ :e |
+			self flashError: editor.
+			self spawnErrorPageOn: editor source: source linterDiags: #() compilerError: e.
+			^ self ].
+	"3. Read back generated GDScript and spawn success page."
+	gdSource := [ gdPath asFileReference contents ] on: Error do: [ :e | '"" failed to read: ' , e messageText ].
+	result := GDZealCompileResult new
+		definitionName: newNode name;
+		source: source;
+		generated: gdSource;
+		gdPath: gdPath;
+		yourself.
+	self flashSuccess: editor.
+	self spawnResultPageOn: editor result: result.
+	"4. Rebuild only if signature changed."
+	sigAfter := self definitionSignature.
+	sigBefore = sigAfter ifFalse: [
 		| state |
 		state := self captureUiState.
 		self rebuildTree.
-		self restoreUiState: state ] ]
-	on: Error do: [ :e |
-		statusLabel text: (('Error: ' , e messageText) asRopedText foreground: Color red).
-		self flashError: editor ]
+		self restoreUiState: state ]
 ]
 
 { #category : 'editor setup' }
@@ -750,6 +892,27 @@ GDZealBrowser >> initialize [
 	self layout: BlLinearLayout vertical.
 	self constraintsDo: [ :c | c horizontal matchParent. c vertical matchParent ].
 	self background: GDZealTheme backgroundColor
+]
+
+{ #category : 'lsp' }
+GDZealBrowser >> lintSource: aSource [
+	"Run the GDZeal source linter against this source. Returns OC of diagnostic Dicts.
+	 Empty if there's no type system or the lint succeeds."
+	typeSystem ifNil: [ ^ #() ].
+	^ (GDZealLinter withTypeSystem: typeSystem) lintSource: aSource
+]
+
+{ #category : 'lsp' }
+GDZealBrowser >> lspModel [
+	"Lazy-init the GDScript LSP model on first access. Returns nil if Godot's LSP isn't
+	 reachable on localhost:6005 — diagnostics just won't show, but everything else
+	 keeps working."
+	lspModel ifNotNil: [ ^ lspModel ].
+	project ifNil: [ ^ nil ].
+	lspModel := [ GDZealLspModel onDirectory: project path asFileReference ]
+		on: Error 
+		do: [ :e | nil ].
+	^ lspModel
 ]
 
 { #category : 'editing' }
@@ -1042,6 +1205,31 @@ GDZealBrowser >> slurpForward: zealEditor [
 	zealEditor editor navigator moveTo: (cursorPos min: result size); apply
 ]
 
+{ #category : 'actions' }
+GDZealBrowser >> spawnErrorPageOn: editor source: aSource linterDiags: linterDiags compilerError: anError [
+	"Open a pager page showing a compile/lint error with the offending text highlighted."
+	| errorObj |
+	errorObj := GDZealCompileError new
+		source: aSource;
+		linterDiags: linterDiags;
+		compilerError: anError;
+		yourself.
+	[ editor phlow spawnTool: (GtPhlowExplicitTool new
+		name: 'Compile error';
+		stencil: [ self buildErrorPage: errorObj ]) ]
+		on: Error do: [ :e | errorObj inspect ]
+]
+
+{ #category : 'actions' }
+GDZealBrowser >> spawnResultPageOn: editor result: aResult [
+	"Open a pager page on the compile result so the user can see the GDZeal source
+	 and generated GDScript side-by-side."
+	[ editor phlow spawnTool: (GtPhlowExplicitTool new
+		name: aResult definitionName , ' compiled';
+		stencil: [ self buildResultPage: aResult ]) ]
+		on: Error do: [ :e | aResult inspect ]
+]
+
 { #category : 'editing' }
 GDZealBrowser >> swapForm: anEditor up: isUp [
 	"Swap element at cursor with adjacent sibling. Cursor stays at same position in element."
@@ -1104,4 +1292,24 @@ GDZealBrowser >> typeSystem [
 { #category : 'accessing' }
 GDZealBrowser >> typeSystem: aGDZealTypeSystem [
 	typeSystem := aGDZealTypeSystem
+]
+
+{ #category : 'lsp' }
+GDZealBrowser >> updateDiagnosticsFor: editor with: diagnostics [
+	"Find the diagnostics container belonging to the same definition as `editor` and
+	 repopulate it with one row per diagnostic message. Empty if no diagnostics."
+	| defName container |
+	defName := editor userData at: #defName ifAbsent: [ ^ self ].
+	"Walk up to the root, then down to find the matching diagnostics container."
+	container := nil.
+	self allChildrenBreadthFirstDo: [ :c |
+		(container isNil 
+			and: [ (c userData at: #role ifAbsent: [ nil ]) = #diagnostics
+			and: [ (c userData at: #defName ifAbsent: [ nil ]) = defName ] ])
+			ifTrue: [ container := c ] ].
+	container ifNil: [ ^ self ].
+	container removeChildren.
+	(diagnostics isNil or: [ diagnostics isEmpty ]) ifTrue: [ ^ self ].
+	diagnostics do: [ :d | 
+		container addChild: (self buildDiagnosticRow: d) ]
 ]
