@@ -42,23 +42,6 @@ GDZealBrowser class >> openOn: aGodotPath [
 	^ browser
 ]
 
-{ #category : 'actions' }
-GDZealBrowser >> addDraftFor: aCategory [
-	"Insert a draft expander at the top of the column for the given category, expand
-	 it, and focus its editor. Compiling (Ctrl+S) turns the draft into a real def."
-	| column draftExpander |
-	column := nil.
-	self allChildrenBreadthFirstDo: [ :c |
-		((c userData at: #role ifAbsent: [ nil ]) = #categoryColumn
-		 and: [ (c userData at: #category ifAbsent: [ nil ]) = aCategory ])
-			ifTrue: [ column := c ] ].
-	column ifNil: [ ^ self ].
-	draftExpander := self buildDraftExpander: aCategory.
-	"Insert after the '+ New' button which is at index 1"
-	column addChild: draftExpander at: 2.
-	draftExpander expand
-]
-
 { #category : 'editing' }
 GDZealBrowser >> applyFormat: zealEditor [
 	"Apply full format — normalize indentation + parinfer"
@@ -107,23 +90,20 @@ GDZealBrowser >> barfForward: zealEditor [
 ]
 
 { #category : 'building' }
-GDZealBrowser >> buildAddDefinitionButton: aCategory [
-	"A '+ New' button shown above the cards for a category. Clicking it inserts a
-	 draft expander at the top of the category column with a starter template; the
-	 draft becomes a real definition once the user hits Ctrl+S in its editor."
-	| btn |
-	btn := BrButton new
+GDZealBrowser >> buildAddDefinitionButton [
+	"A '+' button next to Compile All in the top bar. Clicking spawns a draft
+	 editor pager page; the user types any kind of definition (defcomp, defsystem,
+	 defcosystem, defentity, defobserver) and Ctrl+S compiles it into the project."
+	^ BrButton new
 		aptitude: BrGlamorousButtonWithLabelAptitude;
-		label: '+ New ' , aCategory capitalized;
-		margin: (BlInsets bottom: 6);
-		action: [ self addDraftFor: aCategory ].
-	^ btn
+		label: '+';
+		margin: (BlInsets right: 8);
+		action: [ self spawnDraftPage ]
 ]
 
 { #category : 'building' }
 GDZealBrowser >> buildCategoryContent: aCategory [
-	"Vertically-scrolling column of definition expander cards for the given category,
-	 with a '+ New' button at the top so the user can author new definitions inline."
+	"Vertically-scrolling column of definition expander cards for the given category."
 	| column scroll defs |
 	defs := self definitionsForCategory: aCategory.
 	column := BlElement new
@@ -132,7 +112,6 @@ GDZealBrowser >> buildCategoryContent: aCategory [
 		padding: (BlInsets all: 8).
 	column userData at: #role put: #categoryColumn.
 	column userData at: #category put: aCategory.
-	column addChild: (self buildAddDefinitionButton: aCategory).
 	defs do: [ :d | column addChild: (self buildDefinitionExpander: d) ].
 	defs isEmpty ifTrue: [
 		column addChild: (BrLabel new
@@ -152,15 +131,15 @@ GDZealBrowser >> buildCategoryContent: aCategory [
 	^ scroll
 ]
 
-{ #category : 'building - tabs' }
+{ #category : 'building' }
 GDZealBrowser >> buildCategoryTab: aCategory [
-	"One tab: label = category name (capitalized), content = scrollable column of
+	"One tab: label = display name for the category, content = scrollable column of
 	 inline-expandable definition cards. The per-tab aptitude is required for the
 	 label to actually render in the header bar."
 	| tab |
 	tab := BrTab new.
 	tab aptitude: BrGlamorousTabAptitude new.
-	tab label: aCategory capitalized.
+	tab label: (self labelForCategory: aCategory).
 	tab stencil: [ self buildCategoryContent: aCategory ].
 	^ tab
 ]
@@ -293,59 +272,30 @@ GDZealBrowser >> buildDivider [
 ]
 
 { #category : 'building' }
-GDZealBrowser >> buildDraftBody: aCategory [
-	"Editor pre-filled with the category template; Ctrl+S compiles. The aNode arg
-	 to compileNode: is unused for the draft path so passing nil is fine."
-	| body editor |
-	body := BlElement new
+GDZealBrowser >> buildDraftPage [
+	"Pager page for authoring a brand-new definition. Header label + a full-height
+	 GDZeal editor; Ctrl+S compiles via compileNode:editor: which figures out the
+	 category from the form head and inserts/persists the new definition."
+	| page header editor |
+	page := BlElement new
 		layout: BlLinearLayout vertical;
-		constraintsDo: [ :c | c horizontal matchParent. c vertical fitContent ];
-		padding: (BlInsets top: 4 left: 12 bottom: 8 right: 8).
-	editor := self buildZealEditor: (self templateFor: aCategory).
+		constraintsDo: [ :c | c horizontal matchParent. c vertical matchParent ];
+		background: self themeClass backgroundColor;
+		padding: (BlInsets top: 12 left: 16 bottom: 12 right: 16).
+	header := BrLabel new
+		aptitude: (BrGlamorousLabelAptitude new
+			fontSize: 14;
+			foreground: self themeClass keywordColor);
+		text: 'New definition — write any (defcomp/defsystem/defcosystem/defentity/defobserver ...) and press Ctrl+S';
+		margin: (BlInsets bottom: 8).
+	editor := self buildZealEditor: ''.
 	editor userData at: #defName put: '__draft__'.
 	editor addShortcut: (BlShortcutWithAction new
 		combination: BlKeyCombination primaryS;
 		action: [ self compileNode: nil editor: editor ]).
-	body addChild: editor.
-	^ body
-]
-
-{ #category : 'building' }
-GDZealBrowser >> buildDraftExpander: aCategory [
-	"Inline-expandable card for a brand-new draft definition. Header shows '(new)',
-	 body has an editor pre-filled with the category template; Ctrl+S compiles."
-	| expander |
-	expander := BrExpander new
-		aptitude: BrGlamorousExpanderAptitude new;
-		constraintsDo: [ :c | c horizontal matchParent. c vertical fitContent ];
-		margin: (BlInsets top: 2 bottom: 2);
-		header: [ self buildDraftHeader: aCategory ];
-		content: [ self buildDraftBody: aCategory ];
-		yourself.
-	expander userData at: #defName put: '__draft__'.
-	^ expander
-]
-
-{ #category : 'building' }
-GDZealBrowser >> buildDraftHeader: aCategory [
-	| row |
-	row := BlElement new
-		layout: (BlLinearLayout horizontal alignCenterLeft);
-		constraintsDo: [ :c | c horizontal matchParent. c vertical fitContent ];
-		padding: (BlInsets top: 2 right: 8 bottom: 2 left: 0).
-	row addChild: (BrLabel new
-		aptitude: (BrGlamorousLabelAptitude new
-			foreground: GDZealTheme operatorColor;
-			fontSize: 11);
-		text: 'New ' , aCategory;
-		margin: (BlInsets right: 8)).
-	row addChild: (BrLabel new
-		aptitude: (BrGlamorousLabelAptitude new
-			foreground: GDZealTheme commentColor;
-			fontSize: 13;
-			italic);
-		text: '(unsaved)').
-	^ row
+	page addChild: header.
+	page addChild: editor.
+	^ page
 ]
 
 { #category : 'building' }
@@ -454,27 +404,25 @@ GDZealBrowser >> buildSectionLabel: aString [
 { #category : 'building' }
 GDZealBrowser >> buildUI [
 	"Pharo class-browser style:
-	  topBar (project name + Compile All)
+	  topBar (project name + Compile All + +)
 	  tabGroup (one tab per category, each containing inline-expandable definition cards)"
 	| topBar |
 	self removeChildren.
-	
 	topBar := BlElement new
 		layout: (BlLinearLayout horizontal alignCenterLeft);
 		constraintsDo: [ :c | c horizontal matchParent. c vertical fitContent ];
 		background: GDZealTheme backgroundColor darker;
 		padding: (BlInsets all: 8).
 	topBar addChild: (BrLabel new
-		aptitude: (BrGlamorousLabelAptitude new 
-			foreground: GDZealTheme classRefColor; 
-			fontSize: 14; 
+		aptitude: (BrGlamorousLabelAptitude new
+			foreground: GDZealTheme classRefColor;
+			fontSize: 14;
 			bold);
 		text: 'GDZeal // ' , project name;
 		margin: (BlInsets right: 12)).
 	topBar addChild: self buildCompileAllButton.
-	
+	topBar addChild: self buildAddDefinitionButton.
 	detailElement := self buildCategoryTabs.
-	
 	self addChild: topBar.
 	self addChild: detailElement
 ]
@@ -972,6 +920,14 @@ GDZealBrowser >> initialize [
 	self background: GDZealTheme backgroundColor
 ]
 
+{ #category : 'building' }
+GDZealBrowser >> labelForCategory: aCategory [
+	"Display label for a category tab. Special-cased for defcosystems which reads
+	 better as 'Coroutine Systems'; everything else is just title-cased."
+	aCategory = 'defcosystems' ifTrue: [ ^ 'Coroutine Systems' ].
+	^ aCategory capitalized
+]
+
 { #category : 'lsp' }
 GDZealBrowser >> lintSource: aSource [
 	"Run the GDZeal source linter against this source. Returns OC of diagnostic Dicts.
@@ -1284,6 +1240,17 @@ GDZealBrowser >> slurpForward: zealEditor [
 ]
 
 { #category : 'actions' }
+GDZealBrowser >> spawnDraftPage [
+	"Open a new pager page containing an empty editor for typing a brand-new
+	 definition. Ctrl+S compiles it via the existing pipeline; on success the
+	 browser rebuilds and the new card appears under its category tab."
+	[ self phlow spawnTool: (GtPhlowExplicitTool new
+		name: 'New definition';
+		stencil: [ self buildDraftPage ]) ]
+		on: Error do: [ :e | self inform: 'Cannot spawn draft: ' , e messageText ]
+]
+
+{ #category : 'actions' }
 GDZealBrowser >> spawnErrorPageOn: editor source: aSource linterDiags: linterDiags compilerError: anError [
 	"Open a pager page showing a compile/lint error with the offending text highlighted."
 	| errorObj |
@@ -1354,30 +1321,6 @@ GDZealBrowser >> swapForm: anEditor up: isUp [
 	anEditor editor inserter at: 0; string: result; withoutCursorUpdate; insert.
 	suppressRehighlight := false.
 	anEditor editor navigator moveTo: ((newCursorPos max: 0) min: result size); apply
-]
-
-{ #category : 'templates' }
-GDZealBrowser >> templateFor: aCategory [
-	"Default starter source for a new draft definition in the given category."
-	aCategory = 'components' ifTrue: [
-		^ '(defcomp new-component
-  field 0)' ].
-	aCategory = 'defcosystems' ifTrue: [
-		^ '(defcosystem new-fsm
-  [hp:@health]
-  (when (> hp/current 0)
-    (set hp/current (- hp/current 1))))' ].
-	aCategory = 'systems' ifTrue: [
-		^ '(defsystem new-system [hp:@health]
-  (set hp/current (- hp/current 1)))' ].
-	aCategory = 'entities' ifTrue: [
-		^ '(defentity new-entity
-  (components [@health])
-  (on-ready (print "spawned")))' ].
-	aCategory = 'observers' ifTrue: [
-		^ '(defobserver new-observer
-  (on-changed (print "changed")))' ].
-	^ ''
 ]
 
 { #category : 'hooks' }
