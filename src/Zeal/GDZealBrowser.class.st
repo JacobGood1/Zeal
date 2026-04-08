@@ -335,52 +335,6 @@ GDZealBrowser >> buildNewFileButton [
 ]
 
 { #category : 'building' }
-GDZealBrowser >> buildResultCodeTabLabel: aLabel text: aRopedText [
-	"Build a single tab inside the compile-result page that just shows code in a
-	 read-only editor. The aptitude is created without an explicit foreground so
-	 per-character colors from the highlighter survive."
-	| tab editor |
-	editor := BrEditor new
-		aptitude: BrGlamorousCodeEditorAptitude new;
-		text: aRopedText;
-		background: self themeClass backgroundColor;
-		constraintsDo: [ :c | c horizontal matchParent. c vertical matchParent ];
-		padding: (BlInsets all: 8).
-	editor editor beReadOnlyWithSelection.
-	tab := BrTab new
-		aptitude: BrGlamorousTabAptitude new;
-		label: aLabel;
-		stencil: [ editor ].
-	^ tab
-]
-
-{ #category : 'building' }
-GDZealBrowser >> buildResultPage: aResult [
-	"Pager page shown after a successful compile. Header line + tab group with two
-	 tabs: GDZeal source (syntax-highlighted) and the generated GDScript."
-	| page header tabs zealText |
-	page := BlElement new
-		layout: BlLinearLayout vertical;
-		constraintsDo: [ :c | c horizontal matchParent. c vertical matchParent ];
-		background: self themeClass backgroundColor;
-		padding: (BlInsets top: 12 left: 16 bottom: 12 right: 16).
-	header := BrLabel new
-		aptitude: (BrGlamorousLabelAptitude new
-			fontSize: 16;
-			foreground: self themeClass foregroundColor);
-		text: 'Compiled: ' , aResult definitionName , ' -> ' , aResult gdPath asString.
-	tabs := BrTabGroup new
-		aptitude: BrGlamorousTabGroupAptitude new;
-		constraintsDo: [ :c | c horizontal matchParent. c vertical matchParent ].
-	zealText := self themeClass highlight: (aResult source ifNil: [ '' ]).
-	tabs addTab: (self buildResultCodeTabLabel: 'GDZeal source' text: zealText).
-	tabs addTab: (self buildResultCodeTabLabel: 'GDScript' text: (aResult generated ifNil: [ '' ]) asRopedText).
-	page addChild: header.
-	page addChild: tabs.
-	^ page
-]
-
-{ #category : 'building' }
 GDZealBrowser >> buildSectionLabel: aString [
 	^ BrLabel new
 		aptitude: (BrGlamorousLabelAptitude new foreground: GDZealTheme specialFormColor; fontSize: 11);
@@ -570,7 +524,7 @@ GDZealBrowser >> compileNode: aNode editor: editor [
 	 the GDZeal source + generated GDScript. On error (linter or compiler),
 	 spawn an error pager page that highlights the offending text.
 	 Structural changes (new/renamed defs) trigger a UI rebuild with state restored."
-	| source linterDiags newNode gdPath gdSource sigBefore sigAfter result |
+	| source linterDiags newNode gdPath gdAbsPath gdSource sigBefore sigAfter result |
 	source := editor editor text asString.
 	sigBefore := self definitionSignature.
 	"1. Linter pass — catches field typos before codegen."
@@ -591,13 +545,15 @@ GDZealBrowser >> compileNode: aNode editor: editor [
 			self flashError: editor.
 			self spawnErrorPageOn: editor source: source linterDiags: #() compilerError: e.
 			^ self ].
-	"3. Read back generated GDScript and spawn success page."
-	gdSource := [ gdPath asFileReference contents ] on: Error do: [ :e | '"" failed to read: ' , e messageText ].
+	"3. Read back generated GDScript (gdPath is project-relative) and spawn success page."
+	gdAbsPath := project path , '/' , gdPath.
+	gdSource := [ gdAbsPath asFileReference contents ]
+		on: Error do: [ :e | '" failed to read: ' , gdAbsPath , ' (' , e messageText , ')' ].
 	result := GDZealCompileResult new
 		definitionName: newNode name;
 		source: source;
 		generated: gdSource;
-		gdPath: gdPath;
+		gdPath: gdAbsPath;
 		yourself.
 	self flashSuccess: editor.
 	self spawnResultPageOn: editor result: result.
@@ -1222,11 +1178,10 @@ GDZealBrowser >> spawnErrorPageOn: editor source: aSource linterDiags: linterDia
 
 { #category : 'actions' }
 GDZealBrowser >> spawnResultPageOn: editor result: aResult [
-	"Open a pager page on the compile result so the user can see the GDZeal source
-	 and generated GDScript side-by-side."
-	[ editor phlow spawnTool: (GtPhlowExplicitTool new
-		name: aResult definitionName , ' compiled';
-		stencil: [ self buildResultPage: aResult ]) ]
+	"Open a new pager page on the compile result. The result class defines its own
+	 GDZeal source / GDScript views (and hides Raw/Print/Meta) so the inspector
+	 page shows exactly those two views."
+	[ editor phlow spawnObject: aResult ]
 		on: Error do: [ :e | aResult inspect ]
 ]
 
