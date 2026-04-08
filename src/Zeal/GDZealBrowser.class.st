@@ -644,9 +644,13 @@ GDZealBrowser >> compileNode: aNode editor: editor [
 	 the GDZeal source + generated GDScript. On error (linter or compiler),
 	 spawn an error pager page that highlights the offending text.
 	 Structural changes (new/renamed defs) trigger a UI rebuild that focuses the
-	 newly-touched definition (switches to its category tab + expands its card)."
-	| source linterDiags newNode gdPath gdAbsPath gdSource sigBefore sigAfter result |
+	 newly-touched definition (switches to its category tab + expands its card +
+	 puts the cursor back where it was in the source the user just saved)."
+	| source linterDiags newNode gdPath gdAbsPath gdSource sigBefore sigAfter result cursorPos |
 	source := editor editor text asString.
+	"Capture the cursor up front from the editor that triggered the save — captureUiState
+	 only reads it from the focused editor and we want it regardless of focus state."
+	cursorPos := [ editor editor cursors first position ] on: Error do: [ :e | nil ].
 	sigBefore := self definitionSignature.
 	"1. Linter pass — catches field typos before codegen."
 	linterDiags := self lintSource: source.
@@ -678,15 +682,17 @@ GDZealBrowser >> compileNode: aNode editor: editor [
 		yourself.
 	self flashSuccess: editor.
 	self spawnResultPageOn: editor result: result.
-	"4. Rebuild on signature change. Override the captured tab with the category of
-	    the just-compiled definition so the user lands on the tab where their new
-	    card lives, with the card expanded."
+	"4. Rebuild on signature change. Override the captured tab/focus/expand with
+	    the just-compiled definition; carry the cursor pos forward so it lands at
+	    the same offset in the new card's editor."
 	sigAfter := self definitionSignature.
 	sigBefore = sigAfter ifFalse: [
 		| state |
 		state := self captureUiState.
 		state at: #targetCategory put: (self categoryFor: newNode).
 		state at: #targetDefName put: newNode name.
+		state at: #focusedName put: newNode name.
+		cursorPos ifNotNil: [ state at: #cursorPosition put: cursorPos ].
 		(state at: #expandedNames) add: newNode name.
 		self rebuildTree.
 		self restoreUiState: state ]
