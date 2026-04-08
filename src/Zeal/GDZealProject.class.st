@@ -11,20 +11,22 @@ Class {
 	#package : 'Zeal'
 }
 
-{ #category : 'actions' }
+{ #category : 'building' }
 GDZealProject >> addDefinition: aNode fromSource: sourceString [
-	"Add a definition to the right module based on its type"
-	| folder mod |
+	"Add a definition to the right module based on its type. Defends against stray
+	 non-ZealDefinition nodes (e.g. top-level expressions parsed from a .zeal file)
+	 already living in the module."
+	| folder mod existing |
 	folder := self folderFor: aNode.
 	mod := modules at: folder.
 	aNode rawSource: sourceString.
 	aNode parent: mod.
-	"Replace existing def with same name"
-	mod definitions
-		detect: [ :d | d name = aNode name ]
-		ifFound: [ :old | mod definitions at: (mod definitions indexOf: old) put: aNode ]
-		ifNone: [ mod definitions add: aNode ].
-	"Register components"
+	"Replace existing def with same name — only consider real definitions"
+	existing := mod definitions detect: [ :d | 
+		(d isKindOf: ZealDefinition) and: [ d name = aNode name ] ] ifNone: [ nil ].
+	existing 
+		ifNotNil: [ mod definitions at: (mod definitions indexOf: existing) put: aNode ]
+		ifNil: [ mod definitions add: aNode ].
 	(aNode annotations includesAny: #('gecs_component')) ifTrue: [
 		registry register: aNode name ]
 ]
@@ -205,8 +207,9 @@ GDZealProject >> path: aString [
 { #category : 'persistence' }
 GDZealProject >> persistToImage [
 	"Persist all definitions as generated Smalltalk classes for image-based storage.
-	 Generated classes go in GDZeal-Generated package, methods classified under 'metadata'."
-	self allDefinitions do: [ :node |
+	 Generated classes go in GDZeal-Generated package, methods classified under 'metadata'.
+	 Only proper ZealDefinitions (not stray top-level expressions) get persisted."
+	(self allDefinitions select: [ :n | n isKindOf: ZealDefinition ]) do: [ :node |
 		| className cls |
 		className := ('GDZ_' , (node name copyReplaceAll: '-' with: '_')) asSymbol.
 		cls := Smalltalk globals at: className ifAbsent: [

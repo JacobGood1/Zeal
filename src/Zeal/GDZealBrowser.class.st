@@ -82,6 +82,59 @@ GDZealBrowser >> barfForward: zealEditor [
 	zealEditor editor navigator moveTo: (cursorPos min: result size); apply
 ]
 
+{ #category : 'building - tabs' }
+GDZealBrowser >> buildCategoryContent: aCategory [
+	"Vertically-scrolling column of definition expander cards for the given category."
+	| column scroll defs |
+	defs := self definitionsForCategory: aCategory.
+	column := BlElement new
+		layout: BlLinearLayout vertical;
+		constraintsDo: [ :c | c horizontal matchParent. c vertical fitContent ];
+		padding: (BlInsets all: 8).
+	defs do: [ :d | column addChild: (self buildDefinitionExpander: d) ].
+	defs isEmpty ifTrue: [
+		column addChild: (BrLabel new
+			aptitude: (BrGlamorousLabelAptitude new 
+				foreground: GDZealTheme commentColor; 
+				fontSize: 12);
+			text: 'No ' , aCategory , ' yet.';
+			margin: (BlInsets all: 12)) ].
+	scroll := BlElement new
+		layout: BlLinearLayout vertical;
+		constraintsDo: [ :c | c horizontal matchParent. c vertical matchParent ];
+		clipChildren: true;
+		background: GDZealTheme backgroundColor.
+	scroll addChild: (column asScrollableElement
+		constraintsDo: [ :c | c horizontal matchParent. c vertical matchParent ];
+		yourself).
+	^ scroll
+]
+
+{ #category : 'building - tabs' }
+GDZealBrowser >> buildCategoryTab: aCategory [
+	"One tab: label = category name (capitalized), content = scrollable column of
+	 inline-expandable definition cards. The per-tab aptitude is required for the
+	 label to actually render in the header bar."
+	| tab |
+	tab := BrTab new.
+	tab aptitude: BrGlamorousTabAptitude new.
+	tab label: aCategory capitalized.
+	tab stencil: [ self buildCategoryContent: aCategory ].
+	^ tab
+]
+
+{ #category : 'building - tabs' }
+GDZealBrowser >> buildCategoryTabs [
+	"BrTabGroup with one tab per category present in the project."
+	| group tabs |
+	group := BrTabGroup new.
+	group aptitude: BrGlamorousTabGroupAptitude new.
+	group constraintsDo: [ :c | c horizontal matchParent. c vertical matchParent ].
+	tabs := self categoriesPresent collect: [ :cat | self buildCategoryTab: cat ].
+	group addTabs: tabs.
+	^ group
+]
+
 { #category : 'building' }
 GDZealBrowser >> buildCommandBar [
 	| input |
@@ -108,6 +161,69 @@ GDZealBrowser >> buildCompileAllButton [
 		action: [ | result |
 			result := project compileAll.
 			self inform: result key printString , ' compiled, ' , result value printString , ' errors' ]
+]
+
+{ #category : 'building - cards' }
+GDZealBrowser >> buildDefinitionBody: aDef [
+	"Expanded card body: just the syntax-colored source editor.
+	 Ctrl+S compiles in place; the editor is tagged with #defName so we can find it
+	 after a structure-changing rebuild."
+	| body editor silentStatus |
+	body := BlElement new
+		layout: BlLinearLayout vertical;
+		constraintsDo: [ :c | c horizontal matchParent. c vertical fitContent ];
+		padding: (BlInsets top: 4 left: 12 bottom: 8 right: 8).
+	editor := self buildZealEditor: (aDef rawSource ifNil: [ '' ]).
+	editor userData at: #defName put: aDef name.
+	silentStatus := BrLabel new text: ''.
+	editor addShortcut: (BlShortcutWithAction new
+		combination: BlKeyCombination primaryS;
+		action: [ self compileNode: aDef editor: editor statusLabel: silentStatus ]).
+	body addChild: editor.
+	^ body
+]
+
+{ #category : 'building - cards' }
+GDZealBrowser >> buildDefinitionExpander: aDef [
+	"Inline-expandable card for a single definition. Tagged with #defName in userData
+	 so captureUiState can find it after a rebuild."
+	| expander |
+	expander := BrExpander new.
+	expander aptitude: BrGlamorousExpanderAptitude new.
+	expander 
+		constraintsDo: [ :c | c horizontal matchParent. c vertical fitContent ];
+		margin: (BlInsets top: 2 bottom: 2);
+		header: [ self buildDefinitionHeader: aDef ];
+		content: [ self buildDefinitionBody: aDef ].
+	expander userData at: #defName put: aDef name.
+	^ expander
+]
+
+{ #category : 'building - cards' }
+GDZealBrowser >> buildDefinitionHeader: aDef [
+	"Compact header row: type tag (faded) + bold name."
+	| row typeText |
+	typeText := (aDef isKindOf: ZealClass)
+		ifTrue: [ aDef superclass ifNil: [ '' ] ifNotNil: [ :s | s ] ]
+		ifFalse: [ aDef class name allButFirst: 4 ].
+	row := BlElement new
+		layout: (BlLinearLayout horizontal alignCenterLeft);
+		constraintsDo: [ :c | c horizontal matchParent. c vertical fitContent ];
+		padding: (BlInsets top: 2 right: 8 bottom: 2 left: 0).
+	typeText isEmpty ifFalse: [
+		row addChild: (BrLabel new
+			aptitude: (BrGlamorousLabelAptitude new 
+				foreground: GDZealTheme operatorColor;
+				fontSize: 11);
+			text: typeText;
+			margin: (BlInsets right: 8)) ].
+	row addChild: (BrLabel new
+		aptitude: (BrGlamorousLabelAptitude new 
+			foreground: GDZealTheme keywordColor;
+			fontSize: 13;
+			bold);
+		text: aDef name).
+	^ row
 ]
 
 { #category : 'building' }
@@ -148,80 +264,31 @@ GDZealBrowser >> buildSectionLabel: aString [
 ]
 
 { #category : 'building' }
-GDZealBrowser >> buildTree [
-	"Tree showing modules -> definitions (ZealNode objects)"
-	| items |
-	items := project modules associations collect: [ :assoc |
-		assoc key -> assoc value ].
-	treeElement := BrSimpleTree new
-		nodeStencil: [
-			BrLabel new aptitude: (BrGlamorousLabelAptitude new fontSize: 12) ];
-		nodeDataBinder: [ :label :item |
-			(item isKindOf: Association)
-				ifTrue: [ label text: (item key asRopedText foreground: GDZealTheme keywordColor) bold ]
-				ifFalse: [ label text: (item name asRopedText foreground: GDZealTheme foregroundColor) ] ];
-		items: items lazy: [ :item |
-			(item isKindOf: Association)
-				ifTrue: [ item value definitions ]
-				ifFalse: [ #() ] ];
-		when: BrSelectionChanged do: [ :event |
-			event indices ifNotEmpty: [ :indices |
-				| treeNode item |
-				treeNode := treeElement viewModel itemAt: indices first.
-				item := treeNode value.
-				(item isKindOf: Association)
-					ifFalse: [ self selectNode: item ] ] ];
-		constraintsDo: [ :c | c horizontal matchParent. c vertical matchParent ];
-		background: Color transparent;
-		padding: (BlInsets all: 4).
-	"Auto-expand"
-	treeElement viewModel root childrenNodes do: [ :node | node expand ].
-	^ treeElement
-]
-
-{ #category : 'building' }
 GDZealBrowser >> buildUI [
-	| topBar content leftPane |
+	"Pharo class-browser style:
+	  topBar (project name + Compile All)
+	  tabGroup (one tab per category, each containing inline-expandable definition cards)"
+	| topBar |
 	self removeChildren.
 	
-	"Top bar"
 	topBar := BlElement new
 		layout: (BlLinearLayout horizontal alignCenterLeft);
 		constraintsDo: [ :c | c horizontal matchParent. c vertical fitContent ];
 		background: GDZealTheme backgroundColor darker;
 		padding: (BlInsets all: 8).
 	topBar addChild: (BrLabel new
-		aptitude: (BrGlamorousLabelAptitude new foreground: GDZealTheme classRefColor; fontSize: 14; bold);
+		aptitude: (BrGlamorousLabelAptitude new 
+			foreground: GDZealTheme classRefColor; 
+			fontSize: 14; 
+			bold);
 		text: 'GDZeal // ' , project name;
 		margin: (BlInsets right: 12)).
 	topBar addChild: self buildCompileAllButton.
-
-	"Content: left tree + right detail"
-	content := BlElement new
-		layout: BlLinearLayout horizontal;
-		constraintsDo: [ :c | c horizontal matchParent. c vertical matchParent ].
-
-	"Left pane"
-	leftPane := BlElement new
-		layout: BlLinearLayout vertical;
-		constraintsDo: [ :c | c horizontal exact: 260. c vertical matchParent ];
-		background: GDZealTheme backgroundColor lighter.
-	leftPane addChild: self buildTree.
-	leftPane addChild: self buildDivider.
-	leftPane addChild: self buildCommandBar.
-	content addChild: leftPane.
-
-	"Detail pane"
-	detailElement := BlElement new
-		layout: BlLinearLayout vertical;
-		constraintsDo: [ :c | c horizontal matchParent. c vertical matchParent ];
-		background: GDZealTheme backgroundColor;
-		padding: (BlInsets all: 12).
-	detailElement addChild: self buildWelcome.
-	content addChild: detailElement.
-
+	
+	detailElement := self buildCategoryTabs.
+	
 	self addChild: topBar.
-	self addChild: content
+	self addChild: detailElement
 ]
 
 { #category : 'building' }
@@ -249,6 +316,69 @@ GDZealBrowser >> buildZealEditor: sourceString [
 	editor editor styler: styler.
 	self configureZealEditor: editor.
 	^ editor
+]
+
+{ #category : 'refreshing' }
+GDZealBrowser >> captureUiState [
+	"Snapshot the on-screen state so we can restore it after a rebuildTree.
+	 Returns a Dictionary with: selectedTabIndex, expandedNames (Set of String def names),
+	 focusedName (String or nil), cursorPosition (Integer or nil)."
+	| state expandedNames tabGroup |
+	state := Dictionary new.
+	state at: #expandedNames put: Set new.
+	state at: #focusedName put: nil.
+	state at: #cursorPosition put: nil.
+	state at: #selectedTabIndex put: nil.
+	"Active tab — find the BrTabGroup and read its viewModel selected index"
+	tabGroup := nil.
+	self allChildrenBreadthFirstDo: [ :c |
+		(tabGroup isNil and: [ c isKindOf: BrTabGroup ]) ifTrue: [ tabGroup := c ] ].
+	tabGroup ifNotNil: [
+		tabGroup viewModel selectedTab ifNotNil: [ :t |
+			state at: #selectedTabIndex put: (tabGroup tabs indexOf: t) ] ].
+	"Walk all expanders, record those that are expanded, by definition name"
+	expandedNames := state at: #expandedNames.
+	self allChildrenBreadthFirstDo: [ :c |
+		((c isKindOf: BrExpander) and: [ c isExpanded ]) ifTrue: [
+			(c userData at: #defName ifAbsent: [ nil ]) 
+				ifNotNil: [ :n | expandedNames add: n ] ] ].
+	"Focused editor + cursor position"
+	self allChildrenBreadthFirstDo: [ :c |
+		((c isKindOf: BrEditor) and: [ c hasFocus ]) ifTrue: [
+			| owner |
+			owner := c userData at: #defName ifAbsent: [ nil ].
+			owner ifNotNil: [
+				state at: #focusedName put: owner.
+				state at: #cursorPosition put: c editor cursors first position ] ] ].
+	^ state
+]
+
+{ #category : 'building - tabs' }
+GDZealBrowser >> categoriesPresent [
+	"Distinct categories appearing in the project's definitions, in display order."
+	| order present |
+	project isNil ifTrue: [ ^ #() ].
+	order := #('components' 'defcosystems' 'systems' 'entities' 'observers' 'misc').
+	present := ((project allDefinitions select: [ :d | d isKindOf: ZealDefinition ])
+		collect: [ :d | self categoryFor: d ]) asSet.
+	^ (order select: [ :c | present includes: c ]) asArray
+]
+
+{ #category : 'categories' }
+GDZealBrowser >> categoryFor: aDefinition [
+	"Bucket a ZealDefinition into one of the GDZeal category groups based on its annotations.
+	 Returns a String — the category column populates from these and the definition column
+	 filters by them."
+	| anns |
+	anns := aDefinition annotations ifNil: [ ^ 'misc' ].
+	"Defcosystem = component + fsm — must check before plain component"
+	((anns includes: 'gecs_component') and: [ anns includes: 'fsm' ])
+		ifTrue: [ ^ 'defcosystems' ].
+	(anns includes: 'gecs_component') ifTrue: [ ^ 'components' ].
+	(anns includes: 'gecs_system') ifTrue: [ ^ 'systems' ].
+	(anns includes: 'gecs_entity') ifTrue: [ ^ 'entities' ].
+	(anns includes: 'gecs_observer') ifTrue: [ ^ 'observers' ].
+	^ 'misc'
 ]
 
 { #category : 'actions' }
@@ -309,31 +439,32 @@ GDZealBrowser >> compileCurrentFile: editor statusLabel: statusLabel [
 		statusLabel text: ('Error: ' , e messageText) asRopedText foreground: GDZealTheme specialFormColor ]
 ]
 
-{ #category : 'actions' }
+{ #category : 'commands' }
 GDZealBrowser >> compileNode: aNode editor: editor statusLabel: statusLabel [
-	"Compile the editor content, update the object model, save, and deploy .gd"
-	| source newNode gdPath |
+	"Compile the editor content, update the object model, save, and deploy .gd.
+	 Only rebuilds the UI if the set of definitions or their categories changed.
+	 If a rebuild happens, captures + restores tab/expander/cursor state so the user
+	 doesn't lose their place."
+	| source newNode gdPath sigBefore sigAfter |
 	source := editor editor text asString.
-	[ "Re-parse to update the object model"
-	  newNode := GDZealCompiler compile: source.
+	sigBefore := self definitionSignature.
+	[ newNode := GDZealCompiler compile: source.
 	  newNode rawSource: source.
-	  "Update in project"
 	  project addDefinition: newNode fromSource: source.
-	  "Save .zeal file"
 	  project saveDefinition: newNode.
-	  "Compile to .gd"
 	  gdPath := project compileDefinition: newNode.
-	  "Persist to image"
 	  project persistToImage.
-	  "Rescan types after compile"
 	  typeSystem ifNotNil: [ typeSystem rescan ].
-	  "Update selected node reference"
-	  selectedNode := newNode.
 	  statusLabel text: (('Compiled -> ' , gdPath) asRopedText foreground: self themeClass keywordColor).
 	  self flashSuccess: editor.
-	  self rebuildTree ]
+	  sigAfter := self definitionSignature.
+	  sigBefore = sigAfter ifFalse: [
+		| state |
+		state := self captureUiState.
+		self rebuildTree.
+		self restoreUiState: state ] ]
 	on: Error do: [ :e |
-		statusLabel text: (('Error: ' , e messageText) asRopedText foreground: (Color red)).
+		statusLabel text: (('Error: ' , e messageText) asRopedText foreground: Color red).
 		self flashError: editor ]
 ]
 
@@ -352,9 +483,9 @@ GDZealBrowser >> configureZealEditor: anEditor [
 		action: [ self swapForm: anEditor up: false ])
 ]
 
-{ #category : 'actions' }
+{ #category : 'commands' }
 GDZealBrowser >> createFromInput: editor [
-	"Create a new definition from the command bar"
+	"Create a new definition from the command bar."
 	| source node |
 	source := editor editor text asString.
 	source isEmpty ifTrue: [ ^ self ].
@@ -365,8 +496,7 @@ GDZealBrowser >> createFromInput: editor [
 	  project compileDefinition: node.
 	  project persistToImage.
 	  editor editor text: '' asRopedText.
-	  self rebuildTree.
-	  self selectNode: node ]
+	  self rebuildTree ]
 	on: Error do: [ :e | self inform: 'Error: ' , e messageText ]
 ]
 
@@ -390,6 +520,29 @@ GDZealBrowser >> cutOrRemoveLine: zealEditor [
 			delete ]
 	ifFalse: [
 		self removeLine: zealEditor ]
+]
+
+{ #category : 'accessing' }
+GDZealBrowser >> definitionSignature [
+	"Stable signature of the project's definitions for change detection: a sorted array
+	 of (name, category) pairs. If this differs before/after a compile, structural change
+	 happened (new def, removed def, renamed def, or category changed) and the UI needs
+	 to rebuild. If it's the same, the save was a pure in-place edit and no rebuild needed."
+	| pairs |
+	project isNil ifTrue: [ ^ #() ].
+	pairs := (project allDefinitions select: [ :d | d isKindOf: ZealDefinition ]) 
+		collect: [ :d | { d name. self categoryFor: d } ].
+	^ (pairs asSortedCollection: [ :a :b | a first <= b first ]) asArray
+]
+
+{ #category : 'accessing' }
+GDZealBrowser >> definitionsForCategory: aCategory [
+	"All definitions in the project belonging to the given category, sorted by name."
+	| defs |
+	project isNil ifTrue: [ ^ #() ].
+	defs := project allDefinitions select: [ :d | 
+		(d isKindOf: ZealDefinition) and: [ (self categoryFor: d) = aCategory ] ].
+	^ (defs asSortedCollection: [ :a :b | a name <= b name ]) asArray
 ]
 
 { #category : 'editing' }
@@ -636,17 +789,40 @@ GDZealBrowser >> promptNewFile [
 	self inform: 'Type a definition in the command bar (bottom-left) and press Ctrl+S'
 ]
 
-{ #category : 'actions' }
+{ #category : 'refreshing' }
 GDZealBrowser >> rebuildTree [
-	"Refresh tree from project state"
-	| items |
-	items := project modules associations collect: [ :assoc |
-		assoc key -> assoc value ].
-	treeElement items: items lazy: [ :item |
-		(item isKindOf: Association)
-			ifTrue: [ item value definitions ]
-			ifFalse: [ #() ] ].
-	treeElement viewModel root childrenNodes do: [ :node | node expand ]
+	"Refresh the entire view after project state changes (callers expect this name)."
+	self buildUI
+]
+
+{ #category : 'refreshing' }
+GDZealBrowser >> restoreUiState: state [
+	"After a rebuildTree, re-apply the snapshot taken by captureUiState."
+	| tabGroup expandedNames focusedName cursorPos targetTabIdx |
+	tabGroup := nil.
+	self allChildrenBreadthFirstDo: [ :c |
+		(tabGroup isNil and: [ c isKindOf: BrTabGroup ]) ifTrue: [ tabGroup := c ] ].
+	tabGroup ifNil: [ ^ self ].
+	"Restore selected tab"
+	targetTabIdx := state at: #selectedTabIndex.
+	(targetTabIdx notNil and: [ targetTabIdx between: 1 and: tabGroup tabs size ])
+		ifTrue: [ tabGroup viewModel selectTab: (tabGroup tabs at: targetTabIdx) ].
+	"Re-expand cards. Walk after the tab content has been built."
+	expandedNames := state at: #expandedNames.
+	self allChildrenBreadthFirstDo: [ :c |
+		(c isKindOf: BrExpander) ifTrue: [
+			(c userData at: #defName ifAbsent: [ nil ]) ifNotNil: [ :n |
+				(expandedNames includes: n) ifTrue: [ c expand ] ] ] ].
+	"Restore cursor + focus"
+	focusedName := state at: #focusedName.
+	cursorPos := state at: #cursorPosition.
+	focusedName ifNotNil: [
+		self allChildrenBreadthFirstDo: [ :c |
+			((c isKindOf: BrEditor) and: [ 
+				(c userData at: #defName ifAbsent: [ nil ]) = focusedName ]) ifTrue: [
+				c requestFocus.
+				cursorPos ifNotNil: [
+					[ c editor moveCursorTo: cursorPos ] on: Error do: [ :e | nil ] ] ] ] ]
 ]
 
 { #category : 'actions' }
@@ -693,56 +869,12 @@ GDZealBrowser >> selectFile: anAssociation [
 	detailElement addChild: editor
 ]
 
-{ #category : 'navigation' }
-GDZealBrowser >> selectNode: aNode [
-	"Show detail editor for selected definition"
-	| header editor statusLabel compileBtn typeLabel |
-	selectedNode := aNode.
-	detailElement removeChildren.
-	
-	"Header"
-	typeLabel := (aNode isKindOf: ZealClass)
-		ifTrue: [ aNode superclass ]
-		ifFalse: [ aNode class name allButFirst: 4 "strip Zeal" ].
-	statusLabel := BrLabel new
-		aptitude: (BrGlamorousLabelAptitude new foreground: self themeClass commentColor; fontSize: 11);
-		text: '';
-		margin: (BlInsets left: 12).
-	header := BlElement new
-		layout: (BlLinearLayout horizontal alignCenterLeft);
-		constraintsDo: [ :c | c horizontal matchParent. c vertical fitContent ];
-		padding: (BlInsets bottom: 8).
-	header addChild: (BrLabel new
-		aptitude: (BrGlamorousLabelAptitude new foreground: self themeClass operatorColor; fontSize: 11);
-		text: typeLabel;
-		margin: (BlInsets right: 8)).
-	header addChild: (BrLabel new
-		aptitude: (BrGlamorousLabelAptitude new foreground: self themeClass definitionNameColor; fontSize: 14; bold);
-		text: aNode name).
-	compileBtn := BrButton new
-		aptitude: (BrGlamorousButtonWithLabelAptitude new);
-		label: 'Compile (Ctrl+S)';
-		margin: (BlInsets left: 12);
-		action: [ self compileNode: aNode editor: editor statusLabel: statusLabel ].
-	header addChild: compileBtn.
-	header addChild: statusLabel.
-	detailElement addChild: header.
-	detailElement addChild: self buildDivider.
-	
-	"Detail: fields for classes"
-	(aNode isKindOf: ZealClass) ifTrue: [
-		aNode fields ifNotEmpty: [ :fields |
-			detailElement addChild: (self buildSectionLabel: 'Fields').
-			fields do: [ :f |
-				detailElement addChild: (self buildFieldItem: f) ] ] ].
-	
-	"Source editor"
-	detailElement addChild: (self buildSectionLabel: 'Source').
-	editor := self buildZealEditor: (aNode rawSource ifNil: [ '' ]).
-	editor addShortcut: (BlShortcutWithAction new
-		combination: BlKeyCombination primaryS;
-		action: [ self compileNode: aNode editor: editor statusLabel: statusLabel ]).
-	detailElement addChild: editor
+{ #category : 'commands' }
+GDZealBrowser >> selectNode: aDef [
+	"In the new tab+expander layout there is no separate detail pane — each definition is
+	 inline-expandable in its category tab. Selecting from outside (e.g. ClaudeMcpServer
+	 after creating a definition) just rebuilds the view so the new card appears."
+	self rebuildTree
 ]
 
 { #category : 'editor setup' }
