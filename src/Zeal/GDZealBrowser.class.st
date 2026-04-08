@@ -272,30 +272,79 @@ GDZealBrowser >> buildDivider [
 ]
 
 { #category : 'building' }
-GDZealBrowser >> buildDraftPage [
-	"Pager page for authoring a brand-new definition. Header label + a full-height
-	 GDZeal editor; Ctrl+S compiles via compileNode:editor: which figures out the
-	 category from the form head and inserts/persists the new definition."
-	| page header editor |
-	page := BlElement new
+GDZealBrowser >> buildDraftAccordion [
+	"Pharo class-browser style 'add new method' inline editor: a BrExpander dropped
+	 into the draftSlot above the tab group. Header shows 'New definition'; body is
+	 an empty Zeal editor. Ctrl+S compiles via compileNode:editor: which routes the
+	 result to the right category and rebuilds the browser (which removes the draft)."
+	| expander |
+	expander := BrExpander new
+		aptitude: BrGlamorousExpanderAptitude new;
+		constraintsDo: [ :c | c horizontal matchParent. c vertical fitContent ];
+		margin: (BlInsets top: 4 right: 8 bottom: 0 left: 8);
+		header: [ self buildDraftAccordionHeader ];
+		content: [ self buildDraftAccordionBody ];
+		yourself.
+	expander userData at: #defName put: '__draft__'.
+	^ expander
+]
+
+{ #category : 'building' }
+GDZealBrowser >> buildDraftAccordionBody [
+	"Body of the draft accordion: an empty GDZeal editor; Ctrl+S compiles."
+	| body editor hint |
+	body := BlElement new
 		layout: BlLinearLayout vertical;
-		constraintsDo: [ :c | c horizontal matchParent. c vertical matchParent ];
-		background: self themeClass backgroundColor;
-		padding: (BlInsets top: 12 left: 16 bottom: 12 right: 16).
-	header := BrLabel new
+		constraintsDo: [ :c | c horizontal matchParent. c vertical fitContent ];
+		padding: (BlInsets top: 4 left: 12 bottom: 8 right: 8).
+	hint := BrLabel new
 		aptitude: (BrGlamorousLabelAptitude new
-			fontSize: 14;
-			foreground: self themeClass keywordColor);
-		text: 'New definition — write any (defcomp/defsystem/defcosystem/defentity/defobserver ...) and press Ctrl+S';
-		margin: (BlInsets bottom: 8).
+			foreground: GDZealTheme commentColor;
+			fontSize: 11);
+		text: 'Write any (defcomp/defsystem/defcosystem/defentity/defobserver ...) and press Ctrl+S';
+		margin: (BlInsets bottom: 4).
 	editor := self buildZealEditor: ''.
 	editor userData at: #defName put: '__draft__'.
 	editor addShortcut: (BlShortcutWithAction new
 		combination: BlKeyCombination primaryS;
 		action: [ self compileNode: nil editor: editor ]).
-	page addChild: header.
-	page addChild: editor.
-	^ page
+	body addChild: hint.
+	body addChild: editor.
+	^ body
+]
+
+{ #category : 'building' }
+GDZealBrowser >> buildDraftAccordionHeader [
+	"Header row for the draft accordion: type tag + label + close button on the right.
+	 Must return a BlElement row (BrGlamorousExpanderAptitude doesn't render a bare
+	 BrLabel as a stencil result)."
+	| row spacer closeBtn |
+	row := BlElement new
+		layout: (BlLinearLayout horizontal alignCenterLeft);
+		constraintsDo: [ :c | c horizontal matchParent. c vertical fitContent ];
+		padding: (BlInsets top: 2 right: 8 bottom: 2 left: 0).
+	row addChild: (BrLabel new
+		aptitude: (BrGlamorousLabelAptitude new
+			foreground: GDZealTheme operatorColor;
+			fontSize: 11);
+		text: 'New';
+		margin: (BlInsets right: 8)).
+	row addChild: (BrLabel new
+		aptitude: (BrGlamorousLabelAptitude new
+			foreground: GDZealTheme keywordColor;
+			fontSize: 13;
+			bold);
+		text: 'definition').
+	spacer := BlElement new
+		constraintsDo: [ :c | c horizontal matchParent. c vertical fitContent ].
+	row addChild: spacer.
+	closeBtn := BrButton new
+		aptitude: BrGlamorousButtonWithLabelAptitude;
+		label: 'x';
+		margin: (BlInsets left: 8);
+		action: [ self closeDraftAccordion ].
+	row addChild: closeBtn.
+	^ row
 ]
 
 { #category : 'building' }
@@ -405,8 +454,9 @@ GDZealBrowser >> buildSectionLabel: aString [
 GDZealBrowser >> buildUI [
 	"Pharo class-browser style:
 	  topBar (project name + Compile All + +)
+	  draftSlot (empty container; the + button drops a draft accordion in here)
 	  tabGroup (one tab per category, each containing inline-expandable definition cards)"
-	| topBar |
+	| topBar slot |
 	self removeChildren.
 	topBar := BlElement new
 		layout: (BlLinearLayout horizontal alignCenterLeft);
@@ -422,8 +472,13 @@ GDZealBrowser >> buildUI [
 		margin: (BlInsets right: 12)).
 	topBar addChild: self buildCompileAllButton.
 	topBar addChild: self buildAddDefinitionButton.
+	slot := BlElement new
+		layout: BlLinearLayout vertical;
+		constraintsDo: [ :c | c horizontal matchParent. c vertical fitContent ].
+	slot userData at: #role put: #draftSlot.
 	detailElement := self buildCategoryTabs.
 	self addChild: topBar.
+	self addChild: slot.
 	self addChild: detailElement
 ]
 
@@ -515,6 +570,14 @@ GDZealBrowser >> categoryFor: aDefinition [
 	(anns includes: 'gecs_entity') ifTrue: [ ^ 'entities' ].
 	(anns includes: 'gecs_observer') ifTrue: [ ^ 'observers' ].
 	^ 'misc'
+]
+
+{ #category : 'actions' }
+GDZealBrowser >> closeDraftAccordion [
+	"Remove the draft accordion from the draftSlot."
+	self allChildrenBreadthFirstDo: [ :c |
+		(c userData at: #role ifAbsent: [ nil ]) = #draftSlot ifTrue: [
+			c removeChildren ] ]
 ]
 
 { #category : 'actions' }
@@ -1241,13 +1304,19 @@ GDZealBrowser >> slurpForward: zealEditor [
 
 { #category : 'actions' }
 GDZealBrowser >> spawnDraftPage [
-	"Open a new pager page containing an empty editor for typing a brand-new
-	 definition. Ctrl+S compiles it via the existing pipeline; on success the
-	 browser rebuilds and the new card appears under its category tab."
-	[ self phlow spawnTool: (GtPhlowExplicitTool new
-		name: 'New definition';
-		stencil: [ self buildDraftPage ]) ]
-		on: Error do: [ :e | self inform: 'Cannot spawn draft: ' , e messageText ]
+	"Drop a draft accordion (BrExpander) into the draftSlot between the top bar and
+	 the tab group, like Pharo's class browser 'add new method' panel. Stays
+	 collapsed initially — user clicks the triangle to expand and start typing."
+	| slot existing draft |
+	slot := nil.
+	self allChildrenBreadthFirstDo: [ :c |
+		(c userData at: #role ifAbsent: [ nil ]) = #draftSlot ifTrue: [ slot := c ] ].
+	slot ifNil: [ ^ self ].
+	existing := nil.
+	slot childrenDo: [ :c | existing ifNil: [ existing := c ] ].
+	existing ifNotNil: [ ^ self ].
+	draft := self buildDraftAccordion.
+	slot addChild: draft
 ]
 
 { #category : 'actions' }
