@@ -816,8 +816,12 @@ GDZealCodeGenerator >> generateDefentity: aListNode [
 { #category : 'generation' }
 GDZealCodeGenerator >> generateDefn: aListNode [
 	"(defn name [params] :retType body...) -> func name(params) -> retType:
+	 When a return type is declared, the last body expression is implicitly
+	 returned (unless it's a statement-only form like set/var/if/for/when/match
+	 which can't be the operand of return). A single (do ...) body is unwrapped
+	 so the do's last child becomes the implicit return.
 	 Pushes a fresh scope frame containing the param names so calls inside the
-	 body to a parameter route through .call(...) (e.g. higher-order functions)."
+	 body that reference a parameter route through .call (higher-order functions)."
 	| exprs nameNode name params bodyExprs retType |
 	exprs := aListNode expressions.
 	nameNode := exprs second.
@@ -838,6 +842,13 @@ GDZealCodeGenerator >> generateDefn: aListNode [
 				(retType isNil and: [ e isKindOf: ZealKeywordNode ])
 					ifTrue: [ retType := e value value allButFirst ]
 					ifFalse: [ bodyExprs add: e ] ] ].
+	"Unwrap a top-level (do ...) so its children become the function body."
+	(bodyExprs size = 1
+		and: [ (bodyExprs first isKindOf: ZealListNode)
+		and: [ bodyExprs first expressions notEmpty
+		and: [ (bodyExprs first expressions first isKindOf: ZealSymbolNode)
+		and: [ bodyExprs first expressions first value value = 'do' ] ] ] ]) ifTrue: [
+			bodyExprs := bodyExprs first expressions allButFirst asOrderedCollection ].
 	self emit: 'func '.
 	self emit: (self toSnakeCase: name).
 	self emit: '('.
@@ -850,7 +861,6 @@ GDZealCodeGenerator >> generateDefn: aListNode [
 		self emit: ' -> '.
 		self emit: (self resolveType: retType) ].
 	self emit: ':'.
-	"Push scope and bind params for the duration of the body"
 	self pushScope.
 	[ params ifNotNil: [
 		params expressions do: [ :p | self bindLocal: (self paramName: p) ] ].
@@ -858,7 +868,13 @@ GDZealCodeGenerator >> generateDefn: aListNode [
 		self indent. self nl. self emit: 'pass'. self dedent ]
 	  ifFalse: [
 		self indent.
-		bodyExprs do: [ :e | self nl. self visitExpression: e ].
+		bodyExprs doWithIndex: [ :e :i |
+			self nl.
+			(retType notNil
+				and: [ i = bodyExprs size
+				and: [ (self isStatementForm: e) not ] ])
+				ifTrue: [ self emit: 'return '. self visitExpression: e ]
+				ifFalse: [ self visitExpression: e ] ].
 		self dedent ] ]
 		ensure: [ self popScope ]
 ]
