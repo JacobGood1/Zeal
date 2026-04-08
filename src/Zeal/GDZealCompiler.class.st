@@ -92,6 +92,42 @@ GDZealCompiler class >> buildDefcomp: aListNode [
 	^ cls
 ]
 
+{ #category : 'building' }
+GDZealCompiler class >> buildDefcosystem: aListNode [
+	"(defcosystem name body...)
+	 (defcosystem name [binding1 binding2 ...] body...)
+	 Builds a ZealClass for a coroutine-system component (formerly defcosystem) — a stateful
+	 component plus its driving system, defined together. Bindings are name:type pairs
+	 that get queried by the auto-generated system."
+	| exprs name bodyForms bindings cls third stateField timerField |
+	exprs := aListNode expressions.
+	name := exprs second value value.
+	bindings := OrderedCollection new.
+	bodyForms := exprs allButFirst allButFirst.
+	bodyForms isEmpty ifFalse: [
+		third := bodyForms first.
+		(third isKindOf: ZealVectorNode) ifTrue: [
+			bindings := self parseFsmBindings: third.
+			bodyForms := bodyForms allButFirst ] ].
+	
+	cls := ZealClass new
+		name: name;
+		superclass: 'Component';
+		annotations: { 'gecs_component'. 'fsm'. 'fsm_bindings' -> bindings };
+		fields: OrderedCollection new;
+		methods: OrderedCollection new.
+	
+	stateField := ZealField new name: '_state'; type: 'int'; isMutable: true; defaultValue: (ZealLiteral new value: '0').
+	stateField parent: cls.
+	cls fields add: stateField.
+	
+	timerField := ZealField new name: '_timer'; type: 'float'; isMutable: true; defaultValue: (ZealLiteral new value: '0.0').
+	timerField parent: cls.
+	cls fields add: timerField.
+	
+	^ cls
+]
+
 { #category : 'building - GECS' }
 GDZealCompiler class >> buildDefentity: aListNode [
 	"(defentity player (components [@health @velocity]) (on-ready body)) -> ZealClass"
@@ -119,42 +155,6 @@ GDZealCompiler class >> buildDefentity: aListNode [
 		fields: #();
 		methods: methods.
 	methods do: [ :m | m parent: cls ].
-	^ cls
-]
-
-{ #category : 'special forms' }
-GDZealCompiler class >> buildDeffsm: aListNode [
-	"(deffsm name body...)
-	 (deffsm name [binding1 binding2 ...] body...)
-	 Builds a ZealClass for an FSM-style component with optional component bindings.
-	 Bindings are name:type pairs that get queried by the auto-generated system."
-	| exprs name bodyForms bindings cls third stateField timerField |
-	exprs := aListNode expressions.
-	name := exprs second value value.
-	"Optional bindings vector after the name"
-	bindings := OrderedCollection new.
-	bodyForms := exprs allButFirst allButFirst.
-	bodyForms isEmpty ifFalse: [
-		third := bodyForms first.
-		(third isKindOf: ZealVectorNode) ifTrue: [
-			bindings := self parseFsmBindings: third.
-			bodyForms := bodyForms allButFirst ] ].
-	
-	cls := ZealClass new
-		name: name;
-		superclass: 'Component';
-		annotations: { 'gecs_component'. 'fsm'. 'fsm_bindings' -> bindings };
-		fields: OrderedCollection new;
-		methods: OrderedCollection new.
-	
-	stateField := ZealField new name: '_state'; type: 'int'; isMutable: true; defaultValue: (ZealLiteral new value: '0').
-	stateField parent: cls.
-	cls fields add: stateField.
-	
-	timerField := ZealField new name: '_timer'; type: 'float'; isMutable: true; defaultValue: (ZealLiteral new value: '0.0').
-	timerField parent: cls.
-	cls fields add: timerField.
-	
 	^ cls
 ]
 
@@ -419,9 +419,9 @@ GDZealCompiler class >> compileToGDScript: aString withRegistry: aRegistry [
 	^ GDZealCodeGenerator compile: aString withRegistry: aRegistry
 ]
 
-{ #category : 'special forms' }
-GDZealCompiler class >> deffsmBindings: aSourceString [
-	"Extract the bindings from a deffsm source. Returns OrderedCollection of {#name #type}."
+{ #category : 'parsing' }
+GDZealCompiler class >> defcosystemBindings: aSourceString [
+	"Extract the bindings from a defcosystem source. Returns OrderedCollection of {#name #type}."
 	| parsed first bodyForms third |
 	[ parsed := ZealParser parse: aSourceString ] on: Error do: [ ^ #() ].
 	parsed children isEmpty ifTrue: [ ^ #() ].
@@ -435,9 +435,9 @@ GDZealCompiler class >> deffsmBindings: aSourceString [
 	^ self parseFsmBindings: third
 ]
 
-{ #category : 'special forms' }
-GDZealCompiler class >> deffsmName: aSourceString [
-	"Extract the name from a deffsm source. Returns kebab-case name or nil."
+{ #category : 'parsing' }
+GDZealCompiler class >> defcosystemName: aSourceString [
+	"Extract the name from a defcosystem source. Returns kebab-case name or nil."
 	| parsed first |
 	[ parsed := ZealParser parse: aSourceString ] on: Error do: [ ^ nil ].
 	parsed children isEmpty ifTrue: [ ^ nil ].
@@ -445,6 +445,18 @@ GDZealCompiler class >> deffsmName: aSourceString [
 	(first isKindOf: ZealListNode) ifFalse: [ ^ nil ].
 	first expressions size < 2 ifTrue: [ ^ nil ].
 	^ first expressions second value value
+]
+
+{ #category : 'fsm' }
+GDZealCompiler class >> errorPlaceholderFor: aTag [
+	"Build a synthetic AST node that prints to GDScript as a runtime push_error call,
+	 so coroutine misuse surfaces visibly at runtime instead of silently miscompiling."
+	| placeholder |
+	placeholder := ZealListNode new.
+	placeholder expressions: { 
+		(self newSymbolNodeWithString: 'push_error').
+		(self newSymbolNodeWithString: '"GDZeal: ' , aTag , '"') }.
+	^ placeholder
 ]
 
 { #category : 'special forms' }
@@ -521,6 +533,37 @@ GDZealCompiler class >> fsmEmitBranch: cond thenForms: thenForms else: elseForm 
 	
 	"Continue from join state"
 	ctx at: #current put: join
+]
+
+{ #category : 'fsm' }
+GDZealCompiler class >> fsmExpandCoroutine: aListNode ctx: ctx [
+	"Expand a coroutine call site by inlining its body into ctx with parameter substitution.
+	 Cycle detection via stack-membership; depth limit as fail-safe.
+	 Errors emit a runtime push_error stmt instead of raising — `self error:` was being
+	 silently swallowed when invoked from inside the FSM walker pipeline (handler somewhere
+	 was returning nil, causing infinite recursion through the failed cycle check)."
+	| head co params body args bindings substitutedBody stack |
+	head := aListNode expressions first value value.
+	stack := ctx at: #coroutineStack.
+	stack size > 64 ifTrue: [
+		^ ((ctx at: #current) at: #stmts) 
+			add: (self errorPlaceholderFor: 'depth_limit_exceeded') ].
+	(stack includes: head) ifTrue: [
+		^ ((ctx at: #current) at: #stmts) 
+			add: (self errorPlaceholderFor: 'recursive_coroutine_' , head) ].
+	co := (ctx at: #coroutines) at: head ifAbsent: [ ^ self ].
+	params := co at: #params.
+	body := co at: #body.
+	args := aListNode expressions allButFirst.
+	args size = params size ifFalse: [
+		^ ((ctx at: #current) at: #stmts) 
+			add: (self errorPlaceholderFor: 'arity_mismatch_' , head) ].
+	bindings := Dictionary new.
+	params with: args do: [ :p :a | bindings at: p put: a ].
+	substitutedBody := body collect: [ :form | self substituteSymbolsIn: form bindings: bindings ].
+	stack add: head.
+	[ self fsmWalk: substitutedBody ctx: ctx ]
+		ensure: [ stack removeLast ]
 ]
 
 { #category : 'fsm' }
@@ -659,7 +702,13 @@ GDZealCompiler class >> fsmNewState [
 
 { #category : 'fsm' }
 GDZealCompiler class >> fsmSplitBody: bodyForms [
-	"Split a sequence of forms into states. Returns a Dictionary with #states (top-level states) and #lanes (all sub-lanes for sync/race)."
+	"Backwards-compat shim — uses an empty coroutine dict."
+	^ self fsmSplitBody: bodyForms coroutines: nil
+]
+
+{ #category : 'fsm' }
+GDZealCompiler class >> fsmSplitBody: bodyForms coroutines: aDict [
+	"Split a sequence of forms into states with coroutine expansion support."
 	| states currentState ctx current |
 	states := OrderedCollection new.
 	currentState := self fsmNewState.
@@ -669,8 +718,9 @@ GDZealCompiler class >> fsmSplitBody: bodyForms [
 	ctx at: #current put: currentState.
 	ctx at: #nextLaneId put: 0.
 	ctx at: #lanes put: OrderedCollection new.
+	ctx at: #coroutines put: (aDict ifNil: [ Dictionary new ]).
+	ctx at: #coroutineStack put: OrderedCollection new.
 	self fsmWalk: bodyForms ctx: ctx.
-	"Only mark as terminal if not already marked (loop-end / sync controllers etc.)"
 	current := ctx at: #current.
 	(current at: #kind) = #normal ifTrue: [
 		current at: #kind put: #terminal ].
@@ -679,12 +729,10 @@ GDZealCompiler class >> fsmSplitBody: bodyForms [
 
 { #category : 'fsm' }
 GDZealCompiler class >> fsmWalk: forms ctx: ctx [
-	"Walk a sequence of forms, mutating ctx as we go.
-	 ctx has #states (OrderedCollection), #current (current state dict),
-	 #nextLaneId (counter), #lanes (collected lane defs)."
+	"Walk forms, dispatching to handlers for special FSM forms or to coroutine expansion."
 	forms do: [ :form |
 		(form isKindOf: ZealListNode) ifTrue: [
-			| head |
+			| head co |
 			head := form expressions first value value.
 			head = 'wait' ifTrue: [ self fsmHandleWait: form ctx: ctx ]
 			ifFalse: [
@@ -699,11 +747,15 @@ GDZealCompiler class >> fsmWalk: forms ctx: ctx [
 			head = 'race' ifTrue: [ self fsmHandleConcurrent: form ctx: ctx kind: #race ]
 			ifFalse: [
 			head = 'do' ifTrue: [
-				"Flatten do body into current walk"
 				self fsmWalk: form expressions allButFirst ctx: ctx ]
 			ifFalse: [
-				"Regular form — emit into current state"
-				((ctx at: #current) at: #stmts) add: form ] ] ] ] ] ] ] ]
+			"Coroutine call?"
+			co := (ctx at: #coroutines) at: head ifAbsent: [ nil ].
+			co notNil 
+				ifTrue: [ self fsmExpandCoroutine: form ctx: ctx ]
+				ifFalse: [
+					"Regular form — emit into current state"
+					((ctx at: #current) at: #stmts) add: form ] ] ] ] ] ] ] ] ]
 		ifFalse: [
 			((ctx at: #current) at: #stmts) add: form ] ]
 ]
@@ -749,16 +801,25 @@ GDZealCompiler class >> inferTypeFromValue: aParseNode [
 	^ nil
 ]
 
-{ #category : 'special forms' }
-GDZealCompiler class >> isDeffsm: aSourceString [
-	"Check if a source string is a deffsm form"
+{ #category : 'parsing' }
+GDZealCompiler class >> isDefcosystem: aSourceString [
+	"Check if a source string is a defcosystem form"
 	| parsed first |
 	[ parsed := ZealParser parse: aSourceString ] on: Error do: [ ^ false ].
 	parsed children isEmpty ifTrue: [ ^ false ].
 	first := parsed children first.
 	(first isKindOf: ZealListNode) ifFalse: [ ^ false ].
 	first expressions isEmpty ifTrue: [ ^ false ].
-	^ first expressions first value value = 'deffsm'
+	^ first expressions first value value = 'defcosystem'
+]
+
+{ #category : 'fsm-coroutines' }
+GDZealCompiler class >> newSymbolNodeWithString: aString [
+	"Construct a fresh ZealSymbolNode whose value is a fake token responding to #value
+	 with aString. Used by symbol substitution during coroutine inlining."
+	| token |
+	token := Association new value: aString; yourself.
+	^ ZealSymbolNode new value: token; yourself
 ]
 
 { #category : 'special forms' }
@@ -797,12 +858,12 @@ GDZealCompiler class >> resolveNameNode: aNode [
 	^ ZealCompiler resolveNameNode: aNode
 ]
 
-{ #category : 'special forms' }
+{ #category : 'building' }
 GDZealCompiler class >> specialFormBuilders [
 	"Only GDZeal-specific forms. Shared forms delegate to ZealCompiler."
 	^ Dictionary new
 		at: 'defcomp' put: #buildDefcomp:;
-		at: 'deffsm' put: #buildDeffsm:;
+		at: 'defcosystem' put: #buildDefcosystem:;
 		at: 'defentity' put: #buildDefentity:;
 		at: 'defsystem' put: #buildDefsystem:;
 		at: 'defobserver' put: #buildDefobserver:;
@@ -815,4 +876,66 @@ GDZealCompiler class >> specialFormBuilders [
 { #category : 'helpers' }
 GDZealCompiler class >> stripClassPrefix: aName [
 	^ ZealCompiler stripClassPrefix: aName
+]
+
+{ #category : 'fsm-coroutines' }
+GDZealCompiler class >> substituteSymbolsIn: aNode bindings: aDict [
+	"Walk an AST node, substituting symbol references whose name (or slash prefix) matches
+	 a key in aDict. Returns either the original node (if no substitution needed) or a new
+	 node tree with structural sharing.
+	 Args must be ZealSymbolNode (plain or slash-chain). Complex expressions not supported."
+	aDict isEmpty ifTrue: [ ^ aNode ].
+	
+	"ZealSymbolNode: check for substitution"
+	(aNode isKindOf: ZealSymbolNode) ifTrue: [
+		| sym replacement |
+		sym := aNode value value.
+		replacement := self substitutedSymbolString: sym bindings: aDict.
+		replacement = sym ifTrue: [ ^ aNode ].
+		^ self newSymbolNodeWithString: replacement ].
+	
+	"ZealListNode: recurse into expressions"
+	(aNode isKindOf: ZealListNode) ifTrue: [
+		| newExprs changed |
+		changed := false.
+		newExprs := aNode expressions collect: [ :child |
+			| newChild |
+			newChild := self substituteSymbolsIn: child bindings: aDict.
+			newChild ~~ child ifTrue: [ changed := true ].
+			newChild ].
+		changed ifFalse: [ ^ aNode ].
+		^ ZealListNode new expressions: newExprs; yourself ].
+	
+	"ZealVectorNode: same recursion as ListNode"
+	(aNode isKindOf: ZealVectorNode) ifTrue: [
+		| newExprs changed |
+		changed := false.
+		newExprs := aNode expressions collect: [ :child |
+			| newChild |
+			newChild := self substituteSymbolsIn: child bindings: aDict.
+			newChild ~~ child ifTrue: [ changed := true ].
+			newChild ].
+		changed ifFalse: [ ^ aNode ].
+		^ ZealVectorNode new expressions: newExprs; yourself ].
+	
+	"Other atom types pass through unchanged"
+	^ aNode
+]
+
+{ #category : 'fsm-coroutines' }
+GDZealCompiler class >> substitutedSymbolString: sym bindings: aDict [
+	"If sym matches a binding key (exactly, or as a slash-prefix), return substituted string.
+	 Otherwise return sym unchanged.
+	 paramName 'pos', arg symbol 'position':
+	   'pos' -> 'position'
+	   'pos/x' -> 'position/x'
+	   'other' -> 'other' (unchanged)"
+	aDict keysDo: [ :paramName |
+		| argSym |
+		sym = paramName ifTrue: [
+			^ (aDict at: paramName) value value ].
+		(sym beginsWith: paramName , '/') ifTrue: [
+			argSym := (aDict at: paramName) value value.
+			^ argSym , (sym copyFrom: paramName size + 1 to: sym size) ] ].
+	^ sym
 ]

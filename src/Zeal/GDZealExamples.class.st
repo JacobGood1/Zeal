@@ -43,6 +43,87 @@ GDZealExamples >> exampleDef [
 	^ result
 ]
 
+{ #category : 'examples - defco' }
+GDZealExamples >> exampleDefcoArityMismatch [
+	<gtExample>
+	"Calling a coroutine with the wrong number of args emits push_error, not silent miscompile."
+	| result |
+	result := GDZealCompiler compileToGDScript: '(defco greet [name] (print name))
+(defcosystem test (greet "alice" "bob"))'.
+	self assert: (result includesSubstring: 'push_error').
+	self assert: (result includesSubstring: 'arity_mismatch_greet').
+	^ result
+]
+
+{ #category : 'examples - defco' }
+GDZealExamples >> exampleDefcoNested [
+	<gtExample>
+	"A coroutine that calls another coroutine fully expands at compile time."
+	| result count i pat |
+	result := GDZealCompiler compileToGDScript: '(defco beep (print "beep") (wait 0.1))
+(defco double-beep (beep) (beep))
+(defcosystem test (double-beep) (print "done"))'.
+	"Two beeps inlined plus final print = three states"
+	pat := 'print("beep")'.
+	count := 0. i := 1.
+	[ i := result indexOfSubCollection: pat startingAt: i. i > 0 ] whileTrue: [
+		count := count + 1. i := i + pat size ].
+	self assert: count equals: 2.
+	self assert: (result includesSubstring: 'print("done")').
+	self assert: (result includesSubstring: '_state == 0').
+	self assert: (result includesSubstring: '_state == 1').
+	self assert: (result includesSubstring: '_state == 2').
+	^ result
+]
+
+{ #category : 'examples - defco' }
+GDZealExamples >> exampleDefcoRecursionGuard [
+	<gtExample>
+	"A directly recursive coroutine should NOT hang the compiler — it must emit a
+	 push_error placeholder so the misuse surfaces at runtime."
+	| result |
+	result := GDZealCompiler compileToGDScript: '(defco a (a))
+(defcosystem test (a))'.
+	self assert: (result includesSubstring: 'push_error').
+	self assert: (result includesSubstring: 'recursive_coroutine_a').
+	^ result
+]
+
+{ #category : 'examples - defco' }
+GDZealExamples >> exampleDefcoSimple [
+	<gtExample>
+	"A no-arg coroutine inlines its body into the calling defcosystem."
+	| result |
+	result := GDZealCompiler compileToGDScript: '(defco greet (print "hi") (wait 1))
+(defcosystem test (greet) (print "done"))'.
+	self assert: (result includesSubstring: 'print("hi")').
+	self assert: (result includesSubstring: '_timer = 1').
+	self assert: (result includesSubstring: 'print("done")').
+	self assert: (result includesSubstring: '_state == 0').
+	self assert: (result includesSubstring: '_state == 1').
+	self assert: (result includesSubstring: '_state = 1').
+	^ result
+]
+
+{ #category : 'examples - defco' }
+GDZealExamples >> exampleDefcoWithParams [
+	<gtExample>
+	"A coroutine with parameters substitutes them into the inlined body."
+	| result |
+	result := GDZealCompiler compileToGDScript: '(defco wait-and-print [msg seconds] (print msg) (wait seconds))
+(defcosystem test (wait-and-print "start" 0.5) (wait-and-print "end" 1.0) (print "done"))'.
+	self assert: (result includesSubstring: 'print("start")').
+	self assert: (result includesSubstring: 'print("end")').
+	self assert: (result includesSubstring: 'print("done")').
+	self assert: (result includesSubstring: '_timer = 0.5').
+	self assert: (result includesSubstring: '_timer = 1.0').
+	"Three states: two waits + final print"
+	self assert: (result includesSubstring: '_state == 0').
+	self assert: (result includesSubstring: '_state == 1').
+	self assert: (result includesSubstring: '_state == 2').
+	^ result
+]
+
 { #category : 'examples - GECS' }
 GDZealExamples >> exampleDefcompHealth [
 	<gtExample>
@@ -355,13 +436,13 @@ GDZealExamples >> exampleFor [
 	^ result
 ]
 
-{ #category : 'examples-fsm' }
+{ #category : 'examples' }
 GDZealExamples >> exampleFsmDetectsFsmSource [
 	<gtExample>
-	"isDeffsm: detects the deffsm form"
-	self assert: (GDZealCompiler isDeffsm: '(deffsm kek (loop (wait)))').
-	self assert: (GDZealCompiler isDeffsm: '(defcomp velocity speed:float 200.0)') not.
-	self assert: (GDZealCompiler isDeffsm: '(defcomp dead)') not.
+	"isDefcosystem: detects the defcosystem form"
+	self assert: (GDZealCompiler isDefcosystem: '(defcosystem kek (loop (wait)))').
+	self assert: (GDZealCompiler isDefcosystem: '(defcomp velocity speed:float 200.0)') not.
+	self assert: (GDZealCompiler isDefcosystem: '(defcomp dead)') not.
 	^ true
 ]
 
@@ -370,7 +451,7 @@ GDZealExamples >> exampleFsmEmpty [
 	<gtExample>
 	"FSM with no body — just generates the class header and state field."
 	| result |
-	result := GDZealCompiler compileToGDScript: '(deffsm ticker)'.
+	result := GDZealCompiler compileToGDScript: '(defcosystem ticker)'.
 	self assert: (result includesSubstring: 'class_name C_Ticker').
 	self assert: (result includesSubstring: '@export var _state: int = 0').
 	self assert: (result includesSubstring: '@export var _timer: float = 0.0').
@@ -383,7 +464,7 @@ GDZealExamples >> exampleFsmIfInline [
 	<gtExample>
 	"(if cond then else) without waits compiles to a single inline if/else."
 	| result |
-	result := GDZealCompiler compileToGDScript: '(deffsm simple
+	result := GDZealCompiler compileToGDScript: '(defcosystem simple
   (loop
     (wait 1.0)
     (if (> hp 0) (heal) (die))))'.
@@ -399,7 +480,7 @@ GDZealExamples >> exampleFsmIfWithWait [
 	<gtExample>
 	"(if cond then else) where then has a wait — splits into branch states."
 	| result |
-	result := GDZealCompiler compileToGDScript: '(deffsm boss
+	result := GDZealCompiler compileToGDScript: '(defcosystem boss
   (loop
     (if low-health
       (do (wait 0.5) (panic-attack))
@@ -418,7 +499,7 @@ GDZealExamples >> exampleFsmLaneTerminalRunsOnce [
 	"Lane final stmts must run exactly once: emitted state advances to the sentinel
 	 (laneStates size), and the inline done check is _state >= sentinel."
 	| result |
-	result := GDZealCompiler compileToGDScript: '(deffsm one
+	result := GDZealCompiler compileToGDScript: '(defcosystem one
   (sync
     (do (wait 0.5) (boom))))'.
 	self assert: (result includesSubstring: 'boom()').
@@ -432,7 +513,7 @@ GDZealExamples >> exampleFsmLoop [
 	<gtExample>
 	"(loop body) makes the last state jump back to the loop start."
 	| result |
-	result := GDZealCompiler compileToGDScript: '(deffsm ticker
+	result := GDZealCompiler compileToGDScript: '(defcosystem ticker
   (loop
     (wait)
     (tick-once)))'.
@@ -444,12 +525,12 @@ GDZealExamples >> exampleFsmLoop [
 { #category : 'examples-fsm' }
 GDZealExamples >> exampleFsmMultipleBindings [
 	<gtExample>
-	"deffsm with multiple bindings — all appear as tick parameters."
+	"defcosystem with multiple bindings — all appear as tick parameters."
 	| reg result |
 	reg := GDZealComponentRegistry new.
 	reg register: 'health'.
 	reg register: 'velocity'.
-	result := GDZealCodeGenerator compile: '(deffsm ai [health:@health vel:@velocity]
+	result := GDZealCodeGenerator compile: '(defcosystem ai [health:@health vel:@velocity]
   (loop
     (when (< health/current 10)
       (set vel/speed 0.0))
@@ -463,9 +544,9 @@ GDZealExamples >> exampleFsmMultipleBindings [
 { #category : 'examples-fsm' }
 GDZealExamples >> exampleFsmNoBindings [
 	<gtExample>
-	"deffsm without bindings still works — tick(entity, delta) only."
+	"defcosystem without bindings still works — tick(entity, delta) only."
 	| result |
-	result := GDZealCompiler compileToGDScript: '(deffsm tick-only
+	result := GDZealCompiler compileToGDScript: '(defcosystem tick-only
   (loop
     (wait 1.0)
     (do-thing)))'.
@@ -498,7 +579,7 @@ GDZealExamples >> exampleFsmRaceFirstWins [
 	 The generated code uses a _won flag with 'if not _won:' guards rather than
 	 ticking all lanes and joining with 'or'."
 	| result |
-	result := GDZealCompiler compileToGDScript: '(deffsm racer
+	result := GDZealCompiler compileToGDScript: '(defcosystem racer
   (race
     (do (wait 0.5) (fast))
     (do (wait 5.0) (slow))))'.
@@ -517,7 +598,7 @@ GDZealExamples >> exampleFsmRaceThreeLanes [
 	"3-lane race generates three nested 'if not _won:' guards, ensuring each later lane
 	 is skipped once any earlier one finishes."
 	| result wonGuardCount |
-	result := GDZealCompiler compileToGDScript: '(deffsm three-way
+	result := GDZealCompiler compileToGDScript: '(defcosystem three-way
   (race
     (do (wait 0.3) (a))
     (do (wait 0.6) (b))
@@ -542,7 +623,7 @@ GDZealExamples >> exampleFsmRaceTiedFrameLoserSkipped [
 	 body is inside an 'if not _won:' guard, so once lane 0 sets _won, lane 1's if/elif
 	 chain is skipped entirely."
 	| result lines lane1Idx wonAssignIdx |
-	result := GDZealCompiler compileToGDScript: '(deffsm tied
+	result := GDZealCompiler compileToGDScript: '(defcosystem tied
   (race
     (do (wait 0.5) (winner))
     (do (wait 0.5) (loser))))'.
@@ -566,7 +647,7 @@ GDZealExamples >> exampleFsmSyncResetsLanesOnAdvance [
 	"When a sync controller advances out, it resets each lane's state and timer
 	 so re-entry (e.g. via loop) starts clean."
 	| result |
-	result := GDZealCompiler compileToGDScript: '(deffsm cycler
+	result := GDZealCompiler compileToGDScript: '(defcosystem cycler
   (loop
     (sync
       (do (wait 0.5) (a))
@@ -588,7 +669,7 @@ GDZealExamples >> exampleFsmSyncTwoBranches [
 	"(sync ...) generates per-lane state fields and inlines each lane's state machine
 	 directly into the controller arm — no helper functions."
 	| result |
-	result := GDZealCompiler compileToGDScript: '(deffsm dual
+	result := GDZealCompiler compileToGDScript: '(defcosystem dual
   (sync
     (do (wait 0.5) (a))
     (do (wait 1.0) (b))))'.
@@ -614,7 +695,7 @@ GDZealExamples >> exampleFsmSyncWithBindings [
 	| reg result |
 	reg := GDZealComponentRegistry new.
 	reg register: 'velocity'. reg register: 'health'.
-	result := GDZealCodeGenerator compile: '(deffsm dual [vel:@velocity health:@health]
+	result := GDZealCodeGenerator compile: '(defcosystem dual [vel:@velocity health:@health]
   (sync
     (do (wait 1.0) (set vel/speed += 10))
     (do (wait 0.5) (set health/current += 5))))' withRegistry: reg.
@@ -641,14 +722,14 @@ GDZealExamples >> exampleFsmSystemCodegen [
 	^ sys
 ]
 
-{ #category : 'examples-fsm' }
+{ #category : 'examples' }
 GDZealExamples >> exampleFsmSystemWithBindings [
 	<gtExample>
 	"compileFsmSystemFor:withBindings: queries for all binding components and passes them to tick."
 	| bindings sys |
-	bindings := GDZealCompiler deffsmBindings: '(deffsm regen [health:@health vel:@velocity] (loop (wait 1.0)))'.
+	bindings := GDZealCompiler defcosystemBindings: '(defcosystem regen [health:@health vel:@velocity] (loop (wait 1.0)))'.
 	sys := GDZealCompiler compileFsmSystemFor: 'regen' withBindings: bindings.
-	"Query should include all components"
+	"Query should include all binding components"
 	self assert: (sys includesSubstring: 'q.with_all([C_Regen, C_Health, C_Velocity])').
 	self assert: (sys includesSubstring: 'iterate([C_Regen, C_Health, C_Velocity])').
 	"Tick call should pass all binding components"
@@ -661,7 +742,7 @@ GDZealExamples >> exampleFsmWaitFrame [
 	<gtExample>
 	"(wait) creates a single-frame state boundary."
 	| result |
-	result := GDZealCompiler compileToGDScript: '(deffsm pause
+	result := GDZealCompiler compileToGDScript: '(defcosystem pause
   (print "before")
   (wait)
   (print "after"))'.
@@ -677,7 +758,7 @@ GDZealExamples >> exampleFsmWaitTime [
 	<gtExample>
 	"(wait n) creates a timed countdown state."
 	| result |
-	result := GDZealCompiler compileToGDScript: '(deffsm delay
+	result := GDZealCompiler compileToGDScript: '(defcosystem delay
   (print "go")
   (wait 1.5)
   (print "done"))'.
@@ -694,7 +775,7 @@ GDZealExamples >> exampleFsmWhenWithWait [
 	<gtExample>
 	"(when cond body) with waits inside splits into a branch with no else."
 	| result |
-	result := GDZealCompiler compileToGDScript: '(deffsm regen
+	result := GDZealCompiler compileToGDScript: '(defcosystem regen
   (loop
     (when (> hp 0)
       (wait 1.0)
@@ -708,11 +789,11 @@ GDZealExamples >> exampleFsmWhenWithWait [
 { #category : 'examples-fsm' }
 GDZealExamples >> exampleFsmWithBindings [
 	<gtExample>
-	"deffsm with [name:@type] bindings adds them as tick parameters."
+	"defcosystem with [name:@type] bindings adds them as tick parameters."
 	| reg result |
 	reg := GDZealComponentRegistry new.
 	reg register: 'health'.
-	result := GDZealCodeGenerator compile: '(deffsm regen [health:@health]
+	result := GDZealCodeGenerator compile: '(defcosystem regen [health:@health]
   (loop
     (wait 1.0)
     (set health/current += 5)))' withRegistry: reg.

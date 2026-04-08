@@ -47,10 +47,10 @@ GDZealProject >> compileAll [
 	^ count -> errors
 ]
 
-{ #category : 'compilation' }
+{ #category : 'compiling' }
 GDZealProject >> compileDefinition: aNode [
 	"Compile a single definition to GDScript and write to Godot project.
-	 For deffsm components, also writes a sibling system file in systems/."
+	 For defcosystem components, also writes a sibling system file in systems/."
 	| gdScript gdPath snakeName folder source |
 	folder := self folderFor: aNode.
 	snakeName := aNode name copyReplaceAll: '-' with: '_'.
@@ -64,10 +64,10 @@ GDZealProject >> compileDefinition: aNode [
 	(path , '/' , gdPath) asFileReference
 		ensureDelete;
 		writeStreamDo: [ :s | s nextPutAll: gdScript ].
-	"deffsm components also generate a sibling system"
-	(GDZealCompiler isDeffsm: source) ifTrue: [
+	"defcosystem components also generate a sibling system"
+	(GDZealCompiler isDefcosystem: source) ifTrue: [
 		| systemSrc systemPath bindings |
-		bindings := GDZealCompiler deffsmBindings: source.
+		bindings := GDZealCompiler defcosystemBindings: source.
 		systemSrc := GDZealCompiler compileFsmSystemFor: aNode name withBindings: bindings.
 		systemPath := 'systems/' , snakeName , '_system.gd'.
 		(path , '/' , systemPath) asFileReference

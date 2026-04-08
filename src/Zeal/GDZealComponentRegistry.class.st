@@ -2,11 +2,25 @@ Class {
 	#name : 'GDZealComponentRegistry',
 	#superclass : 'Object',
 	#instVars : [
-		'components'
+		'components',
+		'coroutines'
 	],
 	#category : 'Zeal',
 	#package : 'Zeal'
 }
+
+{ #category : 'accessing' }
+GDZealComponentRegistry >> coroutineNamed: aName [
+	^ self coroutines at: aName ifAbsent: [ nil ]
+]
+
+{ #category : 'accessing' }
+GDZealComponentRegistry >> coroutines [
+	"Lazily-initialized dict of registered defco coroutines.
+	 name (String) -> Dictionary { #params: OC of strings, #body: OC of body forms }"
+	coroutines isNil ifTrue: [ coroutines := Dictionary new ].
+	^ coroutines
+]
 
 { #category : 'initialization' }
 GDZealComponentRegistry >> initialize [
@@ -23,6 +37,14 @@ GDZealComponentRegistry >> isComponent: aName [
 GDZealComponentRegistry >> register: aName [
 	"Register a component name (lowercase, e.g., 'health')"
 	components add: aName
+]
+
+{ #category : 'accessing' }
+GDZealComponentRegistry >> registerCoroutine: aName params: paramList body: bodyForms [
+	self coroutines at: aName put: (Dictionary new
+		at: #params put: paramList;
+		at: #body put: bodyForms;
+		yourself)
 ]
 
 { #category : 'resolving' }

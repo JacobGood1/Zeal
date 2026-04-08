@@ -616,6 +616,24 @@ GDZealCodeGenerator >> generateDef: aListNode [
 		self visitExpression: valueNode ]
 ]
 
+{ #category : 'special forms' }
+GDZealCodeGenerator >> generateDefco: aListNode [
+	"Register a coroutine for compile-time expansion at defcosystem sites.
+	 (defco name [params] body...) — emits no GDScript; pure macro definition."
+	| exprs name params body |
+	exprs := aListNode expressions.
+	name := (exprs at: 2) value value.
+	(exprs at: 3) class = ZealVectorNode 
+		ifTrue: [
+			params := (exprs at: 3) expressions collect: [ :e | e value value ].
+			body := (exprs copyFrom: 4 to: exprs size) ]
+		ifFalse: [
+			params := #().
+			body := (exprs copyFrom: 3 to: exprs size) ].
+	registry registerCoroutine: name params: params body: body asArray.
+	^ ''
+]
+
 { #category : 'generators' }
 GDZealCodeGenerator >> generateDefcomp: aListNode [
 	"(defcomp name var1 val1 var2 val2 ... (init [...] body))
@@ -677,6 +695,78 @@ GDZealCodeGenerator >> generateDefcomp: aListNode [
 		i := i + 1 ]
 ]
 
+{ #category : 'special forms' }
+GDZealCodeGenerator >> generateDefcosystem: aListNode [
+	"(defcosystem name body...)
+	 (defcosystem name [bindings...] body...)
+	 Defines a stateful coroutine-system in one form: a Component (with _state/_timer fields)
+	 plus the per-frame logic that GECS will call. Body may include (sync ...) and (race ...)
+	 for concurrent lanes — lane code is INLINED into the controller arm rather than calling
+	 helper functions, saving ~300 ns/controller-frame of GDScript function-call overhead.
+	 State dispatch uses if/elif chains rather than match because GDScript's match is
+	 significantly slower (~2x) for integer dispatch.
+	 Coroutines defined via (defco ...) are macro-expanded at compile time."
+	| exprs name bodyForms bindings third splitResult states lanes |
+	exprs := aListNode expressions.
+	name := exprs second value value.
+	bindings := OrderedCollection new.
+	bodyForms := exprs allButFirst allButFirst.
+	bodyForms isEmpty ifFalse: [
+		third := bodyForms first.
+		(third isKindOf: ZealVectorNode) ifTrue: [
+			bindings := GDZealCompiler parseFsmBindings: third.
+			bodyForms := bodyForms allButFirst ] ].
+	
+	registry register: name.
+	splitResult := GDZealCompiler fsmSplitBody: bodyForms coroutines: registry coroutines.
+	states := splitResult at: #states.
+	lanes := splitResult at: #lanes.
+	currentBindings := bindings.
+	currentStateVar := '_state'.
+	currentTimerVar := '_timer'.
+	
+	"Class header"
+	self emit: 'class_name C_'.
+	self emit: (self toPascalCase: name).
+	self nl.
+	self emit: 'extends Component'.
+	self nl. self nl.
+	
+	"State + timer fields"
+	self emit: '@export var _state: int = 0'. self nl.
+	self emit: '@export var _timer: float = 0.0'. self nl.
+	"Per-lane fields"
+	lanes do: [ :lane |
+		| pfx |
+		pfx := '_l' , (lane at: #laneId) asString.
+		self emit: '@export var ' , pfx , '_state: int = 0'. self nl.
+		self emit: '@export var ' , pfx , '_timer: float = 0.0'. self nl ].
+	self nl.
+	
+	"Tick method signature with bindings as parameters"
+	self emit: 'func tick(entity: Entity, delta: float'.
+	bindings do: [ :b |
+		self emit: ', '.
+		self emit: (b at: #name).
+		self emit: ': '.
+		self emit: (self resolveType: (b at: #type)) ].
+	self emit: ') -> void:'. self nl.
+	self indent.
+	
+	"Dispatch — if/elif chain on _state. Pass 0-based index to emitFsmState: so the
+	 default `nextIdx := i + 1` arithmetic stays consistent with how lanes are emitted."
+	states withIndexDo: [ :state :idx |
+		idx = 1
+			ifTrue: [ self emit: 'if _state == 0:' ]
+			ifFalse: [ self emit: 'elif _state == ' , (idx - 1) asString , ':' ].
+		self nl.
+		self indent.
+		self emitFsmState: state index: idx - 1 totalStates: states size.
+		self dedent ].
+	self dedent.
+	self nl
+]
+
 { #category : 'generating - GECS' }
 GDZealCodeGenerator >> generateDefentity: aListNode [
 	"(defentity player (components [@health @velocity]) (on-ready body) ...)
@@ -702,74 +792,6 @@ GDZealCodeGenerator >> generateDefentity: aListNode [
 		head = 'on-destroy' ifTrue: [ self nl. self nl. self emitEntityHook: 'on_destroy' body: form expressions allButFirst ].
 		head = 'on-enable' ifTrue: [ self nl. self nl. self emitEntityHook: 'on_enable' body: form expressions allButFirst ].
 		head = 'on-disable' ifTrue: [ self nl. self nl. self emitEntityHook: 'on_disable' body: form expressions allButFirst ] ]
-]
-
-{ #category : 'codegen-fsm' }
-GDZealCodeGenerator >> generateDeffsm: aListNode [
-	"(deffsm name body...)
-	 (deffsm name [bindings...] body...)
-	 Emits the FSM component with optional bindings as tick parameters.
-	 Body may include (sync ...) and (race ...) for concurrent lanes — the lane code
-	 is INLINED into the controller arm rather than calling helper functions, saving
-	 ~300 ns/controller-frame of GDScript function-call overhead.
-	 State dispatch uses if/elif chains rather than match because GDScript's match
-	 is significantly slower (~2x) for integer dispatch."
-	| exprs name bodyForms bindings third splitResult states lanes |
-	exprs := aListNode expressions.
-	name := exprs second value value.
-	bindings := OrderedCollection new.
-	bodyForms := exprs allButFirst allButFirst.
-	bodyForms isEmpty ifFalse: [
-		third := bodyForms first.
-		(third isKindOf: ZealVectorNode) ifTrue: [
-			bindings := GDZealCompiler parseFsmBindings: third.
-			bodyForms := bodyForms allButFirst ] ].
-	
-	registry register: name.
-	splitResult := GDZealCompiler fsmSplitBody: bodyForms.
-	states := splitResult at: #states.
-	lanes := splitResult at: #lanes.
-	currentBindings := bindings.
-	currentStateVar := '_state'.
-	currentTimerVar := '_timer'.
-	
-	"Class header"
-	self emit: 'class_name C_'.
-	self emit: (self toPascalCase: name).
-	self nl.
-	self emit: 'extends Component'.
-	self nl. self nl.
-	
-	"State + timer fields"
-	self emit: '@export var _state: int = 0'. self nl.
-	self emit: '@export var _timer: float = 0.0'. self nl.
-	"Per-lane fields (still needed — must persist across frames)"
-	lanes do: [ :lane |
-		| pfx |
-		pfx := '_l' , (lane at: #laneId) asString.
-		self emit: '@export var ' , pfx , '_state: int = 0'. self nl.
-		self emit: '@export var ' , pfx , '_timer: float = 0.0'. self nl ].
-	self nl.
-	
-	"Tick method signature with bindings as parameters"
-	self emit: 'func tick(entity: Entity, delta: float'.
-	bindings do: [ :b |
-		self emit: ', '.
-		self emit: (b at: #name).
-		self emit: ': '.
-		self emit: (self resolveType: (b at: #type)) ].
-	self emit: ') -> void:'.
-	self indent. self nl.
-	"if/elif dispatch on _state"
-	states withIndexDo: [ :state :i |
-		i = 1
-			ifTrue: [ self emit: 'if _state == 0:' ]
-			ifFalse: [ self emit: 'elif _state == ' , (i - 1) asString , ':' ].
-		self indent. self nl.
-		self emitFsmState: state index: i - 1 totalStates: states size.
-		self dedent.
-		i < states size ifTrue: [ self nl ] ].
-	self dedent
 ]
 
 { #category : 'generating - definitions' }
@@ -1273,7 +1295,7 @@ GDZealCodeGenerator >> setRegistry: aRegistry [
 	registry := aRegistry
 ]
 
-{ #category : 'generators' }
+{ #category : 'special forms' }
 GDZealCodeGenerator >> specialForms [
 	^ Dictionary new
 		at: 'def' put: #generateDef:;
@@ -1281,7 +1303,8 @@ GDZealCodeGenerator >> specialForms [
 		at: 'set' put: #generateSet:;
 		at: 'defn' put: #generateDefn:;
 		at: 'defcomp' put: #generateDefcomp:;
-		at: 'deffsm' put: #generateDeffsm:;
+		at: 'defcosystem' put: #generateDefcosystem:;
+		at: 'defco' put: #generateDefco:;
 		at: 'defentity' put: #generateDefentity:;
 		at: 'defsystem' put: #generateDefsystem:;
 		at: 'defobserver' put: #generateDefobserver:;
