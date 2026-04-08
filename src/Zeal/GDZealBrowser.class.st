@@ -643,7 +643,8 @@ GDZealBrowser >> compileNode: aNode editor: editor [
 	"Compile the editor content. On success, save and spawn a pager page showing
 	 the GDZeal source + generated GDScript. On error (linter or compiler),
 	 spawn an error pager page that highlights the offending text.
-	 Structural changes (new/renamed defs) trigger a UI rebuild with state restored."
+	 Structural changes (new/renamed defs) trigger a UI rebuild that focuses the
+	 newly-touched definition (switches to its category tab + expands its card)."
 	| source linterDiags newNode gdPath gdAbsPath gdSource sigBefore sigAfter result |
 	source := editor editor text asString.
 	sigBefore := self definitionSignature.
@@ -665,7 +666,7 @@ GDZealBrowser >> compileNode: aNode editor: editor [
 			self flashError: editor.
 			self spawnErrorPageOn: editor source: source linterDiags: #() compilerError: e.
 			^ self ].
-	"3. Read back generated GDScript (gdPath is project-relative) and spawn success page."
+	"3. Read back generated GDScript and spawn success page."
 	gdAbsPath := project path , '/' , gdPath.
 	gdSource := [ gdAbsPath asFileReference contents ]
 		on: Error do: [ :e | '" failed to read: ' , gdAbsPath , ' (' , e messageText , ')' ].
@@ -677,11 +678,16 @@ GDZealBrowser >> compileNode: aNode editor: editor [
 		yourself.
 	self flashSuccess: editor.
 	self spawnResultPageOn: editor result: result.
-	"4. Rebuild only if signature changed."
+	"4. Rebuild on signature change. Override the captured tab with the category of
+	    the just-compiled definition so the user lands on the tab where their new
+	    card lives, with the card expanded."
 	sigAfter := self definitionSignature.
 	sigBefore = sigAfter ifFalse: [
 		| state |
 		state := self captureUiState.
+		state at: #targetCategory put: (self categoryFor: newNode).
+		state at: #targetDefName put: newNode name.
+		(state at: #expandedNames) add: newNode name.
 		self rebuildTree.
 		self restoreUiState: state ]
 ]
@@ -1055,18 +1061,27 @@ GDZealBrowser >> rebuildTree [
 	self buildUI
 ]
 
-{ #category : 'refreshing' }
+{ #category : 'actions' }
 GDZealBrowser >> restoreUiState: state [
-	"After a rebuildTree, re-apply the snapshot taken by captureUiState."
-	| tabGroup expandedNames focusedName cursorPos targetTabIdx |
+	"After a rebuildTree, re-apply the snapshot taken by captureUiState. If the
+	 state has a #targetCategory key (set by compileNode after a fresh compile),
+	 jump to that category tab instead of the previously-selected one so the user
+	 lands where their new/updated definition lives."
+	| tabGroup expandedNames focusedName cursorPos targetTabIdx targetCategory |
 	tabGroup := nil.
 	self allChildrenBreadthFirstDo: [ :c |
 		(tabGroup isNil and: [ c isKindOf: BrTabGroup ]) ifTrue: [ tabGroup := c ] ].
 	tabGroup ifNil: [ ^ self ].
-	"Restore selected tab"
-	targetTabIdx := state at: #selectedTabIndex.
-	(targetTabIdx notNil and: [ targetTabIdx between: 1 and: tabGroup tabs size ])
-		ifTrue: [ tabGroup viewModel selectTab: (tabGroup tabs at: targetTabIdx) ].
+	"Restore selected tab — prefer targetCategory override if present"
+	targetCategory := state at: #targetCategory ifAbsent: [ nil ].
+	targetCategory ifNotNil: [
+		| label |
+		label := self labelForCategory: targetCategory.
+		[ tabGroup selectTabWithLabelString: label ] on: Error do: [ ] ].
+	targetCategory ifNil: [
+		targetTabIdx := state at: #selectedTabIndex.
+		(targetTabIdx notNil and: [ targetTabIdx between: 1 and: tabGroup tabs size ])
+			ifTrue: [ tabGroup viewModel selectTab: (tabGroup tabs at: targetTabIdx) ] ].
 	"Re-expand cards. Walk after the tab content has been built."
 	expandedNames := state at: #expandedNames.
 	self allChildrenBreadthFirstDo: [ :c |
@@ -1078,7 +1093,7 @@ GDZealBrowser >> restoreUiState: state [
 	cursorPos := state at: #cursorPosition.
 	focusedName ifNotNil: [
 		self allChildrenBreadthFirstDo: [ :c |
-			((c isKindOf: BrEditor) and: [ 
+			((c isKindOf: BrEditor) and: [
 				(c userData at: #defName ifAbsent: [ nil ]) = focusedName ]) ifTrue: [
 				c requestFocus.
 				cursorPos ifNotNil: [
