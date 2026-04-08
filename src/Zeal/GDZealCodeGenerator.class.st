@@ -1021,6 +1021,34 @@ GDZealCodeGenerator >> generateDo: aListNode [
 		separatedBy: [ self nl ]
 ]
 
+{ #category : 'transducers' }
+GDZealCodeGenerator >> generateDrop: aListNode [
+	"(drop n xs) -> xs.slice(n)
+	 GDScript Array.slice(begin) takes everything from begin to the end."
+	| exprs n xs |
+	exprs := aListNode expressions.
+	n := exprs second.
+	xs := exprs third.
+	self visitExpression: xs.
+	self emit: '.slice('.
+	self visitExpression: n.
+	self emit: ')'
+]
+
+{ #category : 'transducers' }
+GDZealCodeGenerator >> generateFilter: aListNode [
+	"(filter pred xs) -> xs.filter(pred)
+	 GDScript Array has a built-in .filter(Callable)."
+	| exprs pred xs |
+	exprs := aListNode expressions.
+	pred := exprs second.
+	xs := exprs third.
+	self visitExpression: xs.
+	self emit: '.filter('.
+	self visitExpression: pred.
+	self emit: ')'
+]
+
 { #category : 'generation' }
 GDZealCodeGenerator >> generateFn: aListNode [
 	"(fn [params...] body...) -> func(params): body
@@ -1153,6 +1181,20 @@ GDZealCodeGenerator >> generateLet: aListNode [
 	bodyExprs do: [ :e | self visitExpression: e ] separatedBy: [ self nl ]
 ]
 
+{ #category : 'transducers' }
+GDZealCodeGenerator >> generateMap: aListNode [
+	"(map f xs) -> xs.map(f)
+	 GDScript Array has a built-in .map(Callable) so the GDZeal mapping is direct."
+	| exprs f xs |
+	exprs := aListNode expressions.
+	f := exprs second.
+	xs := exprs third.
+	self visitExpression: xs.
+	self emit: '.map('.
+	self visitExpression: f.
+	self emit: ')'
+]
+
 { #category : 'generating - control flow' }
 GDZealCodeGenerator >> generateMatch: aListNode [
 	"(match expr pat1 body1 pat2 body2 ...) -> match expr: patterns"
@@ -1197,6 +1239,49 @@ GDZealCodeGenerator >> generateOperator: aListNode [
 	operands
 		do: [ :o | self visitExpression: o ]
 		separatedBy: [ self emit: ' ' , gdOp , ' ' ]
+]
+
+{ #category : 'transducers' }
+GDZealCodeGenerator >> generateRange: aListNode [
+	"(range n) -> range(n)
+	 (range start end) -> range(start, end)
+	 (range start end step) -> range(start, end, step)
+	 GDScript has a built-in range() that takes 1, 2, or 3 ints."
+	| exprs args |
+	exprs := aListNode expressions.
+	args := exprs allButFirst.
+	self emit: 'range('.
+	args
+		do: [ :a | self visitExpression: a ]
+		separatedBy: [ self emit: ', ' ].
+	self emit: ')'
+]
+
+{ #category : 'transducers' }
+GDZealCodeGenerator >> generateReduce: aListNode [
+	"(reduce f xs) -> xs.reduce(f)
+	 (reduce f init xs) -> xs.reduce(f, init)
+	 GDScript Array has .reduce(method, accum=null)."
+	| exprs f xs init |
+	exprs := aListNode expressions.
+	f := exprs second.
+	exprs size = 3 ifTrue: [
+		"(reduce f xs)"
+		xs := exprs third.
+		self visitExpression: xs.
+		self emit: '.reduce('.
+		self visitExpression: f.
+		self emit: ')'.
+		^ self ].
+	"(reduce f init xs)"
+	init := exprs third.
+	xs := exprs fourth.
+	self visitExpression: xs.
+	self emit: '.reduce('.
+	self visitExpression: f.
+	self emit: ', '.
+	self visitExpression: init.
+	self emit: ')'
 ]
 
 { #category : 'generating - control flow' }
@@ -1279,6 +1364,20 @@ GDZealCodeGenerator >> generateSlashCall: aListNode [
 	self emit: (self toSnakeCase: segments last).
 	self emit: '('.
 	args do: [ :a | self visitExpression: a ] separatedBy: [ self emit: ', ' ].
+	self emit: ')'
+]
+
+{ #category : 'transducers' }
+GDZealCodeGenerator >> generateTake: aListNode [
+	"(take n xs) -> xs.slice(0, n)
+	 GDScript Array.slice(begin, end) is exclusive on end and works for arrays."
+	| exprs n xs |
+	exprs := aListNode expressions.
+	n := exprs second.
+	xs := exprs third.
+	self visitExpression: xs.
+	self emit: '.slice(0, '.
+	self visitExpression: n.
 	self emit: ')'
 ]
 
@@ -1444,7 +1543,11 @@ GDZealCodeGenerator >> setRegistry: aRegistry [
 
 { #category : 'generation' }
 GDZealCodeGenerator >> specialForms [
-	^ Dictionary new
+	"Dialect-local special forms + the base Zeal transducer protocol merged in.
+	 The transducer form names live on ZealCodeGenerator class so the same protocol
+	 is shared across dialects; each dialect provides its own emission methods."
+	| dict |
+	dict := Dictionary new
 		at: 'def' put: #generateDef:;
 		at: 'var' put: #generateVar:;
 		at: 'set' put: #generateSet:;
@@ -1464,7 +1567,10 @@ GDZealCodeGenerator >> specialForms [
 		at: 'do' put: #generateDo:;
 		at: 'return' put: #generateReturn:;
 		at: 'as' put: #generateAs:;
-		yourself
+		yourself.
+	ZealCodeGenerator transducerFormSelectors keysAndValuesDo: [ :name :sel |
+		dict at: name put: sel ].
+	^ dict
 ]
 
 { #category : 'private - naming' }

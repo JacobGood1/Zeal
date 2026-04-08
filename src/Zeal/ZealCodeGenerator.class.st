@@ -9,6 +9,22 @@ Class {
 	#package : 'Zeal'
 }
 
+{ #category : 'protocol' }
+ZealCodeGenerator class >> transducerFormSelectors [
+	"The Zeal transducer protocol — a name -> selector dictionary that every concrete
+	 dialect (GDZeal, VZeal, ...) must implement. Each dialect mixes this into its own
+	 specialForms table; the actual code-emission methods live on the dialect class
+	 because the right output depends entirely on the target language."
+	^ Dictionary new
+		at: 'map' put: #generateMap:;
+		at: 'filter' put: #generateFilter:;
+		at: 'reduce' put: #generateReduce:;
+		at: 'range' put: #generateRange:;
+		at: 'take' put: #generateTake:;
+		at: 'drop' put: #generateDrop:;
+		yourself
+]
+
 { #category : 'emitting' }
 ZealCodeGenerator >> dedent [
 	indentLevel := indentLevel - 1
