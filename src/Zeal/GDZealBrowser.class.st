@@ -489,14 +489,16 @@ GDZealBrowser >> buildWelcome [
 		text: 'Select a definition or create a new one'
 ]
 
-{ #category : 'ui' }
+{ #category : 'building' }
 GDZealBrowser >> buildZealEditor: sourceString [
-	"Create a fully configured GDZeal code editor with all Zeal-like features"
-	| editor styler text |
+	"Create a fully configured GDZeal code editor with all Zeal-like features.
+	 Replaces standalone fn with λ in the initial source before highlighting."
+	| editor styler text src lambda |
+	lambda := (Character value: 16r03BB) asString.
+	src := self replaceFnWithLambdaIn: sourceString.
 	styler := GDZealTextStyler new.
 	styler browser: self.
-	"Pre-apply syntax highlighting so text is colored immediately"
-	text := self themeClass highlight: sourceString.
+	text := self themeClass highlight: src.
 	editor := BrEditor new
 		aptitude: (BrGlamorousCodeEditorAptitude new);
 		text: text;
@@ -1059,6 +1061,33 @@ GDZealBrowser >> promptNewFile [
 GDZealBrowser >> rebuildTree [
 	"Refresh the entire view after project state changes (callers expect this name)."
 	self buildUI
+]
+
+{ #category : 'building' }
+GDZealBrowser >> replaceFnWithLambdaIn: aString [
+	"Replace all standalone fn tokens with λ in a source string."
+	| src i result lambda |
+	lambda := (Character value: 16r03BB) asString.
+	src := aString.
+	result := WriteStream on: String new.
+	i := 1.
+	[ i <= src size ] whileTrue: [
+		| matched |
+		matched := false.
+		(i + 1 <= src size and: [ (src at: i) = $f and: [ (src at: i + 1) = $n ] ]) ifTrue: [
+			| before after standalone |
+			before := i > 1 ifTrue: [ src at: i - 1 ] ifFalse: [ $( ].
+			after := (i + 2 <= src size) ifTrue: [ src at: i + 2 ] ifFalse: [ $) ].
+			standalone := (before isLetter not and: [ before ~= $_ and: [ before ~= $- ] ])
+				and: [ after isLetter not and: [ after ~= $_ and: [ after ~= $- ] ] ].
+			standalone ifTrue: [
+				result nextPutAll: lambda.
+				i := i + 2.
+				matched := true ] ].
+		matched ifFalse: [
+			result nextPut: (src at: i).
+			i := i + 1 ] ].
+	^ result contents
 ]
 
 { #category : 'actions' }

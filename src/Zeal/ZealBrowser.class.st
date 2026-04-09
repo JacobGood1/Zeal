@@ -490,47 +490,31 @@ ZealBrowser >> setupKeyChords: zealEditor [
 
 { #category : 'editor' }
 ZealBrowser >> setupLambdaAutoReplace: anEditor [
-	"After any text edit, scan for standalone fn and replace with λ in the actual
-	 editor text. Uses a deferred task + guard to avoid re-entrance."
-	| lambda replacing |
+	"Replace standalone fn with λ in the editor text after every keystroke."
+	| lambda |
 	lambda := (Character value: 16r03BB) asString.
-	replacing := false.
-	anEditor editor
-		when: BrTextEditorModifiedEvent
-		do: [ :evt |
-			replacing ifFalse: [
-				| src i found |
-				src := anEditor editor text asString.
-				found := false.
-				i := 1.
-				[ i := src indexOfSubCollection: 'fn' startingAt: i.
-				  i > 0 ] whileTrue: [
-					| before after standalone |
-					before := i > 1 ifTrue: [ src at: i - 1 ] ifFalse: [ $( ].
-					after := (i + 1 < src size) ifTrue: [ src at: i + 2 ] ifFalse: [ $) ].
-					standalone := (before isLetter not and: [ before ~= $_ and: [ before ~= $- ] ])
-						and: [ after isLetter not and: [ after ~= $_ and: [ after ~= $- ] ] ].
-					standalone ifTrue: [ found := true. i := src size + 1 ]
-					ifFalse: [ i := i + 2 ] ].
-				found ifTrue: [
-					anEditor enqueueTask: (BlTaskAction new action: [
-						| s j |
-						replacing := true.
-						[ s := anEditor editor text asString.
-						  j := 1.
-						  [ j := s indexOfSubCollection: 'fn' startingAt: j.
-						    j > 0 ] whileTrue: [
-							| b a ok |
-							b := j > 1 ifTrue: [ s at: j - 1 ] ifFalse: [ $( ].
-							a := (j + 1 < s size) ifTrue: [ s at: j + 2 ] ifFalse: [ $) ].
-							ok := (b isLetter not and: [ b ~= $_ and: [ b ~= $- ] ])
-								and: [ a isLetter not and: [ a ~= $_ and: [ a ~= $- ] ] ].
-							ok ifTrue: [
-								anEditor editor deleter from: j - 1 to: j + 1; delete.
-								anEditor editor inserter string: lambda; at: j - 1; withoutCursorUpdate; insert.
-								s := anEditor editor text asString ]
-							ifFalse: [ j := j + 2 ] ] ]
-						ensure: [ replacing := false ] ]) ] ] ]
+	anEditor addEventHandlerOn: BlKeyUpEvent do: [ :evt |
+		[ | src i done |
+		  done := false.
+		  [ done ] whileFalse: [
+			src := anEditor editor text asString.
+			i := src indexOfSubCollection: 'fn' startingAt: 1.
+			i = 0 ifTrue: [ done := true ]
+			ifFalse: [
+				| before after standalone |
+				before := i > 1 ifTrue: [ src at: i - 1 ] ifFalse: [ $( ].
+				after := (i + 1 < src size) ifTrue: [ src at: i + 2 ] ifFalse: [ $) ].
+				standalone := (before isLetter not and: [ before ~= $_ and: [ before ~= $- ] ])
+					and: [ after isLetter not and: [ after ~= $_ and: [ after ~= $- ] ] ].
+				standalone
+					ifTrue: [
+						anEditor editor deleter from: i - 1 to: i + 1; delete.
+						anEditor editor inserter string: lambda; at: i - 1; withoutCursorUpdate; insert ]
+					ifFalse: [
+						"Skip past this fn occurrence"
+						(src indexOfSubCollection: 'fn' startingAt: i + 2) = 0
+							ifTrue: [ done := true ] ] ] ] ]
+		on: Error do: [ ] ]
 ]
 
 { #category : 'editor' }
