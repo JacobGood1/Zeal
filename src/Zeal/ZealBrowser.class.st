@@ -75,14 +75,14 @@ ZealBrowser >> buildSectionLabel: title [
 		text: title
 ]
 
-{ #category : 'building' }
+{ #category : 'editor' }
 ZealBrowser >> configureZealEditor: anEditor [
 	"Set up shared features on any Zeal code editor."
 	self setupParinfer: anEditor.
 	self setupKeyChords: anEditor.
 	self setupArrowKeys: anEditor.
 	self setupFormHighlight: anEditor.
-	
+	self setupLambdaBackspace: anEditor.
 	anEditor addShortcut: (BlShortcutWithAction new
 		combination: (BlKeyCombination builder control shift arrowUp build);
 		action: [ self swapForm: anEditor up: true ]).
@@ -486,6 +486,35 @@ ZealBrowser >> setupKeyChords: zealEditor [
 	
 	"Example chords — add more with: keyChord addChord: 'xx' action: [...]"
 	keyChord addChord: 'jk' action: [ self applyParinfer: zealEditor ]
+]
+
+{ #category : 'editor' }
+ZealBrowser >> setupLambdaBackspace: anEditor [
+	"When backspace is pressed and the cursor is right after a standalone `fn`
+	 token, delete both f and n in one keystroke so the visual λ disappears
+	 as a single unit. Works for all Zeal dialects."
+	anEditor addEventFilterOn: BlKeyDownEvent do: [ :evt |
+		evt key = BlKeyboardKey backspace ifTrue: [
+			| text pos src handled |
+			handled := false.
+			text := anEditor editor text.
+			anEditor editor cursors do: [ :cursor |
+				pos := cursor position.
+				(pos >= 2 and: [ text size >= pos ]) ifTrue: [
+					src := text asString.
+					((src at: pos - 1) = $f and: [ (src at: pos) = $n ]) ifTrue: [
+						"Check word boundaries"
+						| before after standalone |
+						before := pos > 2 ifTrue: [ src at: pos - 2 ] ifFalse: [ $( ].
+						after := (pos + 1 <= src size) ifTrue: [ src at: pos + 1 ] ifFalse: [ $) ].
+						standalone := (before isLetter not and: [ before ~= $_ and: [ before ~= $- ] ])
+							and: [ after isLetter not and: [ after ~= $_ and: [ after ~= $- ] ] ].
+						standalone ifTrue: [
+							anEditor editor deleter
+								from: pos - 2 to: pos;
+								delete.
+							handled := true ] ] ] ].
+			handled ifTrue: [ evt consumed: true ] ] ]
 ]
 
 { #category : 'parinfer' }
