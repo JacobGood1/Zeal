@@ -490,35 +490,47 @@ ZealBrowser >> setupKeyChords: zealEditor [
 
 { #category : 'editor' }
 ZealBrowser >> setupLambdaAutoReplace: anEditor [
-	"When the user types fn followed by a space, bracket, or paren, auto-replace
-	 fn with the λ character in the source. Uses editor deleter+inserter APIs."
-	| lambda |
+	"After any text edit, scan for standalone fn and replace with λ in the actual
+	 editor text. Uses a deferred task + guard to avoid re-entrance."
+	| lambda replacing |
 	lambda := (Character value: 16r03BB) asString.
+	replacing := false.
 	anEditor editor
-		when: BrTextEditorInsertedEvent
+		when: BrTextEditorModifiedEvent
 		do: [ :evt |
-			[ | src idx |
-			  src := anEditor editor text asString.
-			  idx := evt index.  "0-based index of inserted text"
-			  "The inserted char is at 1-based position idx+1 in the string"
-			  (idx >= 2 and: [ (idx + 1) <= src size ]) ifTrue: [
-				| ch prev2 prev1 before standalone |
-				ch := src at: idx + 1.
-				prev1 := src at: idx.      "n"
-				prev2 := src at: idx - 1.  "f"
-				((prev2 = $f and: [ prev1 = $n ]) and: [ ch = $  or: [ ch = $( or: [ ch = $[ ] ] ]) ifTrue: [
-					before := idx > 2 ifTrue: [ src at: idx - 2 ] ifFalse: [ $( ].
-					standalone := before isLetter not and: [ before ~= $_ and: [ before ~= $- ] ].
-					standalone ifTrue: [
-						"Schedule replacement on next UI tick to avoid modifying text during event"
-						anEditor enqueueTask: (BlTaskAction new action: [
-							anEditor editor deleter from: idx - 2 to: idx; delete.
-							anEditor editor inserter
-								string: lambda;
-								at: idx - 2;
-								withoutCursorUpdate;
-								insert ]) ] ] ] ]
-			on: Error do: [ :e | "ignore — defensive" ] ]
+			replacing ifFalse: [
+				| src i found |
+				src := anEditor editor text asString.
+				found := false.
+				i := 1.
+				[ i := src indexOfSubCollection: 'fn' startingAt: i.
+				  i > 0 ] whileTrue: [
+					| before after standalone |
+					before := i > 1 ifTrue: [ src at: i - 1 ] ifFalse: [ $( ].
+					after := (i + 1 < src size) ifTrue: [ src at: i + 2 ] ifFalse: [ $) ].
+					standalone := (before isLetter not and: [ before ~= $_ and: [ before ~= $- ] ])
+						and: [ after isLetter not and: [ after ~= $_ and: [ after ~= $- ] ] ].
+					standalone ifTrue: [ found := true. i := src size + 1 ]
+					ifFalse: [ i := i + 2 ] ].
+				found ifTrue: [
+					anEditor enqueueTask: (BlTaskAction new action: [
+						| s j |
+						replacing := true.
+						[ s := anEditor editor text asString.
+						  j := 1.
+						  [ j := s indexOfSubCollection: 'fn' startingAt: j.
+						    j > 0 ] whileTrue: [
+							| b a ok |
+							b := j > 1 ifTrue: [ s at: j - 1 ] ifFalse: [ $( ].
+							a := (j + 1 < s size) ifTrue: [ s at: j + 2 ] ifFalse: [ $) ].
+							ok := (b isLetter not and: [ b ~= $_ and: [ b ~= $- ] ])
+								and: [ a isLetter not and: [ a ~= $_ and: [ a ~= $- ] ] ].
+							ok ifTrue: [
+								anEditor editor deleter from: j - 1 to: j + 1; delete.
+								anEditor editor inserter string: lambda; at: j - 1; withoutCursorUpdate; insert.
+								s := anEditor editor text asString ]
+							ifFalse: [ j := j + 2 ] ] ]
+						ensure: [ replacing := false ] ]) ] ] ]
 ]
 
 { #category : 'editor' }

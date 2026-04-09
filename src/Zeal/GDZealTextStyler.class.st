@@ -27,14 +27,11 @@ GDZealTextStyler >> browser: aBrowser [
 
 { #category : 'styling' }
 GDZealTextStyler >> privateStyle: aText [
-	"Apply syntax highlighting. Also replaces standalone fn with λ in the actual
-	 text so the source contains the real lambda character."
+	"Apply syntax highlighting."
 	| text source |
 	text := (aText respondsTo: #text) ifTrue: [ aText text ] ifFalse: [ aText ].
 	source := text asString.
 	source isEmpty ifTrue: [ ^ aText ].
-	self replaceFnWithLambda: text.
-	source := text asString.
 	self applySyntaxHighlighting: source to: text.
 	^ aText
 ]
