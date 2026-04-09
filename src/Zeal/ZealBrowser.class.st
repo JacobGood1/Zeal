@@ -177,10 +177,10 @@ ZealBrowser >> duplicateLine: zealEditor [
 { #category : 'editor' }
 ZealBrowser >> expandSelection: zealEditor [
 	"Ctrl+W: expand selection outward through structural units.
-	 When the cursor is adjacent to a paren/bracket/brace, the first expansion
-	 selects the entire form INCLUDING the delimiters by requiring the selected
-	 range to start with an opener and end with a closer."
-	| text cursorPos ranges currentSelStart currentSelEnd currentSize nextRange onDelimiter |
+	 - Cursor outside a form (before opener or after closer): select full form WITH parens
+	 - Cursor inside near delimiter (after opener or before closer): select inner content
+	 - Cursor on a word: select that word, then expand outward on subsequent presses"
+	| text cursorPos ranges currentSelStart currentSelEnd currentSize nextRange outsideForm |
 	text := zealEditor editor text asString.
 	text isEmpty ifTrue: [ ^ self ].
 	cursorPos := 0.
@@ -192,17 +192,21 @@ ZealBrowser >> expandSelection: zealEditor [
 		currentSelEnd := sel to max: currentSelStart ].
 	currentSize := currentSelEnd - currentSelStart.
 	ranges := ZealParinfer structuralRangesAt: cursorPos in: text.
-	"Detect if cursor is adjacent to a delimiter"
-	onDelimiter := false.
+	"Detect: is the cursor OUTSIDE a form (before an opener or after a closer)?
+	 In that case, first Ctrl+W should select the entire form including parens."
+	outsideForm := false.
 	(cursorPos >= 1 and: [ cursorPos <= text size ]) ifTrue: [
-		onDelimiter := '()[]{}' includes: (text at: cursorPos) ].
+		| ch | ch := text at: cursorPos.
+		"Char before cursor is a closer → cursor is after ), outside"
+		(ch = $) or: [ ch = $] or: [ ch = $} ] ]) ifTrue: [ outsideForm := true ] ].
 	(cursorPos + 1 <= text size) ifTrue: [
-		onDelimiter := onDelimiter or: [ '()[]{}' includes: (text at: cursorPos + 1) ] ].
+		| ch | ch := text at: cursorPos + 1.
+		"Char after cursor is an opener → cursor is before (, outside"
+		(ch = $( or: [ ch = $[ or: [ ch = ${ ] ]) ifTrue: [ outsideForm := true ] ].
 	nextRange := nil.
-	(onDelimiter and: [ currentSize = 0 ])
+	(outsideForm and: [ currentSize = 0 ])
 		ifTrue: [
-			"First expansion on a delimiter — find the smallest range that is a complete
-			 form (first char is an opener, last char is a closer) and is larger than 0."
+			"Select the full form (range that starts with opener and ends with closer)"
 			nextRange := ranges detect: [ :r |
 				| startCh endCh isForm |
 				startCh := (r key + 1 between: 1 and: text size) ifTrue: [ text at: r key + 1 ] ifFalse: [ nil ].
@@ -212,6 +216,7 @@ ZealBrowser >> expandSelection: zealEditor [
 					or: [ startCh = ${ and: [ endCh = $} ] ] ].
 				isForm and: [ (r value - r key) > currentSize ] ] ifNone: [ nil ] ]
 		ifFalse: [
+			"Default: select next larger range (word → inner content → full form)"
 			nextRange := ranges
 				detect: [ :r | (r value - r key) > currentSize ]
 				ifNone: [ nil ] ].
