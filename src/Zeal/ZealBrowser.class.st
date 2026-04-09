@@ -177,8 +177,9 @@ ZealBrowser >> duplicateLine: zealEditor [
 { #category : 'editor' }
 ZealBrowser >> expandSelection: zealEditor [
 	"Ctrl+W: expand selection outward through structural units.
-	 When the cursor is on a paren/bracket/brace, the first expansion selects
-	 the entire form including the delimiters (not just the inner content)."
+	 When the cursor is adjacent to a paren/bracket/brace, the first expansion
+	 selects the entire form INCLUDING the delimiters by requiring the selected
+	 range to start with an opener and end with a closer."
 	| text cursorPos ranges currentSelStart currentSelEnd currentSize nextRange onDelimiter |
 	text := zealEditor editor text asString.
 	text isEmpty ifTrue: [ ^ self ].
@@ -200,11 +201,16 @@ ZealBrowser >> expandSelection: zealEditor [
 	nextRange := nil.
 	(onDelimiter and: [ currentSize = 0 ])
 		ifTrue: [
-			"First expansion on a delimiter — select the form including delimiters.
-			 Use >= for value check so cursor right after closing delimiter still matches."
-			nextRange := ranges
-				detect: [ :r | r key <= cursorPos and: [ r value >= cursorPos and: [ (r value - r key) > currentSize ] ] ]
-				ifNone: [ nil ] ]
+			"First expansion on a delimiter — find the smallest range that is a complete
+			 form (first char is an opener, last char is a closer) and is larger than 0."
+			nextRange := ranges detect: [ :r |
+				| startCh endCh isForm |
+				startCh := (r key + 1 between: 1 and: text size) ifTrue: [ text at: r key + 1 ] ifFalse: [ nil ].
+				endCh := (r value between: 1 and: text size) ifTrue: [ text at: r value ] ifFalse: [ nil ].
+				isForm := (startCh = $( and: [ endCh = $) ])
+					or: [ (startCh = $[ and: [ endCh = $] ])
+					or: [ startCh = ${ and: [ endCh = $} ] ] ].
+				isForm and: [ (r value - r key) > currentSize ] ] ifNone: [ nil ] ]
 		ifFalse: [
 			nextRange := ranges
 				detect: [ :r | (r value - r key) > currentSize ]
