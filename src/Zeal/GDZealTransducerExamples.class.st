@@ -40,6 +40,16 @@ GDZealTransducerExamples >> exampleAvg [
 	^ self assertGenerated: '(defn t [xs:Array] :float (avg xs))' includes: 'Z.avg(xs)'
 ]
 
+{ #category : 'examples-threading' }
+GDZealTransducerExamples >> exampleBarePipeline [
+	<gtExample>
+	<description: '((filter pred) (map f) xs) auto-comps and fuses into a single loop'>
+	| out |
+	out := self compile: '(defn t [xs:Array] :Array ((filter (fn [x] (> x 0))) (map (fn [x] (* x x))) xs))'.
+	self assert: (out includesSubstring: 'for _v in xs') description: 'bare pipeline should fuse into a loop'.
+	^ out
+]
+
 { #category : 'examples-transducers' }
 GDZealTransducerExamples >> exampleChunk [
 	<gtExample>
@@ -161,18 +171,37 @@ GDZealTransducerExamples >> exampleFlatten [
 { #category : 'examples-integration' }
 GDZealTransducerExamples >> exampleFullPipeline [
 	<gtExample>
-	<description: 'Full transducer pipeline: filter > map > take, single-pass via comp.'>
+	<description: 'Full transducer pipeline fuses into a single tight loop with continue/break.'>
 	| out |
 	out := self compile: '(defn pipeline [xs:Array] :Array
   (into [] (comp (filter (fn [x] (> x 0))) (map (fn [x] (* x x))) (take 3)) xs))'.
-	self assert: (out includesSubstring: 'Z.into([], Z.comp([')
-		description: 'pipeline must wrap with Z.into and Z.comp'.
-	self assert: (out includesSubstring: 'Z.filtering(func(x): return x > 0)')
-		description: 'pipeline must include filter step'.
-	self assert: (out includesSubstring: 'Z.mapping(func(x): return x * x)')
-		description: 'pipeline must include map step'.
-	self assert: (out includesSubstring: 'Z.taking(3)')
-		description: 'pipeline must include take step'.
+	self assert: (out includesSubstring: 'for _v in xs') description: 'pipeline must fuse into a loop'.
+	self assert: (out includesSubstring: 'continue') description: 'filter step must use continue'.
+	self assert: (out includesSubstring: 'break') description: 'take step must use break'.
+	^ out
+]
+
+{ #category : 'examples-fusion' }
+GDZealTransducerExamples >> exampleFusionFallback [
+	<gtExample>
+	<description: 'Non-fusible xform (runtime Callable) falls back to Z.into'>
+	| out |
+	out := self compile: '(defn t [xs:Array xform:Callable] :Array (into [] xform xs))'.
+	self assert: (out includesSubstring: 'Z.into') description: 'should fall back to Z.into'.
+	self assert: (out includesSubstring: 'for _v') not description: 'should NOT fuse'.
+	^ out
+]
+
+{ #category : 'examples-fusion' }
+GDZealTransducerExamples >> exampleFusionFilterMapTake [
+	<gtExample>
+	<description: 'Fusion: filter+map+take emits a single tight loop with break'>
+	| out |
+	out := self compile: '(defn t [xs:Array] :Array (into [] (comp (filter (fn [x] (> x 0))) (map (fn [x] (* x x))) (take 3)) xs))'.
+	self assert: (out includesSubstring: 'for _v in xs') description: 'should fuse into a loop'.
+	self assert: (out includesSubstring: 'continue') description: 'filter step should use continue'.
+	self assert: (out includesSubstring: 'break') description: 'take step should use break'.
+	self assert: (out includesSubstring: '_r.append') description: 'should append to result'.
 	^ out
 ]
 
@@ -186,11 +215,11 @@ GDZealTransducerExamples >> exampleIndexed [
 { #category : 'examples-integration' }
 GDZealTransducerExamples >> exampleInfiniteSourceBoundedByTake [
 	<gtExample>
-	<description: 'iterate is an infinite iterator; take cuts it off via Reduced.'>
+	<description: 'iterate is infinite; take fuses into a loop with break over the iterator.'>
 	| out |
 	out := self compile: '(defn first-ten:Array [] (into [] (take 10) (iterate (fn [n] (+ n 1)) 0)))'.
-	self assert: (out includesSubstring: 'Z.into([], Z.taking(10), Z.iterate_')
-		description: 'must compose taking + iterate via into'.
+	self assert: (out includesSubstring: 'Z.iterate_') description: 'must use Z.iterate_ as source'.
+	self assert: (out includesSubstring: 'break') description: 'take must use break for early termination'.
 	^ out
 ]
 
@@ -236,9 +265,11 @@ GDZealTransducerExamples >> exampleIntoString [
 { #category : 'examples-core' }
 GDZealTransducerExamples >> exampleIntoXform [
 	<gtExample>
-	<description: '(into [] xform xs) -> Z.into([], xform, xs) — the canonical eager driver'>
-	^ self assertGenerated: '(defn t [xs:Array] :Array (into [] (map (fn [x] (* x 2))) xs))'
-		includes: 'Z.into([], Z.mapping(func(x): return x * 2), xs)'
+	<description: '(into [] xform xs) fuses when xform is a known transducer with inline fn'>
+	| out |
+	out := self compile: '(defn t [xs:Array] :Array (into [] (map (fn [x] (* x 2))) xs))'.
+	self assert: (out includesSubstring: 'for _v in xs') description: 'fusible into should emit a loop'.
+	^ out
 ]
 
 { #category : 'examples-sources' }
@@ -388,6 +419,16 @@ GDZealTransducerExamples >> exampleTakeWhile [
 GDZealTransducerExamples >> exampleTally [
 	<gtExample>
 	^ self assertGenerated: '(defn t [xs:Array] :Dictionary (tally xs))' includes: 'Z.tally(xs)'
+]
+
+{ #category : 'examples-threading' }
+GDZealTransducerExamples >> exampleThreadLast [
+	<gtExample>
+	<description: '(->> xs (filter pred) (map f)) threads xs as last arg through each form'>
+	| out |
+	out := self compile: '(defn t [xs:Array] :Array (->> xs (filter (fn [x] (> x 0))) (map (fn [x] (* x x)))))'.
+	self assert: (out includesSubstring: 'Z.') description: 'thread-last should emit Z.* calls'.
+	^ out
 ]
 
 { #category : 'examples-reducers' }

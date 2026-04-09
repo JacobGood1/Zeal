@@ -8,7 +8,8 @@ Class {
 		'currentBindings',
 		'currentStateVar',
 		'currentTimerVar',
-		'localScope'
+		'localScope',
+		'fusionSubs'
 	],
 	#category : 'Zeal',
 	#package : 'Zeal'
@@ -34,6 +35,35 @@ GDZealCodeGenerator >> bindLocal: aName [
 	"Add a name to the topmost scope frame."
 	aName ifNil: [ ^ self ].
 	localScope last add: aName asString
+]
+
+{ #category : 'fusion' }
+GDZealCodeGenerator >> classifyXform: aNode [
+	"Classify a transducer factory call into a fusion-friendly descriptor.
+	 Returns a Dictionary {#kind, #fn (for filter/map/etc.), #n (for take/drop)}
+	 or nil if not fusible."
+	| exprs head kind fnInfo |
+	(aNode isKindOf: ZealListNode) ifFalse: [ ^ nil ].
+	exprs := aNode expressions.
+	exprs isEmpty ifTrue: [ ^ nil ].
+	head := exprs first.
+	(head isKindOf: ZealSymbolNode) ifFalse: [ ^ nil ].
+	kind := head value value.
+	"filter/map/keep/take-while/drop-while: need an inline fn body"
+	(#('filter' 'map' 'keep' 'take-while' 'drop-while') includes: kind) ifTrue: [
+		exprs size = 2 ifFalse: [ ^ nil ].
+		fnInfo := self extractFnBody: exprs second.
+		fnInfo ifNil: [ ^ nil ].
+		^ Dictionary new at: #kind put: kind; at: #fn put: fnInfo; yourself ].
+	"take/drop: need a literal or expression for n"
+	(#('take' 'drop') includes: kind) ifTrue: [
+		exprs size = 2 ifFalse: [ ^ nil ].
+		^ Dictionary new at: #kind put: kind; at: #nExpr put: exprs second; yourself ].
+	"distinct/dedupe/flatten/indexed: nullary"
+	(#('distinct' 'dedupe' 'flatten' 'indexed') includes: kind) ifTrue: [
+		exprs size = 1 ifFalse: [ ^ nil ].
+		^ Dictionary new at: #kind put: kind; yourself ].
+	^ nil
 ]
 
 { #category : 'emitting' }
@@ -208,6 +238,98 @@ GDZealCodeGenerator >> emitFsmState: state index: i totalStates: total [
 		self visitExpression: stmt.
 		self nl ].
 	self emit: sv , ' = '. self emit: nextIdx asString
+]
+
+{ #category : 'fusion' }
+GDZealCodeGenerator >> emitFusionBody: bodyNode param: paramName as: bindName [
+	"Emit the lambda body expression. Since the body references the original param
+	 name which we bound as `var paramName = _v`, just visit normally."
+	self visitExpression: bodyNode
+]
+
+{ #category : 'fusion' }
+GDZealCodeGenerator >> emitFusionStep: desc index: idx [
+	"Emit one step of the fused loop body. Lambda params get unique names _pN
+	 to avoid GDScript redeclaration errors when multiple steps use the same name.
+	 A substitution dict temporarily maps original param -> _pN during body emission."
+	| kind fnInfo paramName uniqueName |
+	kind := desc at: #kind.
+	fnInfo := desc at: #fn ifAbsent: [ nil ].
+	paramName := fnInfo ifNotNil: [ (fnInfo at: #params) ifEmpty: [ nil ] ifNotEmpty: [ :ps | ps first ] ] ifNil: [ nil ].
+	uniqueName := paramName ifNotNil: [ '_p' , idx printString ].
+	"filter: if not pred, continue"
+	kind = 'filter' ifTrue: [
+		self nl.
+		uniqueName ifNotNil: [ self emit: 'var ' , uniqueName , ' = _v'. self nl ].
+		self emit: 'if not ('.
+		self withSubstitution: paramName as: uniqueName do: [ self visitExpression: (fnInfo at: #body) ].
+		self emit: '):'. self indent. self nl. self emit: 'continue'. self dedent.
+		^ self ].
+	"map: _v = body"
+	kind = 'map' ifTrue: [
+		self nl.
+		uniqueName ifNotNil: [ self emit: 'var ' , uniqueName , ' = _v'. self nl ].
+		self emit: '_v = '.
+		self withSubstitution: paramName as: uniqueName do: [ self visitExpression: (fnInfo at: #body) ].
+		^ self ].
+	"keep: _v = body; if null, continue"
+	kind = 'keep' ifTrue: [
+		self nl.
+		uniqueName ifNotNil: [ self emit: 'var ' , uniqueName , ' = _v'. self nl ].
+		self emit: '_v = '.
+		self withSubstitution: paramName as: uniqueName do: [ self visitExpression: (fnInfo at: #body) ].
+		self nl. self emit: 'if _v == null:'. self indent. self nl. self emit: 'continue'. self dedent.
+		^ self ].
+	"take: append + counter + break"
+	kind = 'take' ifTrue: [
+		self nl. self emit: '_r.append(_v)'.
+		self nl. self emit: '_tk' , idx printString , ' += 1'.
+		self nl. self emit: 'if _tk' , idx printString , ' >= '.
+		self visitExpression: (desc at: #nExpr).
+		self emit: ':'. self indent. self nl. self emit: 'break'. self dedent.
+		^ self ].
+	"drop: counter + continue"
+	kind = 'drop' ifTrue: [
+		self nl. self emit: '_dk' , idx printString , ' += 1'.
+		self nl. self emit: 'if _dk' , idx printString , ' <= '.
+		self visitExpression: (desc at: #nExpr).
+		self emit: ':'. self indent. self nl. self emit: 'continue'. self dedent.
+		^ self ].
+	"take-while: if not pred, break"
+	kind = 'take-while' ifTrue: [
+		self nl.
+		uniqueName ifNotNil: [ self emit: 'var ' , uniqueName , ' = _v'. self nl ].
+		self emit: 'if not ('.
+		self withSubstitution: paramName as: uniqueName do: [ self visitExpression: (fnInfo at: #body) ].
+		self emit: '):'. self indent. self nl. self emit: 'break'. self dedent.
+		^ self ].
+	"drop-while: flag + continue"
+	kind = 'drop-while' ifTrue: [
+		self nl.
+		uniqueName ifNotNil: [ self emit: 'var ' , uniqueName , ' = _v'. self nl ].
+		self emit: 'if _dw' , idx printString , ' and ('.
+		self withSubstitution: paramName as: uniqueName do: [ self visitExpression: (fnInfo at: #body) ].
+		self emit: '):'. self indent. self nl. self emit: 'continue'. self dedent.
+		self nl. self emit: '_dw' , idx printString , ' = false'.
+		^ self ].
+	"distinct/dedupe/flatten/indexed — no lambda, no substitution needed"
+	kind = 'distinct' ifTrue: [
+		self nl. self emit: 'if _seen' , idx printString , '.has(_v):'.
+		self indent. self nl. self emit: 'continue'. self dedent.
+		self nl. self emit: '_seen' , idx printString , '[_v] = true'. ^ self ].
+	kind = 'dedupe' ifTrue: [
+		self nl. self emit: 'if _hprev' , idx printString , ' and _prev' , idx printString , ' == _v:'.
+		self indent. self nl. self emit: 'continue'. self dedent.
+		self nl. self emit: '_prev' , idx printString , ' = _v'.
+		self nl. self emit: '_hprev' , idx printString , ' = true'. ^ self ].
+	kind = 'flatten' ifTrue: [
+		self nl. self emit: 'if _v is Array:'.
+		self indent. self nl. self emit: 'for _sub in _v:'.
+		self indent. self nl. self emit: '_r.append(_sub)'. self dedent.
+		self nl. self emit: 'continue'. self dedent. ^ self ].
+	kind = 'indexed' ifTrue: [
+		self nl. self emit: '_v = [_idx' , idx printString , ', _v]'.
+		self nl. self emit: '_idx' , idx printString , ' += 1'. ^ self ]
 ]
 
 { #category : 'generating - control flow' }
@@ -614,6 +736,29 @@ GDZealCodeGenerator >> emitTransducer: factoryName from: aListNode [
 	self emit: '), '.
 	self visitExpression: exprs third.
 	self emit: ')'
+]
+
+{ #category : 'fusion' }
+GDZealCodeGenerator >> extractFnBody: aNode [
+	"If aNode is (fn [params] body), return {#params -> params, #body -> body}.
+	 Returns nil if not a single-expression fn form."
+	| exprs |
+	(aNode isKindOf: ZealListNode) ifFalse: [ ^ nil ].
+	exprs := aNode expressions.
+	(exprs size >= 3 and: [
+		(exprs first isKindOf: ZealSymbolNode) and: [ exprs first value value = 'fn' ]
+	]) ifFalse: [ ^ nil ].
+	"Only fuse single-expression bodies"
+	exprs size = 3 ifFalse: [ ^ nil ].
+	^ Dictionary new
+		at: #params put: (exprs second expressions collect: [ :p | self paramName: p ]);
+		at: #body put: exprs third;
+		yourself
+]
+
+{ #category : 'fusion' }
+GDZealCodeGenerator >> fusionSubstitutions [
+	^ fusionSubs
 ]
 
 { #category : 'generating' }
@@ -1281,15 +1426,48 @@ GDZealCodeGenerator >> generateFor: aListNode [
 { #category : 'generation' }
 GDZealCodeGenerator >> generateFunctionCall: aListNode [
 	"(func args...) -> func(args)
-	 If func is a name currently bound in lexical scope, treat it as a Callable
-	 and emit func.call(args). If func is *not* a simple symbol at all (it's an
-	 expression that yields a value, like ((juxt f g) x) or (return-fn-from f)),
-	 emit .call(args) too — bare invocation `expr(args)` isn't valid GDScript."
+	 Special cases:
+	 - If func is in lexical scope or is a non-symbol expression → .call(args)
+	 - If func is a transducer factory and the remaining args end with a source
+	   (bare pipeline: ((filter pred) (map f) xs)) → auto-comp + into."
 	| exprs head headStr |
 	exprs := aListNode expressions.
 	head := exprs first.
 	headStr := nil.
 	(head isKindOf: ZealSymbolNode) ifTrue: [ headStr := head value value ].
+	"Bare pipeline detection: ((xform1) (xform2) ... source)
+	 Head is a transducer factory call, last arg is the source."
+	((self isTransducerFactory: head) and: [ exprs size >= 2 ]) ifTrue: [
+		| xforms source compNode intoNode |
+		source := exprs last.
+		"Collect all transducer factory forms (head + middle args that are xforms)"
+		xforms := OrderedCollection new.
+		xforms add: head.
+		2 to: exprs size - 1 do: [ :i |
+			(self isTransducerFactory: (exprs at: i))
+				ifTrue: [ xforms add: (exprs at: i) ] ].
+		"Rewrite to (into [] (comp xforms...) source)"
+		xforms size = 1
+			ifTrue: [
+				"Single xform: (into [] xform source)"
+				intoNode := self syntheticList: {
+					GDZealCompiler newSymbolNodeWithString: 'into'.
+					ZealVectorNode new instVarNamed: 'expressions' put: OrderedCollection new; yourself.
+					xforms first.
+					source }.
+				^ self visitExpression: intoNode ]
+			ifFalse: [
+				"Multiple xforms: (into [] (comp xform1 xform2 ...) source)"
+				compNode := self syntheticList: 
+					((OrderedCollection with: (GDZealCompiler newSymbolNodeWithString: 'comp'))
+						addAll: xforms; yourself).
+				intoNode := self syntheticList: {
+					GDZealCompiler newSymbolNodeWithString: 'into'.
+					ZealVectorNode new instVarNamed: 'expressions' put: OrderedCollection new; yourself.
+					compNode.
+					source }.
+				^ self visitExpression: intoNode ] ].
+	"Standard function call"
 	self visitExpression: head.
 	((headStr isNil) or: [ self isLocal: (self toSnakeCase: headStr) ])
 		ifTrue: [ self emit: '.call(' ]
@@ -1334,8 +1512,10 @@ GDZealCodeGenerator >> generateInterpose: aListNode [
 { #category : 'transducers-core' }
 GDZealCodeGenerator >> generateInto: aListNode [
 	"(into dest) -> dest.duplicate()
-	 (into dest xs) -> dest + xs (concat — works for arrays; iterators expand)
-	 (into dest xform xs) -> Z.into(dest, xform, xs) (transducer-driven, runs once)"
+	 (into dest xs) -> Z.into(dest, identity, xs)
+	 (into dest xform xs) -> tries fusion first; falls back to Z.into(dest, xform, xs).
+	 Fusion emits a tight fused loop wrapped in an IIFE when all xforms in the
+	 chain have inline fn bodies (no Callable overhead, no intermediate arrays)."
 	| exprs |
 	exprs := aListNode expressions.
 	exprs size = 2 ifTrue: [
@@ -1343,14 +1523,15 @@ GDZealCodeGenerator >> generateInto: aListNode [
 		self emit: '.duplicate()'.
 		^ self ].
 	exprs size = 3 ifTrue: [
-		"Concat-style: dest + xs. For iterator xs the user should use the 4-arg form."
 		self emit: 'Z.into('.
 		self visitExpression: exprs second.
 		self emit: ', Z.mapping(func(x): return x), '.
 		self visitExpression: exprs third.
 		self emit: ')'.
 		^ self ].
-	"4-arg: (into dest xform xs)"
+	"4-arg: (into dest xform xs) — try fusion"
+	(self tryFuseInto: exprs third source: exprs fourth) ifTrue: [ ^ self ].
+	"Fall back to Z.into"
 	self emit: 'Z.into('.
 	self visitExpression: exprs second.
 	self emit: ', '.
@@ -1673,6 +1854,51 @@ GDZealCodeGenerator >> generateTally: aListNode [
 	^ self emitReducer: 'tally' from: aListNode
 ]
 
+{ #category : 'threading' }
+GDZealCodeGenerator >> generateThreadFirst: aListNode [
+	"(-> x (f a) (g b)) -> (g (f x a) b)
+	 Thread the first form through each subsequent form as the SECOND arg
+	 (first position after the function name). General-purpose Clojure-style
+	 thread-first macro."
+	| exprs current |
+	exprs := aListNode expressions allButFirst.
+	current := exprs first.
+	exprs allButFirst do: [ :form |
+		(form isKindOf: ZealListNode)
+			ifTrue: [
+				| newExprs |
+				newExprs := OrderedCollection new.
+				newExprs add: form expressions first.
+				newExprs add: current.
+				newExprs addAll: form expressions allButFirst.
+				current := self syntheticList: newExprs ]
+			ifFalse: [
+				current := self syntheticList: { form. current } ] ].
+	self visitExpression: current
+]
+
+{ #category : 'threading' }
+GDZealCodeGenerator >> generateThreadLast: aListNode [
+	"(->> x (f a) (g b)) -> (g b (f a x))
+	 Thread the first form through each subsequent form as the LAST arg.
+	 Natural fit for transducers: (->> [1 2 3] (filter pred) (map f))
+	 becomes (map f (filter pred [1 2 3]))."
+	| exprs current |
+	exprs := aListNode expressions allButFirst.
+	current := exprs first.
+	exprs allButFirst do: [ :form |
+		(form isKindOf: ZealListNode)
+			ifTrue: [
+				| newExprs |
+				newExprs := OrderedCollection new.
+				newExprs addAll: form expressions.
+				newExprs add: current.
+				current := self syntheticList: newExprs ]
+			ifFalse: [
+				current := self syntheticList: { form. current } ] ].
+	self visitExpression: current
+]
+
 { #category : 'transducers-core' }
 GDZealCodeGenerator >> generateTransduce: aListNode [
 	"(transduce xform rf init xs) -> Z.transduce(xform, rf, init, xs)
@@ -1739,11 +1965,9 @@ GDZealCodeGenerator >> initialize [
 	stream := WriteStream on: String new.
 	indentLevel := 0.
 	registry := GDZealComponentRegistry new.
-	"Stack of scopes — each entry is a Set of locally-bound names. Used to decide
-	 whether a call's head is a local variable holding a Callable (emit .call) or
-	 a named function (emit plain call)."
 	localScope := OrderedCollection new.
-	localScope add: Set new
+	localScope add: Set new.
+	fusionSubs := Dictionary new
 ]
 
 { #category : 'scope' }
@@ -1768,6 +1992,20 @@ GDZealCodeGenerator >> isStatementForm: aNode [
 	head := aNode expressions first.
 	(head isKindOf: ZealSymbolNode) ifFalse: [ ^ false ].
 	^ #('set' 'var' 'if' 'when' 'for' 'while' 'match' 'do' 'return') includes: head value value
+]
+
+{ #category : 'threading' }
+GDZealCodeGenerator >> isTransducerFactory: aNode [
+	"True if aNode is a (transducer-name arg...) form that returns an xform Callable."
+	| head headStr |
+	(aNode isKindOf: ZealListNode) ifFalse: [ ^ false ].
+	aNode expressions isEmpty ifTrue: [ ^ false ].
+	head := aNode expressions first.
+	(head isKindOf: ZealSymbolNode) ifFalse: [ ^ false ].
+	headStr := head value value.
+	^ (ZealCodeGenerator transducerFormSelectors includesKey: headStr)
+		and: [ "Only the xform-returning arities (no collection as last arg)"
+			   aNode expressions size <= 3 "most factories are 1-2 args" ]
 ]
 
 { #category : 'emitting' }
@@ -1853,9 +2091,7 @@ GDZealCodeGenerator >> setRegistry: aRegistry [
 
 { #category : 'generation' }
 GDZealCodeGenerator >> specialForms [
-	"Dialect-local special forms + the base Zeal transducer protocol merged in.
-	 The transducer form names live on ZealCodeGenerator class so the same protocol
-	 is shared across dialects; each dialect provides its own emission methods."
+	"Dialect-local special forms + the base Zeal transducer protocol + threading macros."
 	| dict |
 	dict := Dictionary new
 		at: 'def' put: #generateDef:;
@@ -1877,10 +2113,21 @@ GDZealCodeGenerator >> specialForms [
 		at: 'do' put: #generateDo:;
 		at: 'return' put: #generateReturn:;
 		at: 'as' put: #generateAs:;
+		at: '->' put: #generateThreadFirst:;
+		at: '->>' put: #generateThreadLast:;
 		yourself.
 	ZealCodeGenerator transducerFormSelectors keysAndValuesDo: [ :name :sel |
 		dict at: name put: sel ].
 	^ dict
+]
+
+{ #category : 'threading' }
+GDZealCodeGenerator >> syntheticList: exprsArray [
+	"Build a ZealListNode from an array of child AST nodes."
+	| list |
+	list := ZealListNode new.
+	list instVarNamed: 'expressions' put: exprsArray asOrderedCollection.
+	^ list
 ]
 
 { #category : 'private - naming' }
@@ -1904,16 +2151,64 @@ GDZealCodeGenerator >> toSnakeCase: aString [
 	^ aString copyReplaceAll: '-' with: '_'
 ]
 
-{ #category : 'visiting' }
+{ #category : 'fusion' }
+GDZealCodeGenerator >> tryFuseInto: xformNode source: sourceNode [
+	"Try to emit a fused loop for (into [] xform source). Returns true if fusion
+	 succeeded, false if the caller should fall back to Z.into(). The fused output
+	 is wrapped in an IIFE so it works as an expression anywhere."
+	| xforms chain hasTake |
+	"Extract the xform chain — either a single xform or (comp xform1 xform2 ...)"
+	(xformNode isKindOf: ZealListNode) ifFalse: [ ^ false ].
+	((xformNode expressions first isKindOf: ZealSymbolNode)
+		and: [ xformNode expressions first value value = 'comp' ])
+		ifTrue: [ xforms := xformNode expressions allButFirst ]
+		ifFalse: [ xforms := { xformNode } ].
+	"Classify each xform — bail if any non-fusible"
+	chain := xforms collect: [ :xf | self classifyXform: xf ].
+	(chain anySatisfy: [ :c | c isNil ]) ifTrue: [ ^ false ].
+	"Emit the fused IIFE"
+	hasTake := chain anySatisfy: [ :c | (c at: #kind) = 'take' or: [ (c at: #kind) = 'take-while' ] ].
+	self emit: '(func():'.
+	self indent.
+	self nl. self emit: 'var _r: Array = []'.
+	"State variable declarations"
+	chain withIndexDo: [ :desc :i |
+		| kind |
+		kind := desc at: #kind.
+		kind = 'take' ifTrue: [ self nl. self emit: 'var _tk' , i printString , ': int = 0' ].
+		kind = 'drop' ifTrue: [ self nl. self emit: 'var _dk' , i printString , ': int = 0' ].
+		kind = 'drop-while' ifTrue: [ self nl. self emit: 'var _dw' , i printString , ': bool = true' ].
+		kind = 'distinct' ifTrue: [ self nl. self emit: 'var _seen' , i printString , ': Dictionary = {}' ].
+		kind = 'dedupe' ifTrue: [ self nl. self emit: 'var _prev' , i printString , ' = null'. self nl. self emit: 'var _hprev' , i printString , ': bool = false' ].
+		kind = 'indexed' ifTrue: [ self nl. self emit: 'var _idx' , i printString , ': int = 0' ] ].
+	self nl. self emit: 'for _v in '.
+	self visitExpression: sourceNode.
+	self emit: ':'.
+	self indent.
+	"Pipeline steps"
+	chain withIndexDo: [ :desc :i |
+		self emitFusionStep: desc index: i ].
+	"Terminal: append (take handles its own append+break)"
+	hasTake ifFalse: [
+		self nl. self emit: '_r.append(_v)' ].
+	self dedent.
+	self nl. self emit: 'return _r'.
+	self dedent.
+	self emit: ').call()'.
+	^ true
+]
+
+{ #category : 'generation' }
 GDZealCodeGenerator >> visitAtom: aNode [
-	"Handle atoms: @class refs, /slash access, symbols, keywords, literals"
+	"Handle atoms: @class refs, /slash access, symbols, keywords, literals.
+	 Fusion substitutions are checked for symbols — when a lambda param has been
+	 renamed to _pN during loop fusion, the substitution fires here."
 	| sym |
 	(aNode isKindOf: ZealSymbolNode) ifTrue: [
 		sym := aNode value value.
 		"@ class reference (may contain / for static access)"
 		(sym beginsWith: '@') ifTrue: [
 			(sym includes: $/) ifTrue: [
-				"@vector2/RIGHT -> Vector2.RIGHT"
 				| segments |
 				segments := $/ split: sym.
 				self emit: (self resolveClassRef: segments first).
@@ -1930,6 +2225,9 @@ GDZealCodeGenerator >> visitAtom: aNode [
 		"true/false/null"
 		(#('true' 'false' 'null') includes: sym) ifTrue: [
 			self emit: sym. ^ self ].
+		"Fusion substitution: lambda param renamed to _pN during loop fusion"
+		(self fusionSubstitutions at: sym ifAbsent: [ nil ]) ifNotNil: [ :sub |
+			self emit: sub. ^ self ].
 		"Regular symbol -> snake_case"
 		(self isOperator: sym)
 			ifTrue: [ self emit: sym ]
@@ -2003,4 +2301,16 @@ GDZealCodeGenerator >> visitVector: aNode [
 		do: [ :e | self visitExpression: e ]
 		separatedBy: [ self emit: ', ' ].
 	self emit: ']'
+]
+
+{ #category : 'fusion' }
+GDZealCodeGenerator >> withSubstitution: originalName as: newName do: aBlock [
+	"Temporarily register a symbol substitution so that visitAtom: emits newName
+	 whenever it encounters originalName. Used by the fusion pass to rename lambda
+	 params to unique _pN names."
+	| subs |
+	(originalName isNil or: [ newName isNil ]) ifTrue: [ ^ aBlock value ].
+	subs := self fusionSubstitutions.
+	subs at: originalName put: newName.
+	[ aBlock value ] ensure: [ subs removeKey: originalName ifAbsent: [] ]
 ]
