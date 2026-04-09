@@ -7,34 +7,28 @@ Class {
 
 { #category : 'highlighting' }
 ZealTheme class >> applyLambdaReplacement: text source: aString [
-	"Replace visual appearance of `fn` with λ in the editor text. Scans for
-	 standalone `fn` tokens (preceded/followed by word boundaries) and uses
-	 BrTextAdornmentDynamicAttribute to replace f→λ and n→zero-width, keeping
-	 the underlying source intact for compilation. Works for all Zeal dialects."
+	"Replace visual appearance of `fn` with λ in the editor text. Uses a single
+	 BrTextAdornmentDynamicAttribute spanning both characters so the lambda behaves
+	 as one atomic unit for cursor movement, selection, and copy. The underlying
+	 source stays as fn for compilation."
 	| i size |
 	i := 1.
 	size := aString size.
 	[ i := aString indexOfSubCollection: 'fn' startingAt: i.
 	  i > 0 ] whileTrue: [
 		| before after standalone |
-		"Check word boundaries — fn must not be part of a longer identifier"
 		before := i > 1 ifTrue: [ aString at: i - 1 ] ifFalse: [ $( ].
 		after := (i + 1 < size) ifTrue: [ aString at: i + 2 ] ifFalse: [ $) ].
 		standalone := (before isLetter not and: [ before ~= $_ and: [ before ~= $- ] ])
 			and: [ after isLetter not and: [ after ~= $_ and: [ after ~= $- ] ] ].
 		standalone ifTrue: [
-			"Replace f with λ"
-			(text from: i to: i)
+			"Single replacement spanning both f and n"
+			(text from: i to: i + 1)
 				attribute: (BrTextAdornmentDynamicAttribute new
 					beReplace;
 					stencil: [ BlTextElement new text: ('λ' asRopedText
 						foreground: self specialFormColor;
-						yourself) ]).
-			"Replace n with zero-width space"
-			(text from: i + 1 to: i + 1)
-				attribute: (BrTextAdornmentDynamicAttribute new
-					beReplace;
-					stencil: [ BlElement new size: 0 @ 0 ]) ].
+						yourself) ]) ].
 		i := i + 2 ]
 ]
 
