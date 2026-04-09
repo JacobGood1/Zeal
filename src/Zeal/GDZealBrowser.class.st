@@ -814,7 +814,7 @@ GDZealBrowser >> deleteDefinition: aDef [
 	self restoreUiState: state
 ]
 
-{ #category : 'editing' }
+{ #category : 'editor' }
 GDZealBrowser >> duplicateLine: zealEditor [
 	"Duplicate the current line below"
 	| text cursorPos lines lineIndex charCount newCursorPos |
@@ -826,20 +826,17 @@ GDZealBrowser >> duplicateLine: zealEditor [
 	charCount := 0.
 	lineIndex := 1.
 	lines
-		doWithIndex: [ :l :i | 
+		doWithIndex: [ :l :i |
 			(charCount <= cursorPos and: [ cursorPos <= (charCount + l size + 1) ])
 				ifTrue: [ lineIndex := i ].
 			charCount := charCount + l size + 1 ].
 	lineIndex > lines size ifTrue: [ ^ self ].
-	
 	"Insert duplicate after current line"
 	lines add: (lines at: lineIndex) copy afterIndex: lineIndex.
-	
 	"Move cursor to same column on the new line"
 	newCursorPos := cursorPos + (lines at: lineIndex) size + 1.
-	
 	zealEditor
-		text: ((ZealTheme highlight: (String cr join: lines))).
+		text: (self themeClass highlight: (String lf join: lines)).
 	zealEditor editor navigator
 		moveTo: (newCursorPos min: zealEditor editor text size);
 		apply
