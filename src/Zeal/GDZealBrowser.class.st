@@ -491,10 +491,9 @@ GDZealBrowser >> buildWelcome [
 
 { #category : 'building' }
 GDZealBrowser >> buildZealEditor: sourceString [
-	"Create a fully configured GDZeal code editor with all Zeal-like features.
-	 Replaces standalone fn with λ in the initial source before highlighting."
-	| editor styler text src lambda |
-	lambda := (Character value: 16r03BB) asString.
+	"Create a fully configured GDZeal code editor. Replaces fn with λ in the
+	 initial source. The styler schedules ongoing fn→λ replacement on each restyle."
+	| editor styler text src |
 	src := self replaceFnWithLambdaIn: sourceString.
 	styler := GDZealTextStyler new.
 	styler browser: self.
@@ -507,6 +506,7 @@ GDZealBrowser >> buildZealEditor: sourceString [
 		margin: (BlInsets top: 4);
 		constraintsDo: [ :c | c horizontal matchParent. c vertical matchParent ].
 	editor editor styler: styler.
+	styler editorElement: editor.
 	self configureZealEditor: editor.
 	^ editor
 ]

@@ -490,31 +490,8 @@ ZealBrowser >> setupKeyChords: zealEditor [
 
 { #category : 'editor' }
 ZealBrowser >> setupLambdaAutoReplace: anEditor [
-	"Replace standalone fn with λ in the editor text after every keystroke."
-	| lambda |
-	lambda := (Character value: 16r03BB) asString.
-	anEditor addEventHandlerOn: BlKeyUpEvent do: [ :evt |
-		[ | src i done |
-		  done := false.
-		  [ done ] whileFalse: [
-			src := anEditor editor text asString.
-			i := src indexOfSubCollection: 'fn' startingAt: 1.
-			i = 0 ifTrue: [ done := true ]
-			ifFalse: [
-				| before after standalone |
-				before := i > 1 ifTrue: [ src at: i - 1 ] ifFalse: [ $( ].
-				after := (i + 1 < src size) ifTrue: [ src at: i + 2 ] ifFalse: [ $) ].
-				standalone := (before isLetter not and: [ before ~= $_ and: [ before ~= $- ] ])
-					and: [ after isLetter not and: [ after ~= $_ and: [ after ~= $- ] ] ].
-				standalone
-					ifTrue: [
-						anEditor editor deleter from: i - 1 to: i + 1; delete.
-						anEditor editor inserter string: lambda; at: i - 1; withoutCursorUpdate; insert ]
-					ifFalse: [
-						"Skip past this fn occurrence"
-						(src indexOfSubCollection: 'fn' startingAt: i + 2) = 0
-							ifTrue: [ done := true ] ] ] ] ]
-		on: Error do: [ ] ]
+	"No-op — lambda replacement is now triggered from the text styler via a
+	 deferred task after each restyle."
 ]
 
 { #category : 'editor' }
