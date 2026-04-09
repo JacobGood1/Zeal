@@ -191,23 +191,19 @@ ZealBrowser >> expandSelection: zealEditor [
 		currentSelEnd := sel to max: currentSelStart ].
 	currentSize := currentSelEnd - currentSelStart.
 	ranges := ZealParinfer structuralRangesAt: cursorPos in: text.
-	"When cursor is on a delimiter, skip inner-only ranges — jump to the one
-	 that includes the delimiter character."
+	"Detect if cursor is adjacent to a delimiter"
 	onDelimiter := false.
 	(cursorPos >= 1 and: [ cursorPos <= text size ]) ifTrue: [
-		| ch |
-		ch := text at: cursorPos.
-		onDelimiter := '()[]{}' includes: ch ].
+		onDelimiter := '()[]{}' includes: (text at: cursorPos) ].
 	(cursorPos + 1 <= text size) ifTrue: [
-		| ch |
-		ch := text at: cursorPos + 1.
-		onDelimiter := onDelimiter or: [ '()[]{}' includes: ch ] ].
+		onDelimiter := onDelimiter or: [ '()[]{}' includes: (text at: cursorPos + 1) ] ].
 	nextRange := nil.
 	(onDelimiter and: [ currentSize = 0 ])
 		ifTrue: [
-			"First expansion on a delimiter — find the range that INCLUDES the cursor position"
+			"First expansion on a delimiter — select the form including delimiters.
+			 Use >= for value check so cursor right after closing delimiter still matches."
 			nextRange := ranges
-				detect: [ :r | r key <= cursorPos and: [ r value > cursorPos and: [ (r value - r key) > currentSize ] ] ]
+				detect: [ :r | r key <= cursorPos and: [ r value >= cursorPos and: [ (r value - r key) > currentSize ] ] ]
 				ifNone: [ nil ] ]
 		ifFalse: [
 			nextRange := ranges
