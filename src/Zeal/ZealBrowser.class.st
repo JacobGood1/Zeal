@@ -174,38 +174,50 @@ ZealBrowser >> duplicateLine: zealEditor [
 		apply
 ]
 
-{ #category : 'parinfer' }
+{ #category : 'editor' }
 ZealBrowser >> expandSelection: zealEditor [
-	"Ctrl+W: expand selection outward through structural units"
-	| text cursorPos ranges currentSelStart currentSelEnd currentSize nextRange |
+	"Ctrl+W: expand selection outward through structural units.
+	 When the cursor is on a paren/bracket/brace, the first expansion selects
+	 the entire form including the delimiters (not just the inner content)."
+	| text cursorPos ranges currentSelStart currentSelEnd currentSize nextRange onDelimiter |
 	text := zealEditor editor text asString.
 	text isEmpty ifTrue: [ ^ self ].
-	
-	"Get current selection or cursor position"
 	cursorPos := 0.
 	zealEditor editor cursors do: [ :c | cursorPos := c position ].
-	
-	"Check if there's an existing selection"
 	currentSelStart := cursorPos.
 	currentSelEnd := cursorPos.
-	zealEditor editor selection do: [:sel |
+	zealEditor editor selection do: [ :sel |
 		currentSelStart := sel from min: currentSelEnd.
 		currentSelEnd := sel to max: currentSelStart ].
 	currentSize := currentSelEnd - currentSelStart.
-	
-	"Get all structural ranges from cursor position"
 	ranges := ZealParinfer structuralRangesAt: cursorPos in: text.
-	
-	"Find the next range strictly larger than current selection"
-	nextRange := ranges detect: [:r | (r value - r key) > currentSize ] ifNone: [ ^ self ].
-	
-	"Apply selection"
+	"When cursor is on a delimiter, skip inner-only ranges — jump to the one
+	 that includes the delimiter character."
+	onDelimiter := false.
+	(cursorPos >= 1 and: [ cursorPos <= text size ]) ifTrue: [
+		| ch |
+		ch := text at: cursorPos.
+		onDelimiter := '()[]{}' includes: ch ].
+	(cursorPos + 1 <= text size) ifTrue: [
+		| ch |
+		ch := text at: cursorPos + 1.
+		onDelimiter := onDelimiter or: [ '()[]{}' includes: ch ] ].
+	nextRange := nil.
+	(onDelimiter and: [ currentSize = 0 ])
+		ifTrue: [
+			"First expansion on a delimiter — find the range that INCLUDES the cursor position"
+			nextRange := ranges
+				detect: [ :r | r key <= cursorPos and: [ r value > cursorPos and: [ (r value - r key) > currentSize ] ] ]
+				ifNone: [ nil ] ]
+		ifFalse: [
+			nextRange := ranges
+				detect: [ :r | (r value - r key) > currentSize ]
+				ifNone: [ nil ] ].
+	nextRange ifNil: [ ^ self ].
 	zealEditor editor deselecter all deselect.
 	zealEditor editor selecter
 		from: nextRange key to: nextRange value;
 		select.
-	
-	"Store expansion state for shrink"
 	expandSelectionStack ifNil: [ expandSelectionStack := OrderedCollection new ].
 	expandSelectionStack add: (currentSelStart -> currentSelEnd)
 ]
