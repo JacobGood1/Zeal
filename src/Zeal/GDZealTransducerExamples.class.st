@@ -1,0 +1,398 @@
+Class {
+	#name : 'GDZealTransducerExamples',
+	#superclass : 'Object',
+	#category : 'Zeal',
+	#package : 'Zeal'
+}
+
+{ #category : 'helpers' }
+GDZealTransducerExamples >> assert: aBoolean description: aString [
+	aBoolean ifFalse: [ self error: 'Assertion failed: ' , aString ]
+]
+
+{ #category : 'helpers' }
+GDZealTransducerExamples >> assertGenerated: src includes: substring [
+	"Compile src and assert the generated GDScript contains substring. Returns
+	 the generated GDScript so the caller can return it from the example."
+	| out |
+	out := self compile: src.
+	self assert: (out includesSubstring: substring) description: 
+		'expected ' , substring printString , ' in ' , out printString.
+	^ out
+]
+
+{ #category : 'helpers' }
+GDZealTransducerExamples >> compile: aZealString [
+	"Compile a Zeal source string to GDScript and return it."
+	^ GDZealCodeGenerator compile: aZealString
+]
+
+{ #category : 'examples-reducers' }
+GDZealTransducerExamples >> exampleAnyP [
+	<gtExample>
+	^ self assertGenerated: '(defn t [xs:Array] :bool (any? (fn [x] (> x 0)) xs))'
+		includes: 'Z.any(func(x): return x > 0, xs)'
+]
+
+{ #category : 'examples-reducers' }
+GDZealTransducerExamples >> exampleAvg [
+	<gtExample>
+	^ self assertGenerated: '(defn t [xs:Array] :float (avg xs))' includes: 'Z.avg(xs)'
+]
+
+{ #category : 'examples-transducers' }
+GDZealTransducerExamples >> exampleChunk [
+	<gtExample>
+	^ self assertGenerated: '(defn t [] :Callable (chunk 2))' includes: 'Z.chunking(2)'
+]
+
+{ #category : 'examples-transducers' }
+GDZealTransducerExamples >> exampleChunkBy [
+	<gtExample>
+	^ self assertGenerated: '(defn t [xs:Array] :Array (chunk-by (fn [x] (> x 0)) xs))'
+		includes: 'Z.into([], Z.chunking_by(func(x): return x > 0), xs)'
+]
+
+{ #category : 'examples-transducers' }
+GDZealTransducerExamples >> exampleChunkStep [
+	<gtExample>
+	<description: '(chunk n step) — sliding window with explicit step'>
+	^ self assertGenerated: '(defn t [] :Callable (chunk 3 1))' includes: 'Z.chunking(3, 1)'
+]
+
+{ #category : 'examples-core' }
+GDZealTransducerExamples >> exampleComp [
+	<gtExample>
+	<description: '(comp xform1 xform2 ...) -> Z.comp([xform1, xform2, ...])'>
+	^ self assertGenerated: '(defn t [] :Callable (comp (filter (fn [x] (> x 0))) (map (fn [x] (* x x))) (take 5)))'
+		includes: 'Z.comp([Z.filtering(func(x): return x > 0), Z.mapping(func(x): return x * x), Z.taking(5)])'
+]
+
+{ #category : 'examples-reducers' }
+GDZealTransducerExamples >> exampleCount [
+	<gtExample>
+	<description: '(count xs) -> xs.size() — built-in, no Z call'>
+	^ self assertGenerated: '(defn t [xs:Array] :int (count xs))' includes: 'xs.size()'
+]
+
+{ #category : 'examples-sources' }
+GDZealTransducerExamples >> exampleCycle [
+	<gtExample>
+	^ self assertGenerated: '(defn t [] :Array (into [] (take 7) (cycle [1 2 3])))'
+		includes: 'Z.cycle_([1, 2, 3])'
+]
+
+{ #category : 'examples-transducers' }
+GDZealTransducerExamples >> exampleDedupe [
+	<gtExample>
+	^ self assertGenerated: '(defn t [xs:Array] :Array (dedupe xs))'
+		includes: 'Z.into([], Z.dedupe_(), xs)'
+]
+
+{ #category : 'examples-transducers' }
+GDZealTransducerExamples >> exampleDistinct [
+	<gtExample>
+	^ self assertGenerated: '(defn t [xs:Array] :Array (distinct xs))'
+		includes: 'Z.into([], Z.distinct_(), xs)'
+]
+
+{ #category : 'examples-transducers' }
+GDZealTransducerExamples >> exampleDrop [
+	<gtExample>
+	^ self assertGenerated: '(defn t [xs:Array] :Array (drop 2 xs))'
+		includes: 'Z.into([], Z.dropping(2), xs)'
+]
+
+{ #category : 'examples-transducers' }
+GDZealTransducerExamples >> exampleDropLastEager [
+	<gtExample>
+	^ self assertGenerated: '(defn t [xs:Array] :Array (drop-last 2 xs))'
+		includes: 'Z.into([], Z.dropping_last(2), xs)'
+]
+
+{ #category : 'examples-transducers' }
+GDZealTransducerExamples >> exampleDropLastN [
+	<gtExample>
+	^ self assertGenerated: '(defn t [] :Callable (drop-last 3))' includes: 'Z.dropping_last(3)'
+]
+
+{ #category : 'examples-transducers' }
+GDZealTransducerExamples >> exampleDropLastNoArg [
+	<gtExample>
+	<description: '(drop-last) -> Z.dropping_last() (drops 1)'>
+	^ self assertGenerated: '(defn t [] :Callable (drop-last))' includes: 'Z.dropping_last()'
+]
+
+{ #category : 'examples-transducers' }
+GDZealTransducerExamples >> exampleDropWhile [
+	<gtExample>
+	^ self assertGenerated: '(defn t [xs:Array] :Array (drop-while (fn [x] (< x 5)) xs))'
+		includes: 'Z.dropping_while(func(x): return x < 5)'
+]
+
+{ #category : 'examples-reducers' }
+GDZealTransducerExamples >> exampleEveryP [
+	<gtExample>
+	^ self assertGenerated: '(defn t [xs:Array] :bool (every? (fn [x] (> x 0)) xs))'
+		includes: 'Z.every(func(x): return x > 0, xs)'
+]
+
+{ #category : 'examples-transducers' }
+GDZealTransducerExamples >> exampleFilterEager [
+	<gtExample>
+	^ self assertGenerated: '(defn t [xs:Array] :Array (filter (fn [x] (> x 0)) xs))'
+		includes: 'Z.into([], Z.filtering(func(x): return x > 0), xs)'
+]
+
+{ #category : 'examples-transducers' }
+GDZealTransducerExamples >> exampleFilterTransducer [
+	<gtExample>
+	^ self assertGenerated: '(defn t [] :Callable (filter (fn [x] (> x 0))))'
+		includes: 'Z.filtering(func(x): return x > 0)'
+]
+
+{ #category : 'examples-transducers' }
+GDZealTransducerExamples >> exampleFlatten [
+	<gtExample>
+	^ self assertGenerated: '(defn t [xs:Array] :Array (flatten xs))'
+		includes: 'Z.into([], Z.flattening(), xs)'
+]
+
+{ #category : 'examples-integration' }
+GDZealTransducerExamples >> exampleFullPipeline [
+	<gtExample>
+	<description: 'Full transducer pipeline: filter > map > take, single-pass via comp.'>
+	| out |
+	out := self compile: '(defn pipeline [xs:Array] :Array
+  (into [] (comp (filter (fn [x] (> x 0))) (map (fn [x] (* x x))) (take 3)) xs))'.
+	self assert: (out includesSubstring: 'Z.into([], Z.comp([')
+		description: 'pipeline must wrap with Z.into and Z.comp'.
+	self assert: (out includesSubstring: 'Z.filtering(func(x): return x > 0)')
+		description: 'pipeline must include filter step'.
+	self assert: (out includesSubstring: 'Z.mapping(func(x): return x * x)')
+		description: 'pipeline must include map step'.
+	self assert: (out includesSubstring: 'Z.taking(3)')
+		description: 'pipeline must include take step'.
+	^ out
+]
+
+{ #category : 'examples-transducers' }
+GDZealTransducerExamples >> exampleIndexed [
+	<gtExample>
+	^ self assertGenerated: '(defn t [xs:Array] :Array (indexed xs))'
+		includes: 'Z.into([], Z.indexing(), xs)'
+]
+
+{ #category : 'examples-integration' }
+GDZealTransducerExamples >> exampleInfiniteSourceBoundedByTake [
+	<gtExample>
+	<description: 'iterate is an infinite iterator; take cuts it off via Reduced.'>
+	| out |
+	out := self compile: '(defn first-ten:Array [] (into [] (take 10) (iterate (fn [n] (+ n 1)) 0)))'.
+	self assert: (out includesSubstring: 'Z.into([], Z.taking(10), Z.iterate_')
+		description: 'must compose taking + iterate via into'.
+	^ out
+]
+
+{ #category : 'examples-eager' }
+GDZealTransducerExamples >> exampleInterleave [
+	<gtExample>
+	^ self assertGenerated: '(defn t [xs:Array ys:Array] :Array (interleave xs ys))'
+		includes: 'Z.interleave([xs, ys])'
+]
+
+{ #category : 'examples-transducers' }
+GDZealTransducerExamples >> exampleInterpose [
+	<gtExample>
+	^ self assertGenerated: '(defn t [xs:Array] :Array (interpose 0 xs))'
+		includes: 'Z.into([], Z.interposing(0), xs)'
+]
+
+{ #category : 'examples-reducers' }
+GDZealTransducerExamples >> exampleIntoArray [
+	<gtExample>
+	^ self assertGenerated: '(defn t [xs:Array] :Array (into-array xs))' includes: 'Z.into_array(xs)'
+]
+
+{ #category : 'examples-core' }
+GDZealTransducerExamples >> exampleIntoEmpty [
+	<gtExample>
+	<description: '(into dest) -> dest.duplicate()'>
+	^ self assertGenerated: '(defn t [d:Array] :Array (into d))' includes: 'd.duplicate()'
+]
+
+{ #category : 'examples-reducers' }
+GDZealTransducerExamples >> exampleIntoMap [
+	<gtExample>
+	^ self assertGenerated: '(defn t [xs:Array] :Dictionary (into-map xs))' includes: 'Z.into_map(xs)'
+]
+
+{ #category : 'examples-reducers' }
+GDZealTransducerExamples >> exampleIntoString [
+	<gtExample>
+	^ self assertGenerated: '(defn t [xs:Array] :String (into-string xs))' includes: 'Z.into_string(xs)'
+]
+
+{ #category : 'examples-core' }
+GDZealTransducerExamples >> exampleIntoXform [
+	<gtExample>
+	<description: '(into [] xform xs) -> Z.into([], xform, xs) — the canonical eager driver'>
+	^ self assertGenerated: '(defn t [xs:Array] :Array (into [] (map (fn [x] (* x 2))) xs))'
+		includes: 'Z.into([], Z.mapping(func(x): return x * 2), xs)'
+]
+
+{ #category : 'examples-sources' }
+GDZealTransducerExamples >> exampleIterate [
+	<gtExample>
+	^ self assertGenerated: '(defn t [] :Array (into [] (take 5) (iterate (fn [n] (+ n 1)) 0)))'
+		includes: 'Z.iterate_(func(n): return n + 1, 0)'
+]
+
+{ #category : 'examples-combinators' }
+GDZealTransducerExamples >> exampleJuxt [
+	<gtExample>
+	^ self assertGenerated: '(defn t [] :Callable (juxt (fn [x] (+ x 1)) (fn [x] (- x 1))))'
+		includes: 'Z.juxt([func(x): return x + 1, func(x): return x - 1])'
+]
+
+{ #category : 'examples-transducers' }
+GDZealTransducerExamples >> exampleKeep [
+	<gtExample>
+	^ self assertGenerated: '(defn t [xs:Array] :Array (keep (fn [x] (if (> x 0) x null)) xs))'
+		includes: 'Z.into([], Z.keeping('
+]
+
+{ #category : 'examples-transducers' }
+GDZealTransducerExamples >> exampleKeepIndexed [
+	<gtExample>
+	^ self assertGenerated: '(defn t [xs:Array] :Array (keep-indexed (fn [i x] (if (> i 0) x null)) xs))'
+		includes: 'Z.into([], Z.keeping_indexed('
+]
+
+{ #category : 'examples-transducers' }
+GDZealTransducerExamples >> exampleMapEager [
+	<gtExample>
+	<description: '(map f xs) compiles to Z.into([], Z.mapping(f), xs)'>
+	^ self assertGenerated: '(defn t [xs:Array] :Array (map (fn [x] (* x 2)) xs))'
+		includes: 'Z.into([], Z.mapping(func(x): return x * 2), xs)'
+]
+
+{ #category : 'examples-transducers' }
+GDZealTransducerExamples >> exampleMapTransducer [
+	<gtExample>
+	<description: '(map f) compiles to Z.mapping(f)'>
+	^ self assertGenerated: '(defn t [] :Callable (map (fn [x] (* x 2))))'
+		includes: 'Z.mapping(func(x): return x * 2)'
+]
+
+{ #category : 'examples-transducers' }
+GDZealTransducerExamples >> exampleMapcat [
+	<gtExample>
+	^ self assertGenerated: '(defn t [xs:Array] :Array (mapcat (fn [x] [x x]) xs))'
+		includes: 'Z.into([], Z.mapcatting(func(x): return [x, x]), xs)'
+]
+
+{ #category : 'examples-transducers' }
+GDZealTransducerExamples >> exampleMapcatIndexed [
+	<gtExample>
+	^ self assertGenerated: '(defn t [xs:Array] :Array (mapcat-indexed (fn [i x] [i x]) xs))'
+		includes: 'Z.into([], Z.mapcatting_indexed(func(i, x): return [i, x]), xs)'
+]
+
+{ #category : 'examples-reducers' }
+GDZealTransducerExamples >> exampleMax [
+	<gtExample>
+	^ self assertGenerated: '(defn t [xs:Array] :int (max xs))' includes: 'Z.max_of(xs)'
+]
+
+{ #category : 'examples-reducers' }
+GDZealTransducerExamples >> exampleMin [
+	<gtExample>
+	^ self assertGenerated: '(defn t [xs:Array] :int (min xs))' includes: 'Z.min_of(xs)'
+]
+
+{ #category : 'examples-reducers' }
+GDZealTransducerExamples >> exampleProduct [
+	<gtExample>
+	^ self assertGenerated: '(defn t [xs:Array] :int (product xs))' includes: 'Z.product(xs)'
+]
+
+{ #category : 'examples-sources' }
+GDZealTransducerExamples >> exampleRangeOne [
+	<gtExample>
+	^ self assertGenerated: '(defn t [] :Array (range 10))' includes: 'range(10)'
+]
+
+{ #category : 'examples-sources' }
+GDZealTransducerExamples >> exampleRangeThree [
+	<gtExample>
+	^ self assertGenerated: '(defn t [] :Array (range 0 100 5))' includes: 'range(0, 100, 5)'
+]
+
+{ #category : 'examples-sources' }
+GDZealTransducerExamples >> exampleRangeTwo [
+	<gtExample>
+	^ self assertGenerated: '(defn t [] :Array (range 1 11))' includes: 'range(1, 11)'
+]
+
+{ #category : 'examples-reducers' }
+GDZealTransducerExamples >> exampleReduceThreeArg [
+	<gtExample>
+	<description: '(reduce f init xs) -> Z.reduce(f, init, xs)'>
+	^ self assertGenerated: '(defn t [xs:Array] :int (reduce (fn [a b] (+ a b)) 0 xs))'
+		includes: 'Z.reduce(func(a, b): return a + b, 0, xs)'
+]
+
+{ #category : 'examples-reducers' }
+GDZealTransducerExamples >> exampleReduceTwoArg [
+	<gtExample>
+	<description: '(reduce f xs) -> Z.reduce(f, null, xs)'>
+	^ self assertGenerated: '(defn t [xs:Array] :int (reduce (fn [a b] (+ a b)) xs))'
+		includes: 'Z.reduce(func(a, b): return a + b, null, xs)'
+]
+
+{ #category : 'examples-sources' }
+GDZealTransducerExamples >> exampleRepeat [
+	<gtExample>
+	^ self assertGenerated: '(defn t [] :Array (into [] (take 3) (repeat "x")))'
+		includes: 'Z.repeat_("x")'
+]
+
+{ #category : 'examples-reducers' }
+GDZealTransducerExamples >> exampleSum [
+	<gtExample>
+	^ self assertGenerated: '(defn t [xs:Array] :int (sum xs))' includes: 'Z.sum(xs)'
+]
+
+{ #category : 'examples-transducers' }
+GDZealTransducerExamples >> exampleTakeEager [
+	<gtExample>
+	^ self assertGenerated: '(defn t [xs:Array] :Array (take 3 xs))'
+		includes: 'Z.into([], Z.taking(3), xs)'
+]
+
+{ #category : 'examples-transducers' }
+GDZealTransducerExamples >> exampleTakeTransducer [
+	<gtExample>
+	^ self assertGenerated: '(defn t [] :Callable (take 3))' includes: 'Z.taking(3)'
+]
+
+{ #category : 'examples-transducers' }
+GDZealTransducerExamples >> exampleTakeWhile [
+	<gtExample>
+	^ self assertGenerated: '(defn t [xs:Array] :Array (take-while (fn [x] (< x 5)) xs))'
+		includes: 'Z.taking_while(func(x): return x < 5)'
+]
+
+{ #category : 'examples-reducers' }
+GDZealTransducerExamples >> exampleTally [
+	<gtExample>
+	^ self assertGenerated: '(defn t [xs:Array] :Dictionary (tally xs))' includes: 'Z.tally(xs)'
+]
+
+{ #category : 'examples-reducers' }
+GDZealTransducerExamples >> exampleTransduce [
+	<gtExample>
+	^ self assertGenerated: '(defn t [xs:Array] :int (transduce (map (fn [x] (* x 2))) (Z:append_rf) [] xs))'
+		includes: 'Z.transduce(Z.mapping(func(x): return x * 2),'
+]

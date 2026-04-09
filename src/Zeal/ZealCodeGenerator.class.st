@@ -11,17 +11,56 @@ Class {
 
 { #category : 'protocol' }
 ZealCodeGenerator class >> transducerFormSelectors [
-	"The Zeal transducer protocol — a name -> selector dictionary that every concrete
-	 dialect (GDZeal, VZeal, ...) must implement. Each dialect mixes this into its own
-	 specialForms table; the actual code-emission methods live on the dialect class
-	 because the right output depends entirely on the target language."
+	"The Zeal transducer protocol — name -> selector mapping. Every concrete dialect
+	 (GDZeal, VZeal, ...) provides emit methods for these. The names are the official
+	 Zeal transducer surface; only the emission strategy varies per target language."
 	^ Dictionary new
+		"Transducers (1-arg returns xform Callable, 2-arg eager)"
 		at: 'map' put: #generateMap:;
 		at: 'filter' put: #generateFilter:;
-		at: 'reduce' put: #generateReduce:;
-		at: 'range' put: #generateRange:;
 		at: 'take' put: #generateTake:;
 		at: 'drop' put: #generateDrop:;
+		at: 'drop-last' put: #generateDropLast:;
+		at: 'take-while' put: #generateTakeWhile:;
+		at: 'drop-while' put: #generateDropWhile:;
+		at: 'distinct' put: #generateDistinct:;
+		at: 'dedupe' put: #generateDedupe:;
+		at: 'keep' put: #generateKeep:;
+		at: 'flatten' put: #generateFlatten:;
+		at: 'indexed' put: #generateIndexed:;
+		at: 'chunk' put: #generateChunk:;
+		at: 'chunk-by' put: #generateChunkBy:;
+		at: 'mapcat' put: #generateMapcat:;
+		at: 'mapcat-indexed' put: #generateMapcatIndexed:;
+		at: 'keep-indexed' put: #generateKeepIndexed:;
+		at: 'interpose' put: #generateInterpose:;
+		"Eager-only collection ops"
+		at: 'interleave' put: #generateInterleave:;
+		"Combinators"
+		at: 'juxt' put: #generateJuxt:;
+		"Reducers"
+		at: 'sum' put: #generateSum:;
+		at: 'product' put: #generateProduct:;
+		at: 'tally' put: #generateTally:;
+		at: 'avg' put: #generateAvg:;
+		at: 'count' put: #generateCount:;
+		at: 'max' put: #generateMax:;
+		at: 'min' put: #generateMin:;
+		at: 'any?' put: #generateAnyP:;
+		at: 'every?' put: #generateEveryP:;
+		at: 'into-array' put: #generateIntoArray:;
+		at: 'into-map' put: #generateIntoMap:;
+		at: 'into-string' put: #generateIntoString:;
+		at: 'reduce' put: #generateReduce:;
+		at: 'transduce' put: #generateTransduce:;
+		"Sources"
+		at: 'range' put: #generateRange:;
+		at: 'iterate' put: #generateIterate:;
+		at: 'repeat' put: #generateRepeat:;
+		at: 'cycle' put: #generateCycle:;
+		"Core"
+		at: 'comp' put: #generateComp:;
+		at: 'into' put: #generateInto:;
 		yourself
 ]
 

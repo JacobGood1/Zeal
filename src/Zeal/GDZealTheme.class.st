@@ -172,7 +172,7 @@ GDZealTheme class >> selectionColor [
 
 { #category : 'tokens' }
 GDZealTheme class >> specialForms [
-	^ #('def' 'var' 'set' 'defn' 'defcomp' 'defcosystem' 'defco' 'defentity' 'defsystem' 'defobserver' 'fn' 'if' 'when' 'let' 'for' 'match' 'do' 'return' 'as' 'export' 'init' 'query' 'process' 'components' 'watch' 'deps' 'setup' 'on-ready' 'on-destroy' 'on-enable' 'on-disable' 'on-added' 'on-removed' 'on-changed' 'with-all' 'with-any' 'with-none' 'iterate' 'enabled' 'disabled' 'wait' 'loop' 'sync' 'race' 'map' 'filter' 'reduce' 'range' 'take' 'drop')
+	^ #('def' 'var' 'set' 'defn' 'defcomp' 'defcosystem' 'defco' 'defentity' 'defsystem' 'defobserver' 'fn' 'if' 'when' 'let' 'for' 'match' 'do' 'return' 'as' 'export' 'init' 'query' 'process' 'components' 'watch' 'deps' 'setup' 'on-ready' 'on-destroy' 'on-enable' 'on-disable' 'on-added' 'on-removed' 'on-changed' 'with-all' 'with-any' 'with-none' 'iterate' 'enabled' 'disabled' 'wait' 'loop' 'sync' 'race' 'map' 'filter' 'take' 'drop' 'drop-last' 'take-while' 'drop-while' 'distinct' 'dedupe' 'keep' 'flatten' 'indexed' 'chunk' 'chunk-by' 'mapcat' 'mapcat-indexed' 'keep-indexed' 'interpose' 'interleave' 'juxt' 'sum' 'product' 'tally' 'avg' 'count' 'max' 'min' 'any?' 'every?' 'into-array' 'into-map' 'into-string' 'reduce' 'transduce' 'range' 'repeat' 'cycle' 'comp' 'into')
 ]
 
 { #category : 'colors' }

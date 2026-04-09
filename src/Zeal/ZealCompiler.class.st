@@ -355,16 +355,24 @@ ZealCompiler class >> buildFromAST: aProgramNode [
 	^ results
 ]
 
-{ #category : 'special forms' }
+{ #category : 'building' }
 ZealCompiler class >> buildFunctionCall: aListNode [
+	"Build a ZealFunctionCall from a (head args...) list. If head is a non-name
+	 expression like ((juxt f g) x) — calling the result of another expression —
+	 return an opaque __expr_call__ placeholder so the build doesn't crash on
+	 `head value value` against a ZealListNode. The semantic build result is only
+	 used for top-level metadata; the actual codegen walks the raw parse tree."
 	| exprs head headStr args |
 	exprs := aListNode expressions.
 	head := exprs first.
+	((head isKindOf: ZealSymbolNode) or: [ head isKindOf: ZealColonChainNode ]) ifFalse: [
+		^ ZealFunctionCall new
+			functionName: '__expr_call__';
+			arguments: OrderedCollection new ].
 	headStr := (head isKindOf: ZealColonChainNode)
 		ifTrue: [ (ZealColonChainResolver resolve: head value value) at: #name ]
 		ifFalse: [ head value value ].
 	args := exprs allButFirst collect: [:e | self buildExpression: e].
-	
 	"@ prefix = archetype constructor"
 	(headStr beginsWith: '@') ifTrue: [
 		| typeRef |
@@ -373,7 +381,6 @@ ZealCompiler class >> buildFunctionCall: aListNode [
 		^ ZealFunctionCall new
 			functionName: 'archetype';
 			arguments: ({ typeRef }, args) asOrderedCollection ].
-	
 	^ ZealFunctionCall new
 		functionName: headStr;
 		arguments: args

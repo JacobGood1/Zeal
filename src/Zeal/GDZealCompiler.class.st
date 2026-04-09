@@ -306,9 +306,13 @@ GDZealCompiler class >> buildInitParams: aVectorNode [
 	^ params
 ]
 
-{ #category : 'compiling' }
+{ #category : 'building' }
 GDZealCompiler class >> buildList: aListNode [
-	"Check GDZeal forms first, then delegate to ZealCompiler for everything else"
+	"Check GDZeal forms first, then delegate to ZealCompiler for everything else.
+	 If the head is a non-symbol expression (e.g. ((juxt f g) x) — calling the result
+	 of another expression), we can't dispatch to a name-based builder; return a
+	 placeholder so build doesn't crash. Codegen never visits this output anyway —
+	 GDZealCodeGenerator walks the raw parse tree directly."
 	| exprs head headStr |
 	exprs := aListNode expressions.
 	exprs isEmpty ifTrue: [ ^ ZealLiteral new value: '()'; literalType: #unit ].
@@ -317,7 +321,11 @@ GDZealCompiler class >> buildList: aListNode [
 	(head isKindOf: ZealSymbolNode) ifTrue: [ headStr := head value value ].
 	(head isKindOf: ZealColonChainNode) ifTrue: [
 		headStr := (ZealColonChainResolver resolve: head value value) at: #name ].
-	headStr ifNil: [ ^ ZealCompiler buildFunctionCall: aListNode ].
+	headStr ifNil: [
+		"Expression-as-head — return an opaque placeholder."
+		^ ZealFunctionCall new
+			functionName: '__expr_call__';
+			arguments: OrderedCollection new ].
 	"GDZeal-specific forms"
 	self specialFormBuilders at: headStr ifPresent: [ :sel | ^ self perform: sel with: aListNode ].
 	"Everything else -> ZealCompiler"

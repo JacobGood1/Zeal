@@ -370,6 +370,20 @@ GDZealCodeGenerator >> emitLaneResetBlock: lanes advanceVar: sv toIndex: nextIdx
 	self emit: sv , ' = '. self emit: nextIdx asString
 ]
 
+{ #category : 'transducers' }
+GDZealCodeGenerator >> emitNullaryTransducer: factoryName from: aListNode [
+	"Common dispatch for nullary-shape transducers (form) or (form coll).
+	 Z library factory takes no arg; the underscore suffix avoids GDScript reserved words."
+	| exprs |
+	exprs := aListNode expressions.
+	exprs size = 1 ifTrue: [
+		self emit: 'Z.' , factoryName , '()'.
+		^ self ].
+	self emit: 'Z.into([], Z.' , factoryName , '(), '.
+	self visitExpression: exprs second.
+	self emit: ')'
+]
+
 { #category : 'generating - GECS helpers' }
 GDZealCodeGenerator >> emitObserverHandler: methodName params: gdParams form: aListNode [
 	"Emit observer handler. Maps user param names to GDScript typed params."
@@ -466,6 +480,16 @@ GDZealCodeGenerator >> emitQueryClause: aListNode [
 			do: [ :c | self emit: (self resolveClassRef: c value value) ]
 			separatedBy: [ self emit: ', ' ].
 		self emit: ']' ].
+	self emit: ')'
+]
+
+{ #category : 'transducers-reducers' }
+GDZealCodeGenerator >> emitReducer: factoryName from: aListNode [
+	"Common emission for whole-sequence reducers (form xs) -> Z.factoryName(xs)."
+	| exprs |
+	exprs := aListNode expressions.
+	self emit: 'Z.' , factoryName , '('.
+	self visitExpression: exprs second.
 	self emit: ')'
 ]
 
@@ -573,6 +597,25 @@ GDZealCodeGenerator >> emitSystemSetup: aListNode [
 		self dedent ]
 ]
 
+{ #category : 'transducers' }
+GDZealCodeGenerator >> emitTransducer: factoryName from: aListNode [
+	"Common dispatch for transducer forms with shape (form arg) or (form arg coll).
+	 Single-arg → Z.factoryName(arg) (returns xform Callable).
+	 Two-arg → Z.into([], Z.factoryName(arg), coll) (eager, runs through driver)."
+	| exprs |
+	exprs := aListNode expressions.
+	exprs size = 2 ifTrue: [
+		self emit: 'Z.' , factoryName , '('.
+		self visitExpression: exprs second.
+		self emit: ')'.
+		^ self ].
+	self emit: 'Z.into([], Z.' , factoryName , '('.
+	self visitExpression: exprs second.
+	self emit: '), '.
+	self visitExpression: exprs third.
+	self emit: ')'
+]
+
 { #category : 'generating' }
 GDZealCodeGenerator >> generate: aZealProgramNode [
 	"Main entry point: walk all top-level expressions"
@@ -580,6 +623,18 @@ GDZealCodeGenerator >> generate: aZealProgramNode [
 		do: [ :expr | self visitExpression: expr ]
 		separatedBy: [ self nl. self nl ].
 	^ self output
+]
+
+{ #category : 'transducers-reducers' }
+GDZealCodeGenerator >> generateAnyP: aListNode [
+	"(any? pred xs) -> Z.any(pred, xs)"
+	| exprs |
+	exprs := aListNode expressions.
+	self emit: 'Z.any('.
+	self visitExpression: exprs second.
+	self emit: ', '.
+	self visitExpression: exprs third.
+	self emit: ')'
 ]
 
 { #category : 'generating - expressions' }
@@ -602,6 +657,77 @@ GDZealCodeGenerator >> generateAs: aListNode [
 			(seg notEmpty and: [ seg first isDigit ])
 				ifTrue: [ self emit: '[' , seg , ']' ]
 				ifFalse: [ self emit: '.' , (self toSnakeCase: seg) ] ] ]
+]
+
+{ #category : 'transducers-reducers' }
+GDZealCodeGenerator >> generateAvg: aListNode [
+	^ self emitReducer: 'avg' from: aListNode
+]
+
+{ #category : 'transducers' }
+GDZealCodeGenerator >> generateChunk: aListNode [
+	"(chunk n) -> Z.chunking(n) — transducer, non-overlapping
+	 (chunk n step) -> Z.chunking(n, step) — transducer, sliding window
+	 The eager forms route through `into`: (into [] (chunk n) xs).
+	 Dropping the eager arities here avoids the (chunk n step) vs (chunk n xs)
+	 ambiguity at the compile site."
+	| exprs |
+	exprs := aListNode expressions.
+	exprs size = 2 ifTrue: [
+		self emit: 'Z.chunking('.
+		self visitExpression: exprs second.
+		self emit: ')'.
+		^ self ].
+	"(chunk n step)"
+	self emit: 'Z.chunking('.
+	self visitExpression: exprs second.
+	self emit: ', '.
+	self visitExpression: exprs third.
+	self emit: ')'
+]
+
+{ #category : 'transducers' }
+GDZealCodeGenerator >> generateChunkBy: aListNode [
+	^ self emitTransducer: 'chunking_by' from: aListNode
+]
+
+{ #category : 'transducers-core' }
+GDZealCodeGenerator >> generateComp: aListNode [
+	"(comp xform1 xform2 ...) -> Z.comp([xform1, xform2, ...])
+	 Composes transducers (or any callables) right-to-left during reducer wrapping —
+	 left-most xform runs FIRST on each element."
+	| exprs args |
+	exprs := aListNode expressions.
+	args := exprs allButFirst.
+	self emit: 'Z.comp(['.
+	args
+		do: [ :a | self visitExpression: a ]
+		separatedBy: [ self emit: ', ' ].
+	self emit: '])'
+]
+
+{ #category : 'transducers-reducers' }
+GDZealCodeGenerator >> generateCount: aListNode [
+	"(count xs) -> xs.size() (no library call needed; built into GDScript Array)"
+	| exprs |
+	exprs := aListNode expressions.
+	self visitExpression: exprs second.
+	self emit: '.size()'
+]
+
+{ #category : 'transducers-sources' }
+GDZealCodeGenerator >> generateCycle: aListNode [
+	"(cycle xs) -> Z.cycle_(xs) — infinite cycling iterator."
+	| exprs |
+	exprs := aListNode expressions.
+	self emit: 'Z.cycle_('.
+	self visitExpression: exprs second.
+	self emit: ')'
+]
+
+{ #category : 'transducers' }
+GDZealCodeGenerator >> generateDedupe: aListNode [
+	^ self emitNullaryTransducer: 'dedupe_' from: aListNode
 ]
 
 { #category : 'generation' }
@@ -816,13 +942,13 @@ GDZealCodeGenerator >> generateDefentity: aListNode [
 { #category : 'generation' }
 GDZealCodeGenerator >> generateDefn: aListNode [
 	"(defn name [params] :retType body...) -> func name(params) -> retType:
-	 When a return type is declared, the last body expression is implicitly
-	 returned (unless it's a statement-only form like set/var/if/for/when/match
-	 which can't be the operand of return). A single (do ...) body is unwrapped
-	 so the do's last child becomes the implicit return.
+	 When a return type is declared (and isn't void), the last body expression is
+	 implicitly returned (unless it's a statement-only form like set/var/if/for/
+	 when/match which can't be the operand of return). A single (do ...) body is
+	 unwrapped so the do's last child becomes the implicit return.
 	 Pushes a fresh scope frame containing the param names so calls inside the
 	 body that reference a parameter route through .call (higher-order functions)."
-	| exprs nameNode name params bodyExprs retType |
+	| exprs nameNode name params bodyExprs retType implicitReturn |
 	exprs := aListNode expressions.
 	nameNode := exprs second.
 	retType := nil.
@@ -849,6 +975,8 @@ GDZealCodeGenerator >> generateDefn: aListNode [
 		and: [ (bodyExprs first expressions first isKindOf: ZealSymbolNode)
 		and: [ bodyExprs first expressions first value value = 'do' ] ] ] ]) ifTrue: [
 			bodyExprs := bodyExprs first expressions allButFirst asOrderedCollection ].
+	"Auto-return only when retType is meaningful (not void)."
+	implicitReturn := retType notNil and: [ retType ~= 'void' and: [ retType ~= 'Void' ] ].
 	self emit: 'func '.
 	self emit: (self toSnakeCase: name).
 	self emit: '('.
@@ -870,7 +998,7 @@ GDZealCodeGenerator >> generateDefn: aListNode [
 		self indent.
 		bodyExprs doWithIndex: [ :e :i |
 			self nl.
-			(retType notNil
+			(implicitReturn
 				and: [ i = bodyExprs size
 				and: [ (self isStatementForm: e) not ] ])
 				ifTrue: [ self emit: 'return '. self visitExpression: e ]
@@ -1013,6 +1141,11 @@ GDZealCodeGenerator >> generateDefsystemShorthand: name components: compVector r
 	self dedent
 ]
 
+{ #category : 'transducers' }
+GDZealCodeGenerator >> generateDistinct: aListNode [
+	^ self emitNullaryTransducer: 'distinct_' from: aListNode
+]
+
 { #category : 'generating - control flow' }
 GDZealCodeGenerator >> generateDo: aListNode [
 	"(do expr1 expr2 ...) -> sequential expressions"
@@ -1023,30 +1156,57 @@ GDZealCodeGenerator >> generateDo: aListNode [
 
 { #category : 'transducers' }
 GDZealCodeGenerator >> generateDrop: aListNode [
-	"(drop n xs) -> xs.slice(n)
-	 GDScript Array.slice(begin) takes everything from begin to the end."
-	| exprs n xs |
+	^ self emitTransducer: 'dropping' from: aListNode
+]
+
+{ #category : 'transducers' }
+GDZealCodeGenerator >> generateDropLast: aListNode [
+	"(drop-last) -> Z.dropping_last() (drops last 1)
+	 (drop-last n) -> Z.dropping_last(n)
+	 (drop-last n xs) -> Z.into([], Z.dropping_last(n), xs)"
+	| exprs |
 	exprs := aListNode expressions.
-	n := exprs second.
-	xs := exprs third.
-	self visitExpression: xs.
-	self emit: '.slice('.
-	self visitExpression: n.
+	exprs size = 1 ifTrue: [
+		self emit: 'Z.dropping_last()'.
+		^ self ].
+	exprs size = 2 ifTrue: [
+		self emit: 'Z.dropping_last('.
+		self visitExpression: exprs second.
+		self emit: ')'.
+		^ self ].
+	"eager: (drop-last n xs)"
+	self emit: 'Z.into([], Z.dropping_last('.
+	self visitExpression: exprs second.
+	self emit: '), '.
+	self visitExpression: exprs third.
+	self emit: ')'
+]
+
+{ #category : 'transducers' }
+GDZealCodeGenerator >> generateDropWhile: aListNode [
+	^ self emitTransducer: 'dropping_while' from: aListNode
+]
+
+{ #category : 'transducers-reducers' }
+GDZealCodeGenerator >> generateEveryP: aListNode [
+	"(every? pred xs) -> Z.every(pred, xs)"
+	| exprs |
+	exprs := aListNode expressions.
+	self emit: 'Z.every('.
+	self visitExpression: exprs second.
+	self emit: ', '.
+	self visitExpression: exprs third.
 	self emit: ')'
 ]
 
 { #category : 'transducers' }
 GDZealCodeGenerator >> generateFilter: aListNode [
-	"(filter pred xs) -> xs.filter(pred)
-	 GDScript Array has a built-in .filter(Callable)."
-	| exprs pred xs |
-	exprs := aListNode expressions.
-	pred := exprs second.
-	xs := exprs third.
-	self visitExpression: xs.
-	self emit: '.filter('.
-	self visitExpression: pred.
-	self emit: ')'
+	^ self emitTransducer: 'filtering' from: aListNode
+]
+
+{ #category : 'transducers' }
+GDZealCodeGenerator >> generateFlatten: aListNode [
+	^ self emitNullaryTransducer: 'flattening' from: aListNode
 ]
 
 { #category : 'generation' }
@@ -1122,14 +1282,16 @@ GDZealCodeGenerator >> generateFor: aListNode [
 GDZealCodeGenerator >> generateFunctionCall: aListNode [
 	"(func args...) -> func(args)
 	 If func is a name currently bound in lexical scope, treat it as a Callable
-	 and emit func.call(args) instead — that's how GDScript invokes lambda values."
+	 and emit func.call(args). If func is *not* a simple symbol at all (it's an
+	 expression that yields a value, like ((juxt f g) x) or (return-fn-from f)),
+	 emit .call(args) too — bare invocation `expr(args)` isn't valid GDScript."
 	| exprs head headStr |
 	exprs := aListNode expressions.
 	head := exprs first.
 	headStr := nil.
 	(head isKindOf: ZealSymbolNode) ifTrue: [ headStr := head value value ].
 	self visitExpression: head.
-	(headStr notNil and: [ self isLocal: (self toSnakeCase: headStr) ])
+	((headStr isNil) or: [ self isLocal: (self toSnakeCase: headStr) ])
 		ifTrue: [ self emit: '.call(' ]
 		ifFalse: [ self emit: '(' ].
 	exprs allButFirst
@@ -1144,6 +1306,109 @@ GDZealCodeGenerator >> generateIf: aListNode [
 	| args |
 	args := aListNode expressions allButFirst.
 	self emitIfChain: args first: true
+]
+
+{ #category : 'transducers' }
+GDZealCodeGenerator >> generateIndexed: aListNode [
+	^ self emitNullaryTransducer: 'indexing' from: aListNode
+]
+
+{ #category : 'transducers-core' }
+GDZealCodeGenerator >> generateInterleave: aListNode [
+	"(interleave xs ys ...) -> Z.interleave([xs, ys, ...]) — variadic, stops at shortest."
+	| exprs args |
+	exprs := aListNode expressions.
+	args := exprs allButFirst.
+	self emit: 'Z.interleave(['.
+	args
+		do: [ :a | self visitExpression: a ]
+		separatedBy: [ self emit: ', ' ].
+	self emit: '])'
+]
+
+{ #category : 'transducers' }
+GDZealCodeGenerator >> generateInterpose: aListNode [
+	^ self emitTransducer: 'interposing' from: aListNode
+]
+
+{ #category : 'transducers-core' }
+GDZealCodeGenerator >> generateInto: aListNode [
+	"(into dest) -> dest.duplicate()
+	 (into dest xs) -> dest + xs (concat — works for arrays; iterators expand)
+	 (into dest xform xs) -> Z.into(dest, xform, xs) (transducer-driven, runs once)"
+	| exprs |
+	exprs := aListNode expressions.
+	exprs size = 2 ifTrue: [
+		self visitExpression: exprs second.
+		self emit: '.duplicate()'.
+		^ self ].
+	exprs size = 3 ifTrue: [
+		"Concat-style: dest + xs. For iterator xs the user should use the 4-arg form."
+		self emit: 'Z.into('.
+		self visitExpression: exprs second.
+		self emit: ', Z.mapping(func(x): return x), '.
+		self visitExpression: exprs third.
+		self emit: ')'.
+		^ self ].
+	"4-arg: (into dest xform xs)"
+	self emit: 'Z.into('.
+	self visitExpression: exprs second.
+	self emit: ', '.
+	self visitExpression: exprs third.
+	self emit: ', '.
+	self visitExpression: exprs fourth.
+	self emit: ')'
+]
+
+{ #category : 'transducers-reducers' }
+GDZealCodeGenerator >> generateIntoArray: aListNode [
+	^ self emitReducer: 'into_array' from: aListNode
+]
+
+{ #category : 'transducers-reducers' }
+GDZealCodeGenerator >> generateIntoMap: aListNode [
+	^ self emitReducer: 'into_map' from: aListNode
+]
+
+{ #category : 'transducers-reducers' }
+GDZealCodeGenerator >> generateIntoString: aListNode [
+	^ self emitReducer: 'into_string' from: aListNode
+]
+
+{ #category : 'transducers-sources' }
+GDZealCodeGenerator >> generateIterate: aListNode [
+	"(iterate f x) -> Z.iterate_(f, x) — infinite iterator. Use take/into to bound."
+	| exprs |
+	exprs := aListNode expressions.
+	self emit: 'Z.iterate_('.
+	self visitExpression: exprs second.
+	self emit: ', '.
+	self visitExpression: exprs third.
+	self emit: ')'
+]
+
+{ #category : 'transducers-core' }
+GDZealCodeGenerator >> generateJuxt: aListNode [
+	"(juxt f1 f2 ...) -> Z.juxt([f1, f2, ...]) — returns a Callable that applied
+	 to a value yields [f1(x), f2(x), ...]."
+	| exprs args |
+	exprs := aListNode expressions.
+	args := exprs allButFirst.
+	self emit: 'Z.juxt(['.
+	args
+		do: [ :a | self visitExpression: a ]
+		separatedBy: [ self emit: ', ' ].
+	self emit: '])'
+]
+
+{ #category : 'transducers' }
+GDZealCodeGenerator >> generateKeep: aListNode [
+	^ self emitTransducer: 'keeping' from: aListNode
+]
+
+{ #category : 'transducers' }
+GDZealCodeGenerator >> generateKeepIndexed: aListNode [
+	^ self emitTransducer: 'keeping_indexed' from: aListNode
 ]
 
 { #category : 'generation' }
@@ -1183,16 +1448,17 @@ GDZealCodeGenerator >> generateLet: aListNode [
 
 { #category : 'transducers' }
 GDZealCodeGenerator >> generateMap: aListNode [
-	"(map f xs) -> xs.map(f)
-	 GDScript Array has a built-in .map(Callable) so the GDZeal mapping is direct."
-	| exprs f xs |
-	exprs := aListNode expressions.
-	f := exprs second.
-	xs := exprs third.
-	self visitExpression: xs.
-	self emit: '.map('.
-	self visitExpression: f.
-	self emit: ')'
+	^ self emitTransducer: 'mapping' from: aListNode
+]
+
+{ #category : 'transducers' }
+GDZealCodeGenerator >> generateMapcat: aListNode [
+	^ self emitTransducer: 'mapcatting' from: aListNode
+]
+
+{ #category : 'transducers' }
+GDZealCodeGenerator >> generateMapcatIndexed: aListNode [
+	^ self emitTransducer: 'mapcatting_indexed' from: aListNode
 ]
 
 { #category : 'generating - control flow' }
@@ -1214,6 +1480,16 @@ GDZealCodeGenerator >> generateMatch: aListNode [
 		self visitExpression: (pairs at: i + 1).
 		self dedent ].
 	self dedent
+]
+
+{ #category : 'transducers-reducers' }
+GDZealCodeGenerator >> generateMax: aListNode [
+	^ self emitReducer: 'max_of' from: aListNode
+]
+
+{ #category : 'transducers-reducers' }
+GDZealCodeGenerator >> generateMin: aListNode [
+	^ self emitReducer: 'min_of' from: aListNode
 ]
 
 { #category : 'generating - expressions' }
@@ -1241,12 +1517,14 @@ GDZealCodeGenerator >> generateOperator: aListNode [
 		separatedBy: [ self emit: ' ' , gdOp , ' ' ]
 ]
 
-{ #category : 'transducers' }
+{ #category : 'transducers-reducers' }
+GDZealCodeGenerator >> generateProduct: aListNode [
+	^ self emitReducer: 'product' from: aListNode
+]
+
+{ #category : 'transducers-sources' }
 GDZealCodeGenerator >> generateRange: aListNode [
-	"(range n) -> range(n)
-	 (range start end) -> range(start, end)
-	 (range start end step) -> range(start, end, step)
-	 GDScript has a built-in range() that takes 1, 2, or 3 ints."
+	"(range n) / (range a b) / (range a b s) -> built-in range(...) (eager Array)."
 	| exprs args |
 	exprs := aListNode expressions.
 	args := exprs allButFirst.
@@ -1257,30 +1535,38 @@ GDZealCodeGenerator >> generateRange: aListNode [
 	self emit: ')'
 ]
 
-{ #category : 'transducers' }
+{ #category : 'transducers-core' }
 GDZealCodeGenerator >> generateReduce: aListNode [
-	"(reduce f xs) -> xs.reduce(f)
-	 (reduce f init xs) -> xs.reduce(f, init)
-	 GDScript Array has .reduce(method, accum=null)."
-	| exprs f xs init |
+	"(reduce f xs) -> Z.reduce(f, null, xs)
+	 (reduce f init xs) -> Z.reduce(f, init, xs)
+	 Replaces the older Array.reduce(f) emission — now routes through the library
+	 driver so iterators work as sources."
+	| exprs |
 	exprs := aListNode expressions.
-	f := exprs second.
 	exprs size = 3 ifTrue: [
-		"(reduce f xs)"
-		xs := exprs third.
-		self visitExpression: xs.
-		self emit: '.reduce('.
-		self visitExpression: f.
+		self emit: 'Z.reduce('.
+		self visitExpression: exprs second.
+		self emit: ', null, '.
+		self visitExpression: exprs third.
 		self emit: ')'.
 		^ self ].
-	"(reduce f init xs)"
-	init := exprs third.
-	xs := exprs fourth.
-	self visitExpression: xs.
-	self emit: '.reduce('.
-	self visitExpression: f.
+	"3-arg: (reduce f init xs)"
+	self emit: 'Z.reduce('.
+	self visitExpression: exprs second.
 	self emit: ', '.
-	self visitExpression: init.
+	self visitExpression: exprs third.
+	self emit: ', '.
+	self visitExpression: exprs fourth.
+	self emit: ')'
+]
+
+{ #category : 'transducers-sources' }
+GDZealCodeGenerator >> generateRepeat: aListNode [
+	"(repeat x) -> Z.repeat_(x) — infinite iterator."
+	| exprs |
+	exprs := aListNode expressions.
+	self emit: 'Z.repeat_('.
+	self visitExpression: exprs second.
 	self emit: ')'
 ]
 
@@ -1367,17 +1653,41 @@ GDZealCodeGenerator >> generateSlashCall: aListNode [
 	self emit: ')'
 ]
 
+{ #category : 'transducers-reducers' }
+GDZealCodeGenerator >> generateSum: aListNode [
+	^ self emitReducer: 'sum' from: aListNode
+]
+
 { #category : 'transducers' }
 GDZealCodeGenerator >> generateTake: aListNode [
-	"(take n xs) -> xs.slice(0, n)
-	 GDScript Array.slice(begin, end) is exclusive on end and works for arrays."
-	| exprs n xs |
+	^ self emitTransducer: 'taking' from: aListNode
+]
+
+{ #category : 'transducers' }
+GDZealCodeGenerator >> generateTakeWhile: aListNode [
+	^ self emitTransducer: 'taking_while' from: aListNode
+]
+
+{ #category : 'transducers-reducers' }
+GDZealCodeGenerator >> generateTally: aListNode [
+	^ self emitReducer: 'tally' from: aListNode
+]
+
+{ #category : 'transducers-core' }
+GDZealCodeGenerator >> generateTransduce: aListNode [
+	"(transduce xform rf init xs) -> Z.transduce(xform, rf, init, xs)
+	 The rf must be a reducer Dictionary {step,complete}, typically built via
+	 Z.append_rf() or hand-rolled in user code."
+	| exprs |
 	exprs := aListNode expressions.
-	n := exprs second.
-	xs := exprs third.
-	self visitExpression: xs.
-	self emit: '.slice(0, '.
-	self visitExpression: n.
+	self emit: 'Z.transduce('.
+	self visitExpression: exprs second.
+	self emit: ', '.
+	self visitExpression: exprs third.
+	self emit: ', '.
+	self visitExpression: exprs fourth.
+	self emit: ', '.
+	self visitExpression: (exprs at: 5).
 	self emit: ')'
 ]
 
