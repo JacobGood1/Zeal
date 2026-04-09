@@ -6,6 +6,39 @@ Class {
 }
 
 { #category : 'highlighting' }
+ZealTheme class >> applyLambdaReplacement: text source: aString [
+	"Replace visual appearance of `fn` with λ in the editor text. Scans for
+	 standalone `fn` tokens (preceded/followed by word boundaries) and uses
+	 BrTextAdornmentDynamicAttribute to replace f→λ and n→zero-width, keeping
+	 the underlying source intact for compilation. Works for all Zeal dialects."
+	| i size |
+	i := 1.
+	size := aString size.
+	[ i := aString indexOfSubCollection: 'fn' startingAt: i.
+	  i > 0 ] whileTrue: [
+		| before after standalone |
+		"Check word boundaries — fn must not be part of a longer identifier"
+		before := i > 1 ifTrue: [ aString at: i - 1 ] ifFalse: [ $( ].
+		after := (i + 1 < size) ifTrue: [ aString at: i + 2 ] ifFalse: [ $) ].
+		standalone := (before isLetter not and: [ before ~= $_ and: [ before ~= $- ] ])
+			and: [ after isLetter not and: [ after ~= $_ and: [ after ~= $- ] ] ].
+		standalone ifTrue: [
+			"Replace f with λ"
+			(text from: i to: i)
+				attribute: (BrTextAdornmentDynamicAttribute new
+					beReplace;
+					stencil: [ BlTextElement new text: ('λ' asRopedText
+						foreground: self specialFormColor;
+						yourself) ]).
+			"Replace n with zero-width space"
+			(text from: i + 1 to: i + 1)
+				attribute: (BrTextAdornmentDynamicAttribute new
+					beReplace;
+					stencil: [ BlElement new size: 0 @ 0 ]) ].
+		i := i + 2 ]
+]
+
+{ #category : 'highlighting' }
 ZealTheme class >> attachExpanders: text source: aString resolver: aResolver browser: aBrowser nested: isNested [
 	"Find function/class/method references and attach inline expanders."
 	| i size |
@@ -106,7 +139,8 @@ ZealTheme class >> foregroundColor [
 { #category : 'highlighting' }
 ZealTheme class >> highlight: aString [
 	"Tokenize and colorize Zeal source, return a BlRopedText with attributes.
-	Template method — subclasses provide highlightTokenAt:in:text:size: and color accessors."
+	 Template method — subclasses provide highlightTokenAt:in:text:size: and color accessors.
+	 After highlighting, replaces visual fn with λ."
 	| text i size |
 	text := aString asRopedText.
 	text foreground: self symbolColor.
@@ -115,6 +149,7 @@ ZealTheme class >> highlight: aString [
 	[ i <= size ] whileTrue: [
 		i := self highlightTokenAt: i in: aString text: text size: size ].
 	self highlightDefinitionNames: aString text: text.
+	self applyLambdaReplacement: text source: aString.
 	^ text
 ]
 

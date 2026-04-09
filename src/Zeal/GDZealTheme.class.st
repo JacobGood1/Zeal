@@ -58,7 +58,8 @@ GDZealTheme class >> foregroundColor [
 
 { #category : 'highlighting' }
 GDZealTheme class >> highlight: aString [
-	"Tokenize and colorize GDZeal source, return a BlRopedText with attributes."
+	"Tokenize and colorize GDZeal source, return a BlRopedText with attributes.
+	 After highlighting, replaces visual fn with λ."
 	| text i size |
 	text := aString asRopedText.
 	text foreground: self symbolColor.
@@ -67,6 +68,7 @@ GDZealTheme class >> highlight: aString [
 	[ i <= size ] whileTrue: [
 		i := self highlightTokenAt: i in: aString text: text size: size ].
 	self highlightDefinitionNames: aString text: text.
+	self applyLambdaReplacement: text source: aString.
 	^ text
 ]
 
