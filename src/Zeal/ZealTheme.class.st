@@ -7,29 +7,8 @@ Class {
 
 { #category : 'highlighting' }
 ZealTheme class >> applyLambdaReplacement: text source: aString [
-	"Replace visual appearance of `fn` with λ in the editor text. Uses a single
-	 BrTextAdornmentDynamicAttribute spanning both characters so the lambda behaves
-	 as one atomic unit for cursor movement, selection, and copy. The underlying
-	 source stays as fn for compilation."
-	| i size |
-	i := 1.
-	size := aString size.
-	[ i := aString indexOfSubCollection: 'fn' startingAt: i.
-	  i > 0 ] whileTrue: [
-		| before after standalone |
-		before := i > 1 ifTrue: [ aString at: i - 1 ] ifFalse: [ $( ].
-		after := (i + 1 < size) ifTrue: [ aString at: i + 2 ] ifFalse: [ $) ].
-		standalone := (before isLetter not and: [ before ~= $_ and: [ before ~= $- ] ])
-			and: [ after isLetter not and: [ after ~= $_ and: [ after ~= $- ] ] ].
-		standalone ifTrue: [
-			"Single replacement spanning both f and n"
-			(text from: i to: i + 1)
-				attribute: (BrTextAdornmentDynamicAttribute new
-					beReplace;
-					stencil: [ BlTextElement new text: ('λ' asRopedText
-						foreground: self specialFormColor;
-						yourself) ]) ].
-		i := i + 2 ]
+	"No longer needed — λ is now a real character in the source, not a visual
+	 replacement. Kept as a no-op so callers don't need updating."
 ]
 
 { #category : 'highlighting' }

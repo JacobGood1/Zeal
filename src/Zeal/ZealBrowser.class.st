@@ -82,7 +82,7 @@ ZealBrowser >> configureZealEditor: anEditor [
 	self setupKeyChords: anEditor.
 	self setupArrowKeys: anEditor.
 	self setupFormHighlight: anEditor.
-	self setupLambdaBackspace: anEditor.
+	self setupLambdaAutoReplace: anEditor.
 	anEditor addShortcut: (BlShortcutWithAction new
 		combination: (BlKeyCombination builder control shift arrowUp build);
 		action: [ self swapForm: anEditor up: true ]).
@@ -486,6 +486,39 @@ ZealBrowser >> setupKeyChords: zealEditor [
 	
 	"Example chords — add more with: keyChord addChord: 'xx' action: [...]"
 	keyChord addChord: 'jk' action: [ self applyParinfer: zealEditor ]
+]
+
+{ #category : 'editor' }
+ZealBrowser >> setupLambdaAutoReplace: anEditor [
+	"When the user types fn followed by a space, bracket, or paren, auto-replace
+	 fn with the λ character in the source. Uses editor deleter+inserter APIs."
+	| lambda |
+	lambda := (Character value: 16r03BB) asString.
+	anEditor editor
+		when: BrTextEditorInsertedEvent
+		do: [ :evt |
+			[ | src idx |
+			  src := anEditor editor text asString.
+			  idx := evt index.  "0-based index of inserted text"
+			  "The inserted char is at 1-based position idx+1 in the string"
+			  (idx >= 2 and: [ (idx + 1) <= src size ]) ifTrue: [
+				| ch prev2 prev1 before standalone |
+				ch := src at: idx + 1.
+				prev1 := src at: idx.      "n"
+				prev2 := src at: idx - 1.  "f"
+				((prev2 = $f and: [ prev1 = $n ]) and: [ ch = $  or: [ ch = $( or: [ ch = $[ ] ] ]) ifTrue: [
+					before := idx > 2 ifTrue: [ src at: idx - 2 ] ifFalse: [ $( ].
+					standalone := before isLetter not and: [ before ~= $_ and: [ before ~= $- ] ].
+					standalone ifTrue: [
+						"Schedule replacement on next UI tick to avoid modifying text during event"
+						anEditor enqueueTask: (BlTaskAction new action: [
+							anEditor editor deleter from: idx - 2 to: idx; delete.
+							anEditor editor inserter
+								string: lambda;
+								at: idx - 2;
+								withoutCursorUpdate;
+								insert ]) ] ] ] ]
+			on: Error do: [ :e | "ignore — defensive" ] ]
 ]
 
 { #category : 'editor' }

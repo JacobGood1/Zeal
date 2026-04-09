@@ -15,19 +15,26 @@ Class {
 	#package : 'Zeal'
 }
 
-{ #category : 'compiling' }
+{ #category : 'compilation' }
 GDZealCodeGenerator class >> compile: aString [
-	"Compile GDZeal source to GDScript string"
-	^ self new generate: (ZealParser parse: aString)
+	"Compile GDZeal source to GDScript string. Pre-processes λ to fn."
+	^ self new generate: (ZealParser parse: (self preprocess: aString))
 ]
 
-{ #category : 'compiling' }
+{ #category : 'compilation' }
 GDZealCodeGenerator class >> compile: aString withRegistry: aRegistry [
-	"Compile GDZeal source with a shared component registry"
+	"Compile GDZeal source with a shared component registry. Pre-processes λ to fn."
 	| gen |
 	gen := self new.
 	gen setRegistry: aRegistry.
-	^ gen generate: (ZealParser parse: aString)
+	^ gen generate: (ZealParser parse: (self preprocess: aString))
+]
+
+{ #category : 'compilation' }
+GDZealCodeGenerator class >> preprocess: aString [
+	"Pre-process GDZeal source before parsing. Replaces λ with fn so the SmaCC
+	 parser (which only handles ASCII identifiers) accepts lambda-character source."
+	^ aString copyReplaceAll: (Character value: 16r03BB) asString with: 'fn'
 ]
 
 { #category : 'scope' }

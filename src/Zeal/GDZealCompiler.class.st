@@ -359,11 +359,13 @@ GDZealCompiler class >> buildWhen: aListNode [
 
 { #category : 'compiling' }
 GDZealCompiler class >> compile: aString [
-	"Parse GDZeal source -> ZealNode objects, store rawSource"
-	| ast result |
-	ast := ZealParser parse: aString.
+	"Parse GDZeal source -> ZealNode objects, store rawSource.
+	 Pre-processes λ to fn so the parser accepts lambda-character source.
+	 Stores the ORIGINAL source (with λ) as rawSource so the editor preserves it."
+	| preprocessed ast result |
+	preprocessed := GDZealCodeGenerator preprocess: aString.
+	ast := ZealParser parse: preprocessed.
 	result := self buildFromAST: ast.
-	"Store raw source on top-level definitions"
 	(result isKindOf: Collection)
 		ifTrue: [ result do: [ :n | n rawSource: aString ] ]
 		ifFalse: [ result rawSource: aString ].
