@@ -842,42 +842,6 @@ GDZealBrowser >> duplicateLine: zealEditor [
 		apply
 ]
 
-{ #category : 'editing' }
-GDZealBrowser >> expandSelection: zealEditor [
-	"Ctrl+W: expand selection outward through structural units"
-	| text cursorPos ranges currentSelStart currentSelEnd currentSize nextRange |
-	text := zealEditor editor text asString.
-	text isEmpty ifTrue: [ ^ self ].
-	
-	"Get current selection or cursor position"
-	cursorPos := 0.
-	zealEditor editor cursors do: [ :c | cursorPos := c position ].
-	
-	"Check if there's an existing selection"
-	currentSelStart := cursorPos.
-	currentSelEnd := cursorPos.
-	zealEditor editor selection do: [:sel |
-		currentSelStart := sel from min: currentSelEnd.
-		currentSelEnd := sel to max: currentSelStart ].
-	currentSize := currentSelEnd - currentSelStart.
-	
-	"Get all structural ranges from cursor position"
-	ranges := ZealParinfer structuralRangesAt: cursorPos in: text.
-	
-	"Find the next range strictly larger than current selection"
-	nextRange := ranges detect: [:r | (r value - r key) > currentSize ] ifNone: [ ^ self ].
-	
-	"Apply selection"
-	zealEditor editor deselecter all deselect.
-	zealEditor editor selecter
-		from: nextRange key to: nextRange value;
-		select.
-	
-	"Store expansion state for shrink"
-	expandSelectionStack ifNil: [ expandSelectionStack := OrderedCollection new ].
-	expandSelectionStack add: (currentSelStart -> currentSelEnd)
-]
-
 { #category : 'private' }
 GDZealBrowser >> extractDefName: source [
 	"Extract the name after the first def-form in source"
