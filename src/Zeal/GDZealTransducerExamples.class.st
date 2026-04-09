@@ -422,12 +422,32 @@ GDZealTransducerExamples >> exampleTally [
 ]
 
 { #category : 'examples-threading' }
+GDZealTransducerExamples >> exampleThreadAutoFirst [
+	<gtExample>
+	<description: '(-> x (f a)) with no _ auto-inserts x as first arg -> (f x a)'>
+	| out |
+	out := self compile: '(defn t [x] (-> x (print "val: ")))'.
+	self assert: (out includesSubstring: 'print(x, "val: ")') description: 'should insert x as first arg'.
+	^ out
+]
+
+{ #category : 'examples-threading' }
+GDZealTransducerExamples >> exampleThreadBareSymbol [
+	<gtExample>
+	<description: '(-> x blah (bleh 1 _)) bare symbol wraps as (blah x), _ explicit on bleh'>
+	| out |
+	out := self compile: '(defn t [x] (-> x blah (bleh 1 _)))'.
+	self assert: (out includesSubstring: 'bleh(1, blah(x))') description: 'bare sym + explicit _'.
+	^ out
+]
+
+{ #category : 'examples-threading' }
 GDZealTransducerExamples >> exampleThreadLast [
 	<gtExample>
-	<description: '(->> xs (filter pred) (map f)) threads xs as last arg through each form'>
+	<description: '(-> xs (f _ ) uses _ for insertion point — transducer-friendly'>
 	| out |
-	out := self compile: '(defn t [xs:Array] :Array (->> xs (filter (fn [x] (> x 0))) (map (fn [x] (* x x)))))'.
-	self assert: (out includesSubstring: 'Z.') description: 'thread-last should emit Z.* calls'.
+	out := self compile: '(defn t [xs:Array] :Array (-> xs (filter (fn [x] (> x 0)) _) (map (fn [x] (* x x)) _)))'.
+	self assert: (out includesSubstring: 'Z.') description: 'thread with _ should emit Z.* calls'.
 	^ out
 ]
 

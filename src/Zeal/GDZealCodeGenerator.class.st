@@ -1856,45 +1856,29 @@ GDZealCodeGenerator >> generateTally: aListNode [
 
 { #category : 'threading' }
 GDZealCodeGenerator >> generateThreadFirst: aListNode [
-	"(-> x (f a) (g b)) -> (g (f x a) b)
-	 Thread the first form through each subsequent form as the SECOND arg
-	 (first position after the function name). General-purpose Clojure-style
-	 thread-first macro."
+	"(-> x (f a) (g b _)) — unified threading macro.
+	 _ determines insertion point. If no _ in a form, auto-inserts as first arg.
+	 Bare symbols wrap as (sym accumulated). Subsumes both -> and ->>."
 	| exprs current |
 	exprs := aListNode expressions allButFirst.
 	current := exprs first.
 	exprs allButFirst do: [ :form |
 		(form isKindOf: ZealListNode)
 			ifTrue: [
-				| newExprs |
-				newExprs := OrderedCollection new.
-				newExprs add: form expressions first.
-				newExprs add: current.
-				newExprs addAll: form expressions allButFirst.
-				current := self syntheticList: newExprs ]
+				(self threadFormHasPlaceholder: form)
+					ifTrue: [
+						"Substitute every _ with current"
+						current := self threadSubstitute: form with: current ]
+					ifFalse: [
+						"No _ — auto-insert as first arg (after function name)"
+						| newExprs |
+						newExprs := OrderedCollection new.
+						newExprs add: form expressions first.
+						newExprs add: current.
+						newExprs addAll: form expressions allButFirst.
+						current := self syntheticList: newExprs ] ]
 			ifFalse: [
-				current := self syntheticList: { form. current } ] ].
-	self visitExpression: current
-]
-
-{ #category : 'threading' }
-GDZealCodeGenerator >> generateThreadLast: aListNode [
-	"(->> x (f a) (g b)) -> (g b (f a x))
-	 Thread the first form through each subsequent form as the LAST arg.
-	 Natural fit for transducers: (->> [1 2 3] (filter pred) (map f))
-	 becomes (map f (filter pred [1 2 3]))."
-	| exprs current |
-	exprs := aListNode expressions allButFirst.
-	current := exprs first.
-	exprs allButFirst do: [ :form |
-		(form isKindOf: ZealListNode)
-			ifTrue: [
-				| newExprs |
-				newExprs := OrderedCollection new.
-				newExprs addAll: form expressions.
-				newExprs add: current.
-				current := self syntheticList: newExprs ]
-			ifFalse: [
+				"Bare symbol — wrap as (form current)"
 				current := self syntheticList: { form. current } ] ].
 	self visitExpression: current
 ]
@@ -2091,7 +2075,7 @@ GDZealCodeGenerator >> setRegistry: aRegistry [
 
 { #category : 'generation' }
 GDZealCodeGenerator >> specialForms [
-	"Dialect-local special forms + the base Zeal transducer protocol + threading macros."
+	"Dialect-local special forms + transducer protocol + threading macro."
 	| dict |
 	dict := Dictionary new
 		at: 'def' put: #generateDef:;
@@ -2114,7 +2098,6 @@ GDZealCodeGenerator >> specialForms [
 		at: 'return' put: #generateReturn:;
 		at: 'as' put: #generateAs:;
 		at: '->' put: #generateThreadFirst:;
-		at: '->>' put: #generateThreadLast:;
 		yourself.
 	ZealCodeGenerator transducerFormSelectors keysAndValuesDo: [ :name :sel |
 		dict at: name put: sel ].
@@ -2128,6 +2111,24 @@ GDZealCodeGenerator >> syntheticList: exprsArray [
 	list := ZealListNode new.
 	list instVarNamed: 'expressions' put: exprsArray asOrderedCollection.
 	^ list
+]
+
+{ #category : 'threading' }
+GDZealCodeGenerator >> threadFormHasPlaceholder: aListNode [
+	"True if any direct child of the list is the symbol _"
+	^ aListNode expressions anySatisfy: [ :e |
+		(e isKindOf: ZealSymbolNode) and: [ e value value = '_' ] ]
+]
+
+{ #category : 'threading' }
+GDZealCodeGenerator >> threadSubstitute: aListNode with: replacement [
+	"Return a new synthetic list where every _ symbol child is replaced with replacement."
+	| newExprs |
+	newExprs := aListNode expressions collect: [ :e |
+		((e isKindOf: ZealSymbolNode) and: [ e value value = '_' ])
+			ifTrue: [ replacement ]
+			ifFalse: [ e ] ].
+	^ self syntheticList: newExprs
 ]
 
 { #category : 'private - naming' }
