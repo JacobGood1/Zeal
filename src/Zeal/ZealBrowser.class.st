@@ -490,30 +490,40 @@ ZealBrowser >> setupKeyChords: zealEditor [
 
 { #category : 'editor' }
 ZealBrowser >> setupLambdaBackspace: anEditor [
-	"When backspace is pressed and the cursor is right after a standalone `fn`
-	 token, delete both f and n in one keystroke so the visual λ disappears
-	 as a single unit. Works for all Zeal dialects."
+	"When backspace is pressed and the cursor is at or right after a standalone `fn`
+	 token (visually rendered as λ), delete both f and n in one keystroke.
+	 Checks multiple cursor positions because BrTextAdornmentDynamicAttribute beReplace
+	 can shift where the cursor lands relative to the underlying text."
 	anEditor addEventFilterOn: BlKeyDownEvent do: [ :evt |
 		evt key = BlKeyboardKey backspace ifTrue: [
 			| text pos src handled |
 			handled := false.
 			text := anEditor editor text.
+			src := text asString.
 			anEditor editor cursors do: [ :cursor |
 				pos := cursor position.
-				(pos >= 2 and: [ text size >= pos ]) ifTrue: [
-					src := text asString.
-					((src at: pos - 1) = $f and: [ (src at: pos) = $n ]) ifTrue: [
-						"Check word boundaries"
-						| before after standalone |
+				handled ifFalse: [
+					"Check if fn is at [pos-1, pos] (cursor after n)"
+					(pos >= 2 and: [ pos <= src size and: [
+						(src at: pos - 1) = $f and: [ (src at: pos) = $n ] ] ]) ifTrue: [
+						| before after |
 						before := pos > 2 ifTrue: [ src at: pos - 2 ] ifFalse: [ $( ].
 						after := (pos + 1 <= src size) ifTrue: [ src at: pos + 1 ] ifFalse: [ $) ].
-						standalone := (before isLetter not and: [ before ~= $_ and: [ before ~= $- ] ])
-							and: [ after isLetter not and: [ after ~= $_ and: [ after ~= $- ] ] ].
-						standalone ifTrue: [
-							anEditor editor deleter
-								from: pos - 2 to: pos;
-								delete.
-							handled := true ] ] ] ].
+						((before isLetter not and: [ before ~= $_ and: [ before ~= $- ] ])
+							and: [ after isLetter not and: [ after ~= $_ and: [ after ~= $- ] ] ]) ifTrue: [
+								anEditor editor deleter from: pos - 2 to: pos; delete.
+								handled := true ] ].
+					"Check if fn is at [pos, pos+1] (cursor between f and n, or before n)"
+					handled ifFalse: [
+						(pos >= 1 and: [ (pos + 1) <= src size and: [
+							(src at: pos) = $f and: [ (src at: pos + 1) = $n ] ] ]) ifTrue: [
+							| before after |
+							before := pos > 1 ifTrue: [ src at: pos - 1 ] ifFalse: [ $( ].
+							after := (pos + 2 <= src size) ifTrue: [ src at: pos + 2 ] ifFalse: [ $) ].
+							((before isLetter not and: [ before ~= $_ and: [ before ~= $- ] ])
+								and: [ after isLetter not and: [ after ~= $_ and: [ after ~= $- ] ] ]) ifTrue: [
+									anEditor editor deleter from: pos - 1 to: pos + 1; delete.
+									handled := true ] ] ] ] ].
 			handled ifTrue: [ evt consumed: true ] ] ]
 ]
 
