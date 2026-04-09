@@ -79,14 +79,18 @@ GDZealTextStyler >> replaceFnWithLambda: text [
 
 { #category : 'lambda' }
 GDZealTextStyler >> scheduleFnReplacement [
-	"Schedule a deferred task to replace fn→λ in the editor text."
+	"Schedule a deferred task to replace fn→λ in the editor text.
+	 Preserves cursor position (adjusted for the 1-char shrink per replacement)."
 	| lambda el |
 	lambda := (Character value: 16r03BB) asString.
 	el := editorElement.
 	el ifNil: [ ^ self ].
 	el enqueueTask: (BlTaskAction new action: [
-		| ed src i |
+		| ed src i cursorPos |
 		ed := el editor.
+		"Save cursor position"
+		cursorPos := 0.
+		ed cursors do: [ :c | cursorPos := c position ].
 		src := ed text asString.
 		i := 1.
 		[ i := src indexOfSubCollection: 'fn' startingAt: i.
@@ -99,8 +103,13 @@ GDZealTextStyler >> scheduleFnReplacement [
 			standalone ifTrue: [
 				ed deleter from: i - 1 to: i + 1; delete.
 				ed inserter string: lambda; at: i - 1; withoutCursorUpdate; insert.
+				"Adjust cursor: text shrank by 1 char. If cursor was after the fn, shift back 1."
+				cursorPos > i ifTrue: [ cursorPos := cursorPos - 1 ].
 				src := ed text asString ]
-			ifFalse: [ i := i + 2 ] ] ])
+			ifFalse: [ i := i + 2 ] ].
+		"Restore cursor"
+		[ ed navigator moveTo: (cursorPos min: ed text size max: 0); apply ]
+			on: Error do: [ ] ])
 ]
 
 { #category : 'lambda' }
