@@ -156,19 +156,27 @@ GDZealBrowser >> buildDefinitionBody: aDef [
 	^ body
 ]
 
-{ #category : 'building - cards' }
+{ #category : 'building' }
 GDZealBrowser >> buildDefinitionExpander: aDef [
 	"Inline-expandable card for a single definition. Tagged with #defName in userData
-	 so captureUiState can find it after a rebuild."
+	 so captureUiState can find it after a rebuild. Patches the aptitude's light
+	 backgrounds to match the dark theme."
 	| expander |
 	expander := BrExpander new.
 	expander aptitude: BrGlamorousExpanderAptitude new.
-	expander 
+	expander
 		constraintsDo: [ :c | c horizontal matchParent. c vertical fitContent ];
 		margin: (BlInsets top: 2 bottom: 2);
 		header: [ self buildDefinitionHeader: aDef ];
 		content: [ self buildDefinitionBody: aDef ].
 	expander userData at: #defName put: aDef name.
+	"Patch light backgrounds from the aptitude to match the dark theme"
+	expander allChildrenBreadthFirstDo: [ :c |
+		(c background isKindOf: BlPaintBackground) ifTrue: [
+			| col |
+			col := c background paint color.
+			(col red > 0.5 and: [ col green > 0.5 and: [ col blue > 0.5 ] ]) ifTrue: [
+				c background: self themeClass backgroundColor darker ] ] ].
 	^ expander
 ]
 
