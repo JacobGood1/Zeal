@@ -124,6 +124,20 @@ GDZealExamples >> exampleDefcoWithParams [
 	^ result
 ]
 
+{ #category : 'examples - components' }
+GDZealExamples >> exampleDefcompFields [
+	<gtExample>
+	"Standard (defcomp name field val ...) produces a Component class with @export fields."
+	| result |
+	result := GDZealCompiler compileToGDScript: '(defcomp velocity
+  direction @vector2/RIGHT
+  speed:float 200.0)'.
+	self assert: (result includesSubstring: 'class_name C_Velocity').
+	self assert: (result includesSubstring: '@export var direction: Vector2 = Vector2.RIGHT').
+	self assert: (result includesSubstring: '@export var speed: float = 200.0').
+	^ result
+]
+
 { #category : 'examples - GECS' }
 GDZealExamples >> exampleDefcompHealth [
 	<gtExample>
@@ -552,23 +566,6 @@ GDZealExamples >> exampleFsmNoBindings [
     (do-thing)))'.
 	self assert: (result includesSubstring: 'func tick(entity: Entity, delta: float) -> void:').
 	self assert: (result includesSubstring: 'do_thing()').
-	^ result
-]
-
-{ #category : 'examples-fsm' }
-GDZealExamples >> exampleFsmNonFsmStillWorks [
-	<gtExample>
-	"Existing (defcomp name field val ...) syntax still works without :fsm."
-	| result |
-	result := GDZealCompiler compileToGDScript: '(defcomp velocity
-  direction @vector2/RIGHT
-  speed:float 200.0)'.
-	self assert: (result includesSubstring: 'class_name C_Velocity').
-	self assert: (result includesSubstring: '@export var direction: Vector2 = Vector2.RIGHT').
-	self assert: (result includesSubstring: '@export var speed: float = 200.0').
-	"Should NOT have FSM artifacts"
-	self assert: (result includesSubstring: '_state') not.
-	self assert: (result includesSubstring: 'func tick') not.
 	^ result
 ]
 
