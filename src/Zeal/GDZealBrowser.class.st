@@ -42,53 +42,6 @@ GDZealBrowser class >> openOn: aGodotPath [
 	^ browser
 ]
 
-{ #category : 'editing' }
-GDZealBrowser >> applyFormat: zealEditor [
-	"Apply full format — normalize indentation + parinfer"
-	| currentText result cursorPos |
-	currentText := zealEditor editor text asString.
-	currentText isEmpty ifTrue: [ ^ self ].
-	result := ZealParinfer format: currentText.
-	result = currentText ifTrue: [ ^ self ].
-	cursorPos := 0.
-	zealEditor editor cursors do: [ :c | cursorPos := c position ].
-	zealEditor text: ((ZealTheme highlight: result)).
-	zealEditor editor navigator
-		moveTo: (cursorPos min: result size);
-		apply
-]
-
-{ #category : 'editing' }
-GDZealBrowser >> applyParinfer: zealEditor [
-	"Apply parinfer indent mode — pure Smalltalk, instant"
-
-	| currentText result cursorPos |
-	currentText := zealEditor editor text asString.
-	currentText isEmpty ifTrue: [ ^ self ].
-	result := ZealParinfer indentMode: currentText.
-	result = currentText ifTrue: [ ^ self ].
-	cursorPos := 0.
-	zealEditor editor cursors do: [ :c | cursorPos := c position ].
-	zealEditor text: ((ZealTheme highlight: result)).
-	zealEditor editor navigator
-		moveTo: (cursorPos min: result size);
-		apply
-]
-
-{ #category : 'editing' }
-GDZealBrowser >> barfForward: zealEditor [
-	"Barf: push last expression out of the current form"
-	| text cursorPos result |
-	text := zealEditor editor text asString.
-	text isEmpty ifTrue: [ ^ self ].
-	cursorPos := 0.
-	zealEditor editor cursors do: [ :c | cursorPos := c position ].
-	result := ZealParinfer barfForward: text at: cursorPos.
-	result = text ifTrue: [ ^ self ].
-	zealEditor text: ((ZealTheme highlight: result)).
-	zealEditor editor navigator moveTo: (cursorPos min: result size); apply
-]
-
 { #category : 'building' }
 GDZealBrowser >> buildAddDefinitionButton [
 	"A '+' button next to Compile All in the top bar. Clicking spawns a draft
@@ -265,13 +218,6 @@ GDZealBrowser >> buildDeleteButtonFor: aDef [
 ]
 
 { #category : 'building' }
-GDZealBrowser >> buildDivider [
-	^ BlElement new
-		constraintsDo: [ :c | c horizontal matchParent. c vertical exact: 1 ];
-		background: (Color fromHexString: '444444')
-]
-
-{ #category : 'building' }
 GDZealBrowser >> buildDraftAccordion [
 	"Pharo class-browser style 'add new method' inline editor: a BrExpander dropped
 	 into the draftSlot above the tab group. Header shows 'New definition'; body is
@@ -440,14 +386,6 @@ GDZealBrowser >> buildNewFileButton [
 		label: '+ New';
 		margin: (BlInsets right: 8);
 		action: [ self promptNewFile ]
-]
-
-{ #category : 'building' }
-GDZealBrowser >> buildSectionLabel: aString [
-	^ BrLabel new
-		aptitude: (BrGlamorousLabelAptitude new foreground: GDZealTheme specialFormColor; fontSize: 11);
-		text: aString;
-		margin: (BlInsets top: 8 bottom: 4)
 ]
 
 { #category : 'building' }
@@ -694,21 +632,6 @@ GDZealBrowser >> compileNode: aNode editor: editor [
 	self restoreUiState: state
 ]
 
-{ #category : 'editor setup' }
-GDZealBrowser >> configureZealEditor: anEditor [
-	"Set up all Zeal-like features on the editor"
-	self setupParinfer: anEditor.
-	self setupKeyChords: anEditor.
-	self setupArrowKeys: anEditor.
-	self setupFormHighlight: anEditor.
-	anEditor addShortcut: (BlShortcutWithAction new
-		combination: (BlKeyCombination builder control shift arrowUp build);
-		action: [ self swapForm: anEditor up: true ]).
-	anEditor addShortcut: (BlShortcutWithAction new
-		combination: (BlKeyCombination builder control shift arrowDown build);
-		action: [ self swapForm: anEditor up: false ])
-]
-
 { #category : 'commands' }
 GDZealBrowser >> createFromInput: editor [
 	"Create a new definition from the command bar."
@@ -724,28 +647,6 @@ GDZealBrowser >> createFromInput: editor [
 	  editor editor text: '' asRopedText.
 	  self rebuildTree ]
 	on: Error do: [ :e | self inform: 'Error: ' , e messageText ]
-]
-
-{ #category : 'editing' }
-GDZealBrowser >> cutOrRemoveLine: zealEditor [
-	"If text is selected, cut it. Otherwise remove the entire line."
-	| selStart selEnd hasSelection text |
-	hasSelection := false.
-	selStart := 0. selEnd := 0.
-	zealEditor editor selection do: [:sel |
-		selStart := sel from.
-		selEnd := sel to.
-		(selEnd > selStart) ifTrue: [ hasSelection := true ] ].
-	
-	hasSelection ifTrue: [
-		"Cut selected text to clipboard, then delete it"
-		text := zealEditor editor text asString.
-		Clipboard clipboardText: (text copyFrom: selStart + 1 to: selEnd).
-		zealEditor editor deleter
-			from: selStart to: selEnd;
-			delete ]
-	ifFalse: [
-		self removeLine: zealEditor ]
 ]
 
 { #category : 'accessing' }
@@ -771,36 +672,6 @@ GDZealBrowser >> definitionsForCategory: aCategory [
 	^ (defs asSortedCollection: [ :a :b | a name <= b name ]) asArray
 ]
 
-{ #category : 'editing' }
-GDZealBrowser >> deindentLine: zealEditor [
-	"Remove one level of indentation (2 spaces) from the current line"
-	| text cursorPos lines lineIndex charCount line newLine |
-	text := zealEditor editor text asString.
-	cursorPos := 0.
-	zealEditor editor cursors do: [ :c | cursorPos := c position ].
-	lines := text lines asOrderedCollection.
-	charCount := 0.
-	lineIndex := 1.
-	lines
-		doWithIndex: [ :l :i | 
-			(charCount <= cursorPos and: [ cursorPos <= (charCount + l size + 1) ])
-				ifTrue: [ lineIndex := i ].
-			charCount := charCount + l size + 1 ].
-	lineIndex > lines size ifTrue: [ ^ self ].
-	line := lines at: lineIndex.
-	(line beginsWith: '  ')
-		ifTrue: [ newLine := line allButFirst: 2 ]
-		ifFalse: [ (line beginsWith: ' ')
-				ifTrue: [ newLine := line allButFirst ]
-				ifFalse: [ ^ self ] ].
-	lines at: lineIndex put: newLine.
-	zealEditor
-		text: ((ZealTheme highlight: (String cr join: lines))).
-	zealEditor editor navigator
-		moveTo: (cursorPos - 2 max: 0);
-		apply
-]
-
 { #category : 'actions' }
 GDZealBrowser >> deleteDefinition: aDef [
 	"Delete a definition from the project (and its .gd file on disk), persist, and
@@ -812,34 +683,6 @@ GDZealBrowser >> deleteDefinition: aDef [
 	state := self captureUiState.
 	self rebuildTree.
 	self restoreUiState: state
-]
-
-{ #category : 'editor' }
-GDZealBrowser >> duplicateLine: zealEditor [
-	"Duplicate the current line below"
-	| text cursorPos lines lineIndex charCount newCursorPos |
-	text := zealEditor editor text asString.
-	cursorPos := 0.
-	zealEditor editor cursors do: [ :c | cursorPos := c position ].
-	lines := text lines asOrderedCollection.
-	lines isEmpty ifTrue: [ ^ self ].
-	charCount := 0.
-	lineIndex := 1.
-	lines
-		doWithIndex: [ :l :i |
-			(charCount <= cursorPos and: [ cursorPos <= (charCount + l size + 1) ])
-				ifTrue: [ lineIndex := i ].
-			charCount := charCount + l size + 1 ].
-	lineIndex > lines size ifTrue: [ ^ self ].
-	"Insert duplicate after current line"
-	lines add: (lines at: lineIndex) copy afterIndex: lineIndex.
-	"Move cursor to same column on the new line"
-	newCursorPos := cursorPos + (lines at: lineIndex) size + 1.
-	zealEditor
-		text: (self themeClass highlight: (String lf join: lines)).
-	zealEditor editor navigator
-		moveTo: (newCursorPos min: zealEditor editor text size);
-		apply
 ]
 
 { #category : 'private' }
@@ -909,49 +752,6 @@ GDZealBrowser >> godotPath: aString [
 	self buildUI
 ]
 
-{ #category : 'editing' }
-GDZealBrowser >> indentLine: zealEditor [
-	"Smart indent: align to opener column + 1. If already there, add 2 more."
-	| text cursorPos lines lineIndex charCount currentIndent targetIndent newIndent spacesToAdd |
-	text := zealEditor editor text asString.
-	cursorPos := 0.
-	zealEditor editor cursors do: [ :c | cursorPos := c position ].
-	lines := text lines asOrderedCollection.
-	charCount := 0.
-	lineIndex := 1.
-	lines
-		doWithIndex: [ :l :i | 
-			(charCount <= cursorPos and: [ cursorPos <= (charCount + l size + 1) ])
-				ifTrue: [ lineIndex := i ].
-			charCount := charCount + l size + 1 ].
-	lineIndex > lines size ifTrue: [ ^ self ].
-	
-	"Calculate smart indent"
-	currentIndent := ZealParinfer indentOf: (lines at: lineIndex).
-	targetIndent := ZealParinfer smartIndentColumn: text forLine: lineIndex.
-	
-	"If below target, jump to target. If at or above, add 2."
-	currentIndent < targetIndent
-		ifTrue: [ newIndent := targetIndent ]
-		ifFalse: [ newIndent := currentIndent + 2 ].
-	spacesToAdd := newIndent - currentIndent.
-	
-	lines at: lineIndex put: (String new: spacesToAdd withAll: $ ) , (lines at: lineIndex).
-	zealEditor
-		text: ((ZealTheme highlight: (String cr join: lines))).
-	zealEditor editor navigator
-		moveTo: (cursorPos + spacesToAdd min: zealEditor editor text size);
-		apply
-]
-
-{ #category : 'initialization' }
-GDZealBrowser >> initialize [
-	super initialize.
-	self layout: BlLinearLayout vertical.
-	self constraintsDo: [ :c | c horizontal matchParent. c vertical matchParent ].
-	self background: GDZealTheme backgroundColor
-]
-
 { #category : 'building' }
 GDZealBrowser >> labelForCategory: aCategory [
 	"Display label for a category tab. Special-cased for defcosystems which reads
@@ -981,35 +781,9 @@ GDZealBrowser >> lspModel [
 	^ lspModel
 ]
 
-{ #category : 'editing' }
-GDZealBrowser >> moveCursorToSelectionEdge: zealEditor left: isLeft [
-	"If there's a selection, move cursor to start (left) or end (right) and deselect.
-	 If no selection, do nothing (let default handler run)."
-	| selStart selEnd hasSelection |
-	hasSelection := false.
-	selStart := 0. selEnd := 0.
-	zealEditor editor selection do: [:sel |
-		selStart := sel from.
-		selEnd := sel to.
-		(selEnd > selStart) ifTrue: [ hasSelection := true ] ].
-	hasSelection ifFalse: [ ^ false ]. "Signal: let default handle it"
-	
-	zealEditor editor deselecter all deselect.
-	zealEditor editor navigator
-		moveTo: (isLeft ifTrue: [ selStart ] ifFalse: [ selEnd ]);
-		apply.
-	^ true "Signal: we handled it"
-]
-
 { #category : 'accessing' }
 GDZealBrowser >> project [
 	^ project
-]
-
-{ #category : 'accessing' }
-GDZealBrowser >> project: aProject [
-	project := aProject.
-	self buildUI
 ]
 
 { #category : 'actions' }
@@ -1142,171 +916,6 @@ GDZealBrowser >> selectNode: aDef [
 	self rebuildTree
 ]
 
-{ #category : 'editor setup' }
-GDZealBrowser >> setupArrowKeys: zealEditor [
-	"Override arrow keys: with selection, jump to selection edge instead of moving one char."
-	| leftShortcut rightShortcut |
-	
-	"Remove default ArrowLeft and ArrowRight"
-	leftShortcut := zealEditor shortcuts 
-		detect: [:s | s combination asString = 'ArrowLeft'] ifNone: [nil].
-	leftShortcut ifNotNil: [ zealEditor removeShortcut: leftShortcut ].
-	rightShortcut := zealEditor shortcuts 
-		detect: [:s | s combination asString = 'ArrowRight'] ifNone: [nil].
-	rightShortcut ifNotNil: [ zealEditor removeShortcut: rightShortcut ].
-	
-	zealEditor addShortcut: (BlShortcutWithAction new
-		combination: BlKeyCombination arrowLeft;
-		action: [ 
-			(self moveCursorToSelectionEdge: zealEditor left: true) ifFalse: [
-				"No selection — move left normally"
-				zealEditor editor navigator
-					moveLeft;
-					apply ] ]).
-	zealEditor addShortcut: (BlShortcutWithAction new
-		combination: BlKeyCombination arrowRight;
-		action: [
-			(self moveCursorToSelectionEdge: zealEditor left: false) ifFalse: [
-				zealEditor editor navigator
-					moveRight;
-					apply ] ])
-]
-
-{ #category : 'editor setup' }
-GDZealBrowser >> setupFormHighlight: anEditor [
-	"Listen for cursor changes and highlight the innermost form at cursor position"
-	anEditor editor
-		when: BrTextEditorCursorChangedEvent do: [:e |
-			| text source cursorPos pairs stack inString innermost |
-			text := anEditor editor text.
-			source := text asString.
-			cursorPos := 0.
-			anEditor editor cursors do: [:c | cursorPos := c position].
-			
-			"Clear old highlights"
-			text clearAttributes: [:a | a isKindOf: BlTextHighlightAttribute].
-			
-			cursorPos = 0 ifFalse: [
-				"Find all paren pairs (1-based)"
-				pairs := OrderedCollection new.
-				stack := OrderedCollection new.
-				inString := false.
-				1 to: source size do: [:i |
-					| ch |
-					ch := source at: i.
-					ch = $" ifTrue: [ inString := inString not ]
-					ifFalse: [ inString ifFalse: [
-						(#($( $[ ${) includes: ch) ifTrue: [ stack add: i ].
-						(#($) $] $}) includes: ch) ifTrue: [
-							stack notEmpty ifTrue: [ pairs add: stack removeLast -> i ] ] ] ] ].
-				
-				"Find innermost form containing cursor (cursor is 0-based, pairs are 1-based)"
-				innermost := nil.
-				pairs do: [:pair |
-					(pair key <= cursorPos and: [pair value > cursorPos]) ifTrue: [
-						(innermost isNil or: [(pair value - pair key) < (innermost value - innermost key)])
-							ifTrue: [ innermost := pair ] ] ].
-				
-				innermost ifNotNil: [
-					(text from: innermost key to: innermost value) 
-						attribute: (BlTextHighlightAttribute new paint: ((Color fromHexString: '9580FF') alpha: 0.2)) ] ] ]
-]
-
-{ #category : 'editor setup' }
-GDZealBrowser >> setupKeyChords: zealEditor [
-	"Install key chord handler with default chords"
-	keyChord := ZealKeyChord new.
-	keyChord installOn: zealEditor.
-	
-	"Example chords — add more with: keyChord addChord: 'xx' action: [...]"
-	keyChord addChord: 'jk' action: [ self applyParinfer: zealEditor ]
-]
-
-{ #category : 'editor setup' }
-GDZealBrowser >> setupParinfer: zealEditor [
-	"Alt+F: format. Tab/Shift+Tab: indent/deindent + parinfer. Ctrl+X: cut/remove line. Ctrl+D: duplicate. Ctrl+W/Shift+W: expand/shrink selection. Ctrl+Alt+Right/Left: slurp/barf."
-	| ctrlXShortcut ctrlWShortcut |
-	
-	ctrlXShortcut := zealEditor shortcuts 
-		detect: [:s | s combination asString asLowercase includesSubstring: '& x'] 
-		ifNone: [ nil ].
-	ctrlXShortcut ifNotNil: [ zealEditor removeShortcut: ctrlXShortcut ].
-	ctrlWShortcut := zealEditor shortcuts 
-		detect: [:s | s combination asString asLowercase includesSubstring: '& w'] 
-		ifNone: [ nil ].
-	ctrlWShortcut ifNotNil: [ zealEditor removeShortcut: ctrlWShortcut ].
-	
-	zealEditor addShortcut: (BlShortcutWithAction new 
-		combination: (BlKeyCombination builder alt f build);
-		action: [ self applyFormat: zealEditor ]).
-	zealEditor addShortcut: (BlShortcutWithAction new 
-		combination: BlKeyCombination tab;
-		action: [ self indentLine: zealEditor. self applyParinfer: zealEditor ]).
-	zealEditor addShortcut: (BlShortcutWithAction new 
-		combination: (BlKeyCombination builder shift tab build);
-		action: [ self deindentLine: zealEditor. self applyParinfer: zealEditor ]).
-	zealEditor addShortcut: (BlShortcutWithAction new 
-		combination: (BlKeyCombination builder control x build);
-		action: [ self cutOrRemoveLine: zealEditor. self applyParinfer: zealEditor ]).
-	zealEditor addShortcut: (BlShortcutWithAction new 
-		combination: (BlKeyCombination builder control d build);
-		action: [ self duplicateLine: zealEditor. self applyParinfer: zealEditor ]).
-	zealEditor addShortcut: (BlShortcutWithAction new 
-		combination: (BlKeyCombination builder control w build);
-		action: [ self expandSelection: zealEditor ]).
-	zealEditor addShortcut: (BlShortcutWithAction new 
-		combination: (BlKeyCombination builder control shift w build);
-		action: [ self shrinkSelection: zealEditor ]).
-	zealEditor addShortcut: (BlShortcutWithAction new 
-		combination: (BlKeyCombination builder control alt arrowRight build);
-		action: [ self slurpForward: zealEditor ]).
-	zealEditor addShortcut: (BlShortcutWithAction new 
-		combination: (BlKeyCombination builder control alt arrowLeft build);
-		action: [ self barfForward: zealEditor ])
-]
-
-{ #category : 'editing' }
-GDZealBrowser >> shrinkSelection: zealEditor [
-	"Ctrl+Shift+W: shrink selection back to previous level"
-	| prev |
-	(expandSelectionStack isNil or: [ expandSelectionStack isEmpty ]) ifTrue: [ ^ self ].
-	prev := expandSelectionStack removeLast.
-	zealEditor editor deselecter all deselect.
-	(prev key = prev value)
-		ifTrue: [
-			zealEditor editor navigator moveTo: prev key; apply ]
-		ifFalse: [
-			zealEditor editor selecter from: prev key to: prev value; select ]
-]
-
-{ #category : 'editing' }
-GDZealBrowser >> slurpForward: zealEditor [
-	"Slurp: pull next expression into the current form"
-	| text cursorPos result pairs containing openerPos |
-	text := zealEditor editor text asString.
-	text isEmpty ifTrue: [ ^ self ].
-	cursorPos := 0.
-	zealEditor editor cursors do: [ :c | cursorPos := c position ].
-	
-	"Debug — store in class var for inspection"
-	pairs := ZealParinfer parenPairsIn: text.
-	containing := (pairs select: [:p | p key <= cursorPos and: [p value >= cursorPos]])
-		sorted: [:a :b | (a value - a key) < (b value - b key)].
-	containing isEmpty ifTrue: [ 
-		Smalltalk globals at: #ZealDebug put: 'no form at cursor ' , cursorPos printString. ^ self ].
-	openerPos := containing first key.
-	Smalltalk globals at: #ZealDebug put: 
-		'cursor=' , cursorPos printString ,
-		' opener=' , openerPos printString ,
-		' firstArgCol=' , (ZealParinfer firstArgColumnAt: openerPos in: text) printString ,
-		' closer=' , containing first value printString.
-	
-	result := ZealParinfer slurpForward: text at: cursorPos.
-	result = text ifTrue: [ ^ self ].
-	zealEditor text: ((ZealTheme highlight: result)).
-	zealEditor editor navigator moveTo: (cursorPos min: result size); apply
-]
-
 { #category : 'actions' }
 GDZealBrowser >> spawnDraftPage [
 	"Drop a draft accordion (BrExpander) into the draftSlot between the top bar and
@@ -1346,55 +955,6 @@ GDZealBrowser >> spawnResultPageOn: editor result: aResult [
 	 page shows exactly those two views."
 	[ editor phlow spawnObject: aResult ]
 		on: Error do: [ :e | aResult inspect ]
-]
-
-{ #category : 'editing' }
-GDZealBrowser >> swapForm: anEditor up: isUp [
-	"Swap element at cursor with adjacent sibling. Cursor stays at same position in element."
-	| text cursorPos result stack inString pairs innermost elements currentIdx current offsetInElement currentText newStart newCursorPos |
-	text := anEditor editor text asString.
-	text isEmpty ifTrue: [ ^ self ].
-	cursorPos := 0.
-	anEditor editor cursors do: [:c | cursorPos := c position].
-	
-	pairs := OrderedCollection new. stack := OrderedCollection new. inString := false.
-	1 to: text size do: [:i | | ch | ch := text at: i.
-		ch = $" ifTrue: [ inString := inString not ] ifFalse: [ inString ifFalse: [
-			(#($( $[ ${) includes: ch) ifTrue: [ stack add: i ].
-			(#($) $] $}) includes: ch) ifTrue: [ stack notEmpty ifTrue: [ pairs add: stack removeLast -> i ] ] ] ] ].
-	innermost := nil.
-	pairs do: [:pair | (pair key < cursorPos and: [pair value > cursorPos]) ifTrue: [
-		(innermost isNil or: [(pair value - pair key) < (innermost value - innermost key)]) ifTrue: [ innermost := pair ] ] ].
-	innermost ifNil: [ ^ self ].
-	
-	elements := ZealParinfer elementsInForm: text from: innermost key to: innermost value.
-	elements size < 2 ifTrue: [ ^ self ].
-	currentIdx := 0.
-	elements doWithIndex: [:e :idx | (e key <= cursorPos and: [e value >= cursorPos]) ifTrue: [ currentIdx := idx ] ].
-	currentIdx = 0 ifTrue: [ ^ self ].
-	isUp ifTrue: [ currentIdx <= 1 ifTrue: [ ^ self ] ] ifFalse: [ currentIdx >= elements size ifTrue: [ ^ self ] ].
-	
-	current := elements at: currentIdx.
-	"0-based offset: cursorPos is 0-based, current key is 1-based"
-	offsetInElement := cursorPos - (current key - 1).
-	currentText := text copyFrom: current key to: current value.
-	
-	result := isUp
-		ifTrue: [ ZealParinfer swapFormUp: text at: cursorPos ]
-		ifFalse: [ ZealParinfer swapFormDown: text at: cursorPos ].
-	result = text ifTrue: [ ^ self ].
-	
-	newStart := isUp
-		ifTrue: [ (elements at: currentIdx - 1) key ]
-		ifFalse: [ result findString: currentText startingAt: (elements at: currentIdx) key ].
-	"Convert 1-based newStart to 0-based and add offset"
-	newCursorPos := (newStart - 1) + offsetInElement.
-	
-	suppressRehighlight := true.
-	anEditor editor deleter from: 0 to: text size; delete.
-	anEditor editor inserter at: 0; string: result; withoutCursorUpdate; insert.
-	suppressRehighlight := false.
-	anEditor editor navigator moveTo: ((newCursorPos max: 0) min: result size); apply
 ]
 
 { #category : 'hooks' }

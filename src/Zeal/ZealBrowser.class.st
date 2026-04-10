@@ -68,11 +68,12 @@ ZealBrowser >> buildDivider [
 		margin: (BlInsets top: 8 bottom: 8)
 ]
 
-{ #category : 'ui' }
-ZealBrowser >> buildSectionLabel: title [
+{ #category : 'building' }
+ZealBrowser >> buildSectionLabel: aString [
 	^ BrLabel new
-		aptitude: (BrGlamorousLabelAptitude new foreground: self themeClass specialFormColor; fontSize: 15; bold);
-		text: title
+		aptitude: (BrGlamorousLabelAptitude new foreground: self themeClass specialFormColor; fontSize: 11);
+		text: aString;
+		margin: (BlInsets top: 8 bottom: 4)
 ]
 
 { #category : 'editor' }
@@ -143,7 +144,7 @@ ZealBrowser >> deindentLine: zealEditor [
 		apply
 ]
 
-{ #category : 'parinfer' }
+{ #category : 'editor' }
 ZealBrowser >> duplicateLine: zealEditor [
 	"Duplicate the current line below"
 	| text cursorPos lines lineIndex charCount newCursorPos |
@@ -155,20 +156,17 @@ ZealBrowser >> duplicateLine: zealEditor [
 	charCount := 0.
 	lineIndex := 1.
 	lines
-		doWithIndex: [ :l :i | 
+		doWithIndex: [ :l :i |
 			(charCount <= cursorPos and: [ cursorPos <= (charCount + l size + 1) ])
 				ifTrue: [ lineIndex := i ].
 			charCount := charCount + l size + 1 ].
 	lineIndex > lines size ifTrue: [ ^ self ].
-	
 	"Insert duplicate after current line"
 	lines add: (lines at: lineIndex) copy afterIndex: lineIndex.
-	
 	"Move cursor to same column on the new line"
 	newCursorPos := cursorPos + (lines at: lineIndex) size + 1.
-	
 	zealEditor
-		text: ((self themeClass highlight: (String cr join: lines))).
+		text: (self themeClass highlight: (String lf join: lines)).
 	zealEditor editor navigator
 		moveTo: (newCursorPos min: zealEditor editor text size);
 		apply
@@ -291,8 +289,8 @@ ZealBrowser >> indentLine: zealEditor [
 { #category : 'initialization' }
 ZealBrowser >> initialize [
 	super initialize.
-	self layout: BlLinearLayout horizontal.
-	self constraintsDo: [:c | c horizontal matchParent. c vertical matchParent ].
+	self layout: BlLinearLayout vertical.
+	self constraintsDo: [ :c | c horizontal matchParent. c vertical matchParent ].
 	self background: self themeClass backgroundColor
 ]
 
