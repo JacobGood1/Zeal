@@ -212,6 +212,66 @@ ZealParinfer class >> format: aString [
 	^ self indentMode: ((self lineSeparatorOf: aString) join: result)
 ]
 
+{ #category : 'indentation' }
+ZealParinfer class >> indentLevels: aString forLine: lineIndex [
+	"Compute the set of valid indentation levels for lineIndex (1-based).
+	 Returns a sorted Array of 0-based column numbers:
+	   1. Same indent as the line above
+	   2. Opener column + 1 (Lisp-1 body indent)
+	   3. First-arg column (align with the first argument of the containing form)
+	   4. Zero (flush left)
+	 Deduplicates and sorts."
+	| lines parenStack levels prevIndent openerCol argCol inString |
+	lines := aString lines.
+	levels := Set new.
+	levels add: 0.  "always offer flush left"
+	"1. Previous line indent"
+	lineIndex > 1 ifTrue: [
+		prevIndent := self indentOf: (lines at: lineIndex - 1).
+		levels add: prevIndent ].
+	"Find the containing form via paren stack (same as smartIndentColumn:)"
+	parenStack := OrderedCollection new.  "Each: {column, lineNum, charIndex}"
+	inString := false.
+	1 to: (lineIndex - 1 min: lines size) do: [ :li |
+		| line trailStart |
+		line := (lines at: li) trimRight.
+		trailStart := line size + 1.
+		[ trailStart > 1 and: [
+			| c | c := line at: trailStart - 1.
+			(#($) $] $}) includes: c) or: [ c isSeparator ] ] ] whileTrue: [ trailStart := trailStart - 1 ].
+		inString := false.
+		1 to: line size do: [ :ci |
+			| ch |
+			ch := line at: ci.
+			ch = $" ifTrue: [ inString := inString not ]
+			ifFalse: [ inString ifFalse: [
+				ci < trailStart ifTrue: [
+					(#($( $[ ${) includes: ch) ifTrue: [
+						parenStack add: { ci - 1. li. ci } ]
+					ifFalse: [ (#($) $] $}) includes: ch) ifTrue: [
+						parenStack notEmpty ifTrue: [ parenStack removeLast ] ] ] ] ] ] ] ].
+	parenStack isEmpty ifTrue: [ ^ levels asSortedCollection asArray ].
+	"2. Opener column + 1 (Lisp-1 indent)"
+	openerCol := parenStack last first.
+	levels add: openerCol + 1.
+	"3. First-arg column — skip the head symbol to find where args start"
+	[ | openerLine openerCharIdx line j |
+	  openerLine := parenStack last second.
+	  openerCharIdx := parenStack last third.
+	  line := lines at: openerLine.
+	  "Skip past opener"
+	  j := openerCharIdx + 1.
+	  "Skip the head symbol (letters, digits, dashes, underscores)"
+	  [ j <= line size and: [ (line at: j) isSeparator not ] ] whileTrue: [ j := j + 1 ].
+	  "Skip whitespace to find first arg"
+	  [ j <= line size and: [ (line at: j) isSeparator ] ] whileTrue: [ j := j + 1 ].
+	  j <= line size ifTrue: [
+		argCol := j - 1. "0-based"
+		levels add: argCol ] ]
+		on: Error do: [ "ignore" ].
+	^ levels asSortedCollection asArray
+]
+
 { #category : 'api' }
 ZealParinfer class >> indentMode: aString [
 	"Parinfer indent mode: strip all trailing closers, re-infer from indentation.

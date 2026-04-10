@@ -251,10 +251,12 @@ ZealBrowser >> flashSuccess: anEditor [
 	self flashEditor: anEditor color: (self themeClass cursorColor alpha: 0.2)
 ]
 
-{ #category : 'parinfer' }
+{ #category : 'editor' }
 ZealBrowser >> indentLine: zealEditor [
-	"Smart indent: align to opener column + 1. If already there, add 2 more."
-	| text cursorPos lines lineIndex charCount currentIndent targetIndent newIndent spacesToAdd |
+	"Tab: cycle through valid indentation levels for the current line.
+	 Levels include: flush left, line-above indent, opener+1 (Lisp-1),
+	 and first-arg alignment. Each press advances to the next level."
+	| text cursorPos lines lineIndex charCount currentIndent levels nextIndent delta colInLine |
 	text := zealEditor editor text asString.
 	cursorPos := 0.
 	zealEditor editor cursors do: [ :c | cursorPos := c position ].
@@ -262,27 +264,30 @@ ZealBrowser >> indentLine: zealEditor [
 	charCount := 0.
 	lineIndex := 1.
 	lines
-		doWithIndex: [ :l :i | 
+		doWithIndex: [ :l :i |
 			(charCount <= cursorPos and: [ cursorPos <= (charCount + l size + 1) ])
 				ifTrue: [ lineIndex := i ].
 			charCount := charCount + l size + 1 ].
 	lineIndex > lines size ifTrue: [ ^ self ].
-	
-	"Calculate smart indent"
 	currentIndent := ZealParinfer indentOf: (lines at: lineIndex).
-	targetIndent := ZealParinfer smartIndentColumn: text forLine: lineIndex.
-	
-	"If below target, jump to target. If at or above, add 2."
-	currentIndent < targetIndent
-		ifTrue: [ newIndent := targetIndent ]
-		ifFalse: [ newIndent := currentIndent + 2 ].
-	spacesToAdd := newIndent - currentIndent.
-	
-	lines at: lineIndex put: (String new: spacesToAdd withAll: $ ) , (lines at: lineIndex).
+	levels := ZealParinfer indentLevels: text forLine: lineIndex.
+	"Find the next level strictly greater than current. If none, wrap to first."
+	nextIndent := levels detect: [ :lv | lv > currentIndent ] ifNone: [ levels first ].
+	nextIndent = currentIndent ifTrue: [ ^ self ].
+	"Apply the new indent"
+	delta := nextIndent - currentIndent.
+	delta > 0
+		ifTrue: [
+			lines at: lineIndex put: (String new: delta withAll: $ ) , (lines at: lineIndex) ]
+		ifFalse: [
+			| line trimCount |
+			line := lines at: lineIndex.
+			trimCount := delta abs min: (ZealParinfer indentOf: line).
+			lines at: lineIndex put: (line allButFirst: trimCount) ].
 	zealEditor
-		text: ((self themeClass highlight: (String cr join: lines))).
+		text: (self themeClass highlight: (String lf join: lines)).
 	zealEditor editor navigator
-		moveTo: (cursorPos + spacesToAdd min: zealEditor editor text size);
+		moveTo: (cursorPos + delta min: zealEditor editor text size max: 0);
 		apply
 ]
 
