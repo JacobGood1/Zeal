@@ -504,20 +504,28 @@ static func interleave(arrays: Array) -> Array:
 '
 ]
 
-{ #category : 'building' }
+{ #category : 'definitions' }
 GDZealProject >> addDefinition: aNode fromSource: sourceString [
-	"Add a definition to the right module based on its type. Defends against stray
-	 non-ZealDefinition nodes (e.g. top-level expressions parsed from a .zeal file)
-	 already living in the module."
+	"Add a definition to the right module based on its type. If a definition with
+	 the same name exists in a DIFFERENT module (e.g. defsystem → defcosystem rename),
+	 delete the old one (and its files) before adding the new one. This prevents
+	 name conflicts like HealthDrainSystem existing in both systems/ and components/."
 	| folder mod existing |
 	folder := self folderFor: aNode.
 	mod := modules at: folder.
 	aNode rawSource: sourceString.
 	aNode parent: mod.
-	"Replace existing def with same name — only consider real definitions"
-	existing := mod definitions detect: [ :d | 
+	"Check ALL modules for a same-named definition in a different folder — remove it"
+	modules keysAndValuesDo: [ :otherFolder :otherMod |
+		otherFolder = folder ifFalse: [
+			otherMod definitions copy do: [ :d |
+				((d isKindOf: ZealDefinition) and: [ d name = aNode name ]) ifTrue: [
+					"Delete the old definition's files and remove from its module"
+					self deleteDefinition: d ] ] ] ].
+	"Replace existing def with same name in the TARGET module"
+	existing := mod definitions detect: [ :d |
 		(d isKindOf: ZealDefinition) and: [ d name = aNode name ] ] ifNone: [ nil ].
-	existing 
+	existing
 		ifNotNil: [ mod definitions at: (mod definitions indexOf: existing) put: aNode ]
 		ifNil: [ mod definitions add: aNode ].
 	(aNode annotations includesAny: #('gecs_component')) ifTrue: [
