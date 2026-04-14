@@ -992,17 +992,11 @@ GDZealCodeGenerator >> generateDefcomp: aListNode [
 		i := i + 1 ]
 ]
 
-{ #category : 'special forms' }
+{ #category : 'generation' }
 GDZealCodeGenerator >> generateDefcosystem: aListNode [
-	"(defcosystem name body...)
-	 (defcosystem name [bindings...] body...)
-	 Defines a stateful coroutine-system in one form: a Component (with _state/_timer fields)
-	 plus the per-frame logic that GECS will call. Body may include (sync ...) and (race ...)
-	 for concurrent lanes — lane code is INLINED into the controller arm rather than calling
-	 helper functions, saving ~300 ns/controller-frame of GDScript function-call overhead.
-	 State dispatch uses if/elif chains rather than match because GDScript's match is
-	 significantly slower (~2x) for integer dispatch.
-	 Coroutines defined via (defco ...) are macro-expanded at compile time."
+	"(defcosystem name [bindings...] body...)
+	 Generates a Component class with _state/_timer fields and a tick method
+	 containing the FSM state machine."
 	| exprs name bodyForms bindings third splitResult states lanes |
 	exprs := aListNode expressions.
 	name := exprs second value value.
@@ -1013,7 +1007,6 @@ GDZealCodeGenerator >> generateDefcosystem: aListNode [
 		(third isKindOf: ZealVectorNode) ifTrue: [
 			bindings := GDZealCompiler parseFsmBindings: third.
 			bodyForms := bodyForms allButFirst ] ].
-	
 	registry register: name.
 	splitResult := GDZealCompiler fsmSplitBody: bodyForms coroutines: registry coroutines.
 	states := splitResult at: #states.
@@ -1021,47 +1014,41 @@ GDZealCodeGenerator >> generateDefcosystem: aListNode [
 	currentBindings := bindings.
 	currentStateVar := '_state'.
 	currentTimerVar := '_timer'.
-	
 	"Class header"
 	self emit: 'class_name C_'.
 	self emit: (self toPascalCase: name).
 	self nl.
 	self emit: 'extends Component'.
 	self nl. self nl.
-	
 	"State + timer fields"
 	self emit: '@export var _state: int = 0'. self nl.
 	self emit: '@export var _timer: float = 0.0'. self nl.
-	"Per-lane fields"
 	lanes do: [ :lane |
 		| pfx |
 		pfx := '_l' , (lane at: #laneId) asString.
 		self emit: '@export var ' , pfx , '_state: int = 0'. self nl.
 		self emit: '@export var ' , pfx , '_timer: float = 0.0'. self nl ].
 	self nl.
-	
-	"Tick method signature with bindings as parameters"
+	"Tick method signature"
 	self emit: 'func tick(entity: Entity, delta: float'.
 	bindings do: [ :b |
 		self emit: ', '.
 		self emit: (b at: #name).
 		self emit: ': '.
 		self emit: (self resolveType: (b at: #type)) ].
-	self emit: ') -> void:'. self nl.
+	self emit: ') -> void:'.
+	"Body — if/elif dispatch on _state. indent THEN nl so the body is properly nested."
 	self indent.
-	
-	"Dispatch — if/elif chain on _state. Pass 0-based index to emitFsmState: so the
-	 default `nextIdx := i + 1` arithmetic stays consistent with how lanes are emitted."
 	states withIndexDo: [ :state :idx |
+		self nl.
 		idx = 1
 			ifTrue: [ self emit: 'if _state == 0:' ]
 			ifFalse: [ self emit: 'elif _state == ' , (idx - 1) asString , ':' ].
-		self nl.
 		self indent.
+		self nl.
 		self emitFsmState: state index: idx - 1 totalStates: states size.
 		self dedent ].
-	self dedent.
-	self nl
+	self dedent
 ]
 
 { #category : 'generating - GECS' }
@@ -2037,12 +2024,15 @@ GDZealCodeGenerator >> registry [
 	^ registry
 ]
 
-{ #category : 'private - naming' }
+{ #category : 'generation' }
 GDZealCodeGenerator >> resolveClassRef: aString [
-	"Resolve @name -> class name. Strip @, PascalCase, check component registry for C_ prefix."
-	| name |
+	"Resolve @name -> class name. Strip @, PascalCase, add C_ prefix for GECS components."
+	| name pascal |
 	name := aString allButFirst. "strip @"
-	^ registry resolve: name
+	pascal := registry resolve: name.
+	"Ensure C_ prefix — GECS components always have it"
+	(pascal beginsWith: 'C_') ifFalse: [ pascal := 'C_' , pascal ].
+	^ pascal
 ]
 
 { #category : 'private - types' }

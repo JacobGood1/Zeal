@@ -378,24 +378,22 @@ GDZealCompiler class >> compileFsmSystemFor: aName [
 	^ self compileFsmSystemFor: aName withBindings: #()
 ]
 
-{ #category : 'special forms' }
+{ #category : 'compiling' }
 GDZealCompiler class >> compileFsmSystemFor: aName withBindings: bindings [
 	"Generate the GDScript for a sibling system that ticks an FSM component each frame.
-	 bindings is an OrderedCollection of {#name #type} dictionaries.
-	 The system queries for [C_<Name>] plus all binding component types,
-	 and calls fsm.tick(entity, delta, ...binding-components)."
-	| pascalName allComponents |
-	pascalName := '' join: ((aName substrings: '-') collect: [ :s | s capitalized ]).
-	"Build the list of all components: the FSM itself + bindings"
+	 Strips trailing -system from the name to avoid HealthDrainSystemSystem."
+	| baseName pascalName allComponents |
+	baseName := aName.
+	(baseName endsWith: '-system') ifTrue: [ baseName := baseName allButLast: 7 ].
+	pascalName := '' join: ((baseName substrings: '-') collect: [ :s | s capitalized ]).
 	allComponents := OrderedCollection new.
-	allComponents add: 'C_' , pascalName.
+	allComponents add: 'C_' , ('' join: ((aName substrings: '-') collect: [ :s | s capitalized ])).
 	bindings do: [ :b |
 		| typeName |
 		typeName := (b at: #type).
 		(typeName beginsWith: '@') ifTrue: [ typeName := typeName allButFirst ].
 		typeName := 'C_' , ('' join: ((typeName substrings: '-') collect: [ :s | s capitalized ])).
 		allComponents add: typeName ].
-	
 	^ String streamContents: [ :s |
 		| compList |
 		compList := '[' , (', ' join: allComponents) , ']'.
@@ -410,7 +408,6 @@ GDZealCompiler class >> compileFsmSystemFor: aName withBindings: bindings [
 		s tab; nextPutAll: 'for _i in entities.size():'; lf.
 		s tab; tab; nextPutAll: 'var entity = entities[_i]'; lf.
 		s tab; tab; nextPutAll: 'var fsm = fsm_arr[_i]'; lf.
-		"Build tick call with bindings"
 		s tab; tab; nextPutAll: 'fsm.tick(entity, delta'.
 		bindings do: [ :b |
 			s nextPutAll: ', '; nextPutAll: (b at: #name); nextPutAll: '_arr[_i]' ].
