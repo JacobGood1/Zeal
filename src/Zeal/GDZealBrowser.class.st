@@ -156,14 +156,14 @@ GDZealBrowser >> buildDefinitionBody: aDef [
 	^ body
 ]
 
-{ #category : 'building - cards' }
+{ #category : 'building' }
 GDZealBrowser >> buildDefinitionExpander: aDef [
-	"Inline-expandable card for a single definition. Tagged with #defName in userData
-	 so captureUiState can find it after a rebuild."
+	"Inline-expandable card for a single definition. Uses ZealExpanderAptitude
+	 which starts dark — no white flash on tab switch."
 	| expander |
 	expander := BrExpander new.
-	expander aptitude: BrGlamorousExpanderAptitude new.
-	expander 
+	expander aptitude: ZealExpanderAptitude new.
+	expander
 		constraintsDo: [ :c | c horizontal matchParent. c vertical fitContent ];
 		margin: (BlInsets top: 2 bottom: 2);
 		header: [ self buildDefinitionHeader: aDef ];
