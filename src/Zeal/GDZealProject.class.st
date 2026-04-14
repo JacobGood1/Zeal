@@ -554,10 +554,7 @@ GDZealProject >> compileAll [
 GDZealProject >> compileDefinition: aNode [
 	"Compile a single definition to GDScript and write to Godot project.
 	 For defcosystem components, also writes a sibling system file in systems/.
-	 Ensures the Z transducer library is on disk before each compile so generated
-	 code that calls Z.mapping(), Z.into(), etc. always has the runtime available.
-	 Files in scripts/ are top-level defn output and need an `extends RefCounted`
-	 declaration to be loadable as a class via preload(...).new()."
+	 Strips -system suffix from defcosystem names to avoid double _system_system paths."
 	| gdScript gdPath snakeName folder source absRef |
 	self ensureTransducerLibrary.
 	folder := self folderFor: aNode.
@@ -569,11 +566,8 @@ GDZealProject >> compileDefinition: aNode [
 	gdPath ifNil: [ gdPath := 'scripts/' , snakeName , '.gd' ].
 	source := aNode rawSource.
 	gdScript := GDZealCodeGenerator compile: source withRegistry: registry.
-	"scripts/ files have no class header from the codegen — prepend one so they
-	 can be instantiated."
 	folder = 'scripts' ifTrue: [
 		gdScript := 'extends RefCounted' , String lf , String lf , gdScript ].
-	gdPath isNil ifTrue: [ gdPath := 'scripts/' , snakeName , '.gd' ].
 	absRef := (path , '/' , gdPath) asFileReference.
 	absRef parent ensureCreateDirectory.
 	absRef
@@ -581,10 +575,13 @@ GDZealProject >> compileDefinition: aNode [
 		writeStreamDo: [ :s | s nextPutAll: gdScript ].
 	"defcosystem components also generate a sibling system"
 	(GDZealCompiler isDefcosystem: source) ifTrue: [
-		| systemSrc systemPath bindings sysRef |
+		| systemSrc systemPath bindings sysRef sysSnake |
 		bindings := GDZealCompiler defcosystemBindings: source.
 		systemSrc := GDZealCompiler compileFsmSystemFor: aNode name withBindings: bindings.
-		systemPath := 'systems/' , snakeName , '_system.gd'.
+		"Strip _system suffix to avoid health_drain_system_system.gd"
+		sysSnake := snakeName.
+		(sysSnake endsWith: '_system') ifTrue: [ sysSnake := sysSnake allButLast: 7 ].
+		systemPath := 'systems/' , sysSnake , '_system.gd'.
 		sysRef := (path , '/' , systemPath) asFileReference.
 		sysRef parent ensureCreateDirectory.
 		sysRef
@@ -595,25 +592,25 @@ GDZealProject >> compileDefinition: aNode [
 
 { #category : 'definitions' }
 GDZealProject >> deleteDefinition: aNode [
-	"Remove a definition from the project: deletes the .zeal source file (so it
-	 won't be reloaded next session), the generated .gd file, and the sibling
-	 _system.gd for defcosystems. Removes the node from its module."
+	"Remove a definition from the project: deletes the .zeal source file, the
+	 generated .gd file, and the sibling _system.gd for defcosystems. Strips
+	 -system suffix from names to match the compile path logic."
 	| folder snakeName gdPath sysPath src zealPath |
 	(aNode isKindOf: ZealDefinition) ifFalse: [ ^ nil ].
 	folder := self folderFor: aNode.
 	snakeName := aNode name copyReplaceAll: '-' with: '_'.
-	"1. Delete the source .zeal file from gdzeal/<folder>/"
 	zealPath := path , '/gdzeal/' , folder , '/' , aNode name , '.zeal'.
 	zealPath asFileReference ensureDelete.
-	"2. Delete the generated .gd file"
 	folder = 'components'
 		ifTrue: [ gdPath := 'components/c_' , snakeName , '.gd' ]
 		ifFalse: [ gdPath := folder , '/' , snakeName , '.gd' ].
 	(path , '/' , gdPath) asFileReference ensureDelete.
-	"3. defcosystem also writes a sibling system file — clean it up too."
 	src := aNode rawSource.
 	(src notNil and: [ GDZealCompiler isDefcosystem: src ]) ifTrue: [
-		sysPath := 'systems/' , snakeName , '_system.gd'.
+		| sysSnake |
+		sysSnake := snakeName.
+		(sysSnake endsWith: '_system') ifTrue: [ sysSnake := sysSnake allButLast: 7 ].
+		sysPath := 'systems/' , sysSnake , '_system.gd'.
 		(path , '/' , sysPath) asFileReference ensureDelete ].
 	self removeDefinition: aNode.
 	^ gdPath
