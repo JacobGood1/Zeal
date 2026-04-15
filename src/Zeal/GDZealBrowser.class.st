@@ -484,12 +484,12 @@ GDZealBrowser >> captureUiState [
 	^ state
 ]
 
-{ #category : 'building - tabs' }
+{ #category : 'categories' }
 GDZealBrowser >> categoriesPresent [
 	"Distinct categories appearing in the project's definitions, in display order."
 	| order present |
 	project isNil ifTrue: [ ^ #() ].
-	order := #('components' 'defcosystems' 'systems' 'entities' 'observers' 'misc').
+	order := #('components' 'defcosystems' 'systems' 'entities' 'observers' 'scenes' 'misc').
 	present := ((project allDefinitions select: [ :d | d isKindOf: ZealDefinition ])
 		collect: [ :d | self categoryFor: d ]) asSet.
 	^ (order select: [ :c | present includes: c ]) asArray
@@ -497,18 +497,16 @@ GDZealBrowser >> categoriesPresent [
 
 { #category : 'categories' }
 GDZealBrowser >> categoryFor: aDefinition [
-	"Bucket a ZealDefinition into one of the GDZeal category groups based on its annotations.
-	 Returns a String — the category column populates from these and the definition column
-	 filters by them."
+	"Bucket a ZealDefinition into one of the GDZeal category groups based on its annotations."
 	| anns |
 	anns := aDefinition annotations ifNil: [ ^ 'misc' ].
-	"Defcosystem = component + fsm — must check before plain component"
 	((anns includes: 'gecs_component') and: [ anns includes: 'fsm' ])
 		ifTrue: [ ^ 'defcosystems' ].
 	(anns includes: 'gecs_component') ifTrue: [ ^ 'components' ].
 	(anns includes: 'gecs_system') ifTrue: [ ^ 'systems' ].
 	(anns includes: 'gecs_entity') ifTrue: [ ^ 'entities' ].
 	(anns includes: 'gecs_observer') ifTrue: [ ^ 'observers' ].
+	(anns includes: 'gecs_scene') ifTrue: [ ^ 'scenes' ].
 	^ 'misc'
 ]
 

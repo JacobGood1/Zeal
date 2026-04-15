@@ -552,9 +552,7 @@ GDZealProject >> compileAll [
 
 { #category : 'compiling' }
 GDZealProject >> compileDefinition: aNode [
-	"Compile a single definition to GDScript and write to Godot project.
-	 For defcosystem components, also writes a sibling system file in systems/.
-	 Strips -system suffix from defcosystem names to avoid double _system_system paths."
+	"Compile a single definition to GDScript and write to Godot project."
 	| gdScript gdPath snakeName folder source absRef |
 	self ensureTransducerLibrary.
 	folder := self folderFor: aNode.
@@ -563,9 +561,11 @@ GDZealProject >> compileDefinition: aNode [
 	folder = 'entities' ifTrue: [ gdPath := 'entities/' , snakeName , '.gd' ].
 	folder = 'systems' ifTrue: [ gdPath := 'systems/' , snakeName , '.gd' ].
 	folder = 'observers' ifTrue: [ gdPath := 'observers/' , snakeName , '.gd' ].
+	folder = 'scenes' ifTrue: [ gdPath := 'scenes/' , snakeName , '.gd' ].
 	gdPath ifNil: [ gdPath := 'scripts/' , snakeName , '.gd' ].
 	source := aNode rawSource.
 	gdScript := GDZealCodeGenerator compile: source withRegistry: registry.
+	"scripts/ need extends RefCounted for preload().new()"
 	folder = 'scripts' ifTrue: [
 		gdScript := 'extends RefCounted' , String lf , String lf , gdScript ].
 	absRef := (path , '/' , gdPath) asFileReference.
@@ -573,20 +573,20 @@ GDZealProject >> compileDefinition: aNode [
 	absRef
 		ensureDelete;
 		writeStreamDo: [ :s | s nextPutAll: gdScript ].
-	"defcosystem components also generate a sibling system"
+	"defcosystem: generate sibling system"
 	(GDZealCompiler isDefcosystem: source) ifTrue: [
 		| systemSrc systemPath bindings sysRef sysSnake |
 		bindings := GDZealCompiler defcosystemBindings: source.
 		systemSrc := GDZealCompiler compileFsmSystemFor: aNode name withBindings: bindings.
-		"Strip _system suffix to avoid health_drain_system_system.gd"
 		sysSnake := snakeName.
 		(sysSnake endsWith: '_system') ifTrue: [ sysSnake := sysSnake allButLast: 7 ].
 		systemPath := 'systems/' , sysSnake , '_system.gd'.
 		sysRef := (path , '/' , systemPath) asFileReference.
 		sysRef parent ensureCreateDirectory.
-		sysRef
-			ensureDelete;
-			writeStreamDo: [ :s | s nextPutAll: systemSrc ] ].
+		sysRef ensureDelete; writeStreamDo: [ :s | s nextPutAll: systemSrc ] ].
+	"defscene: generate the .tscn scene file with World node + all systems"
+	(source includesSubstring: '(defscene ') ifTrue: [
+		self generateSceneTscn: snakeName gdPath: gdPath ].
 	^ gdPath
 ]
 
@@ -664,7 +664,7 @@ GDZealProject >> findDefinition: aName [
 		ifNone: [ nil ]
 ]
 
-{ #category : 'private' }
+{ #category : 'definitions' }
 GDZealProject >> folderFor: aNode [
 	"Determine folder for a definition based on superclass/annotations"
 	(aNode isKindOf: ZealClass) ifFalse: [ ^ 'scripts' ].
@@ -672,16 +672,56 @@ GDZealProject >> folderFor: aNode [
 	aNode superclass = 'Entity' ifTrue: [ ^ 'entities' ].
 	aNode superclass = 'System' ifTrue: [ ^ 'systems' ].
 	aNode superclass = 'Observer' ifTrue: [ ^ 'observers' ].
+	aNode superclass = 'Scene' ifTrue: [ ^ 'scenes' ].
 	^ 'scripts'
+]
+
+{ #category : 'compiling' }
+GDZealProject >> generateSceneTscn: snakeName gdPath: gdPath [
+	"Generate a .tscn scene file for a defscene. Includes a World node with all
+	 known systems auto-added as children."
+	| tscnPath systemFiles resourceIdx |
+	tscnPath := path , '/scenes/' , snakeName , '.tscn'.
+	"Collect all system .gd files"
+	systemFiles := OrderedCollection new.
+	(path , '/systems') asFileReference exists ifTrue: [
+		(path , '/systems') asFileReference children do: [ :f |
+			f extension = 'gd' ifTrue: [ systemFiles add: f ] ] ].
+	resourceIdx := 1.
+	tscnPath asFileReference ensureDelete.
+	tscnPath asFileReference writeStreamDo: [ :s |
+		| loadSteps |
+		loadSteps := 2 + systemFiles size.  "scene script + world script + systems"
+		s nextPutAll: '[gd_scene load_steps='; nextPutAll: loadSteps printString; nextPutAll: ' format=3]'; lf; lf.
+		"Scene script"
+		s nextPutAll: '[ext_resource type="Script" path="res://'; nextPutAll: gdPath; nextPutAll: '" id="1_scene"]'; lf.
+		"World script"
+		s nextPutAll: '[ext_resource type="Script" path="res://addons/gecs/ecs/world.gd" id="2_world"]'; lf.
+		"System scripts"
+		systemFiles withIndexDo: [ :f :idx |
+			s nextPutAll: '[ext_resource type="Script" path="res://systems/'; nextPutAll: f basename; nextPutAll: '" id="'; nextPutAll: (idx + 2) printString; nextPutAll: '_sys"]'; lf ].
+		s lf.
+		"Root node"
+		s nextPutAll: '[node name="'; nextPutAll: (snakeName copyReplaceAll: '_' with: ' ') capitalized; nextPutAll: '" type="Node2D"]'; lf.
+		s nextPutAll: 'script = ExtResource("1_scene")'; lf; lf.
+		"World node"
+		s nextPutAll: '[node name="World" type="Node" parent="."]'; lf.
+		s nextPutAll: 'script = ExtResource("2_world")'; lf.
+		s nextPutAll: 'system_nodes_root = NodePath(".")'; lf.
+		s nextPutAll: 'entity_nodes_root = NodePath(".")'; lf; lf.
+		"System nodes under World"
+		systemFiles withIndexDo: [ :f :idx |
+			| sysName |
+			sysName := f basenameWithoutExtension.
+			s nextPutAll: '[node name="'; nextPutAll: sysName; nextPutAll: '" type="Node" parent="World"]'; lf.
+			s nextPutAll: 'script = ExtResource("'; nextPutAll: (idx + 2) printString; nextPutAll: '_sys")'; lf; lf ] ]
 ]
 
 { #category : 'initialization' }
 GDZealProject >> initialize [
 	modules := OrderedDictionary new.
 	registry := GDZealComponentRegistry new.
-	"'scripts' is the home for top-level (defn ...) helper functions that aren't
-	 GECS components/systems/entities/observers."
-	#('components' 'entities' 'systems' 'observers' 'scripts') do: [ :folder |
+	#('components' 'entities' 'systems' 'observers' 'scenes' 'scripts') do: [ :folder |
 		| mod |
 		mod := ZealModule new name: folder; kind: #folder; definitions: OrderedCollection new.
 		modules at: folder put: mod ]

@@ -198,6 +198,21 @@ GDZealCompiler class >> buildDefobserver: aListNode [
 	^ cls
 ]
 
+{ #category : 'building' }
+GDZealCompiler class >> buildDefscene: aListNode [
+	"(defscene name (spawn [...]) (on-ready body...)) -> ZealClass with gecs_scene annotation"
+	| exprs name cls |
+	exprs := aListNode expressions.
+	name := exprs second value value.
+	cls := ZealClass new
+		name: name;
+		superclass: 'Scene';
+		annotations: (Array with: 'gecs_scene');
+		fields: #();
+		methods: #().
+	^ cls
+]
+
 { #category : 'building - GECS' }
 GDZealCompiler class >> buildDefsystem: aListNode [
 	"Handles both shorthand and full form.
@@ -874,6 +889,7 @@ GDZealCompiler class >> specialFormBuilders [
 		at: 'defentity' put: #buildDefentity:;
 		at: 'defsystem' put: #buildDefsystem:;
 		at: 'defobserver' put: #buildDefobserver:;
+		at: 'defscene' put: #buildDefscene:;
 		at: 'when' put: #buildWhen:;
 		at: 'match' put: #buildMatch:;
 		at: 'as' put: #buildAs:;

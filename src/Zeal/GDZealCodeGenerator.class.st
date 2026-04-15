@@ -1171,6 +1171,57 @@ GDZealCodeGenerator >> generateDefobserver: aListNode [
 		head = 'on-changed' ifTrue: [ self nl. self nl. self emitObserverHandler: 'on_component_changed' params: #('entity: Entity' 'component: Resource' 'property: String' 'new_value: Variant' 'old_value: Variant') form: form ] ]
 ]
 
+{ #category : 'generation' }
+GDZealCodeGenerator >> generateDefscene: aListNode [
+	"(defscene name (spawn [@entity1 @entity2]) (on-ready body...) (on-input body...))
+	 Generates a Node2D scene script with automatic World setup + ECS.process.
+	 spawn refs become preload/instantiate calls. on-ready code runs after spawning.
+	 on-input code goes in _input. ECS.process(delta) is always in _process."
+	| exprs name spawns readyBody inputBody |
+	exprs := aListNode expressions.
+	name := exprs second value value.
+	spawns := OrderedCollection new.
+	readyBody := OrderedCollection new.
+	inputBody := OrderedCollection new.
+	"Parse sub-forms"
+	exprs allButFirst allButFirst do: [ :form |
+		(form isKindOf: ZealListNode) ifTrue: [
+			| head |
+			head := form expressions first value value.
+			head = 'spawn' ifTrue: [
+				"(spawn [@entity1 @entity2 ...])"
+				form expressions second expressions do: [ :e |
+					spawns add: e value value ] ].
+			head = 'on-ready' ifTrue: [
+				readyBody addAll: form expressions allButFirst ].
+			head = 'on-input' ifTrue: [
+				inputBody addAll: form expressions allButFirst ] ] ].
+	"Emit script"
+	self emit: 'extends Node2D'. self nl. self nl.
+	self emit: '@onready var world: World = $World'. self nl. self nl.
+	"_ready"
+	self emit: 'func _ready() -> void:'. self indent.
+	self nl. self emit: 'ECS.world = world'.
+	spawns do: [ :ref |
+		| entityName snakeName |
+		entityName := (ref beginsWith: '@') ifTrue: [ ref allButFirst ] ifFalse: [ ref ].
+		snakeName := entityName copyReplaceAll: '-' with: '_'.
+		self nl.
+		self emit: 'world.add_entity(preload("res://entities/' , snakeName , '.tscn").instantiate())' ].
+	readyBody do: [ :e | self nl. self visitExpression: e ].
+	self dedent. self nl. self nl.
+	"_process — always ticks ECS"
+	self emit: 'func _process(delta: float) -> void:'. self indent.
+	self nl. self emit: 'ECS.process(delta)'.
+	self dedent.
+	"_input — only if on-input was provided"
+	inputBody notEmpty ifTrue: [
+		self nl. self nl.
+		self emit: 'func _input(event: InputEvent) -> void:'. self indent.
+		inputBody do: [ :e | self nl. self visitExpression: e ].
+		self dedent ]
+]
+
 { #category : 'generating - GECS' }
 GDZealCodeGenerator >> generateDefsystem: aListNode [
 	"Two forms:
@@ -2085,6 +2136,7 @@ GDZealCodeGenerator >> specialForms [
 		at: 'defentity' put: #generateDefentity:;
 		at: 'defsystem' put: #generateDefsystem:;
 		at: 'defobserver' put: #generateDefobserver:;
+		at: 'defscene' put: #generateDefscene:;
 		at: 'fn' put: #generateFn:;
 		at: 'if' put: #generateIf:;
 		at: 'when' put: #generateWhen:;
