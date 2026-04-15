@@ -1205,7 +1205,7 @@ GDZealCodeGenerator >> generateDefsystemFull: bodyForms [
 			head = 'setup' ifTrue: [ self nl. self nl. self emitSystemSetup: form ] ] ]
 ]
 
-{ #category : 'generating - definitions' }
+{ #category : 'generation' }
 GDZealCodeGenerator >> generateDefsystemShorthand: name components: compVector rest: restForms [
 	"Shorthand: vector = with-all + iterate + auto-bind.
 	 compVector entries: @comp or binding:@comp (colon chain).
@@ -1264,7 +1264,7 @@ GDZealCodeGenerator >> generateDefsystemShorthand: name components: compVector r
 	"Bind component arrays with explicit Array[C_Foo] types"
 	1 to: bindings size do: [ :idx |
 		self nl.
-		self emit: 'var ' , (bindings at: idx) , '_arr: Array[' , (classNames at: idx) , '] = components[' , (idx - 1) printString , ']' ].
+		self emit: 'var ' , (bindings at: idx) , '_arr: Array[' , (classNames at: idx) , '] = []'. self nl. self emit: (bindings at: idx) , '_arr.assign(components[' , (idx - 1) printString , '])' ].
 	"Loop"
 	self nl.
 	self emit: 'for _i in entities.size():'.
