@@ -2077,13 +2077,12 @@ GDZealCodeGenerator >> registry [
 
 { #category : 'generation' }
 GDZealCodeGenerator >> resolveClassRef: aString [
-	"Resolve @name -> class name. Strip @, PascalCase, add C_ prefix for GECS components."
-	| name pascal |
+	"Resolve @name -> class name. Strip @, PascalCase. Only add C_ prefix for
+	 names that are registered as GECS components. Unregistered names (Godot
+	 built-ins like Vector2, Color, Node2D) are returned as-is."
+	| name |
 	name := aString allButFirst. "strip @"
-	pascal := registry resolve: name.
-	"Ensure C_ prefix — GECS components always have it"
-	(pascal beginsWith: 'C_') ifFalse: [ pascal := 'C_' , pascal ].
-	^ pascal
+	^ registry resolve: name
 ]
 
 { #category : 'private - types' }
