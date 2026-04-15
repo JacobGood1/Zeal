@@ -1,5 +1,5 @@
 Class {
-	#name : 'GDZealComponentRegistry',
+	#name : 'GodotZealComponentRegistry',
 	#superclass : 'Object',
 	#instVars : [
 		'components',
@@ -10,12 +10,12 @@ Class {
 }
 
 { #category : 'accessing' }
-GDZealComponentRegistry >> coroutineNamed: aName [
+GodotZealComponentRegistry >> coroutineNamed: aName [
 	^ self coroutines at: aName ifAbsent: [ nil ]
 ]
 
 { #category : 'accessing' }
-GDZealComponentRegistry >> coroutines [
+GodotZealComponentRegistry >> coroutines [
 	"Lazily-initialized dict of registered defco coroutines.
 	 name (String) -> Dictionary { #params: OC of strings, #body: OC of body forms }"
 	coroutines isNil ifTrue: [ coroutines := Dictionary new ].
@@ -23,24 +23,24 @@ GDZealComponentRegistry >> coroutines [
 ]
 
 { #category : 'initialization' }
-GDZealComponentRegistry >> initialize [
+GodotZealComponentRegistry >> initialize [
 	components := Set new
 ]
 
 { #category : 'testing' }
-GDZealComponentRegistry >> isComponent: aName [
+GodotZealComponentRegistry >> isComponent: aName [
 	"Is this name a registered component?"
 	^ components includes: aName
 ]
 
 { #category : 'accessing' }
-GDZealComponentRegistry >> register: aName [
+GodotZealComponentRegistry >> register: aName [
 	"Register a component name (lowercase, e.g., 'health')"
 	components add: aName
 ]
 
 { #category : 'accessing' }
-GDZealComponentRegistry >> registerCoroutine: aName params: paramList body: bodyForms [
+GodotZealComponentRegistry >> registerCoroutine: aName params: paramList body: bodyForms [
 	self coroutines at: aName put: (Dictionary new
 		at: #params put: paramList;
 		at: #body put: bodyForms;
@@ -48,7 +48,7 @@ GDZealComponentRegistry >> registerCoroutine: aName params: paramList body: body
 ]
 
 { #category : 'resolving' }
-GDZealComponentRegistry >> resolve: aName [
+GodotZealComponentRegistry >> resolve: aName [
 	"Resolve a name (without @) to its GDScript class name.
 	 Components get C_ prefix, others just PascalCase."
 	| pascal |
@@ -59,7 +59,7 @@ GDZealComponentRegistry >> resolve: aName [
 ]
 
 { #category : 'private' }
-GDZealComponentRegistry >> toPascalCase: aString [
+GodotZealComponentRegistry >> toPascalCase: aString [
 	"Capitalize first letter, capitalize after hyphens, remove hyphens.
 	 @kek -> Kek, @some-class -> SomeClass, @node2D -> Node2D"
 	^ String streamContents: [ :s |

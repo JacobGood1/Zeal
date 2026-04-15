@@ -1,5 +1,5 @@
 Class {
-	#name : 'GDZealLinter',
+	#name : 'GodotZealLinter',
 	#superclass : 'Object',
 	#instVars : [
 		'typeSystem',
@@ -11,12 +11,12 @@ Class {
 }
 
 { #category : 'instance creation' }
-GDZealLinter class >> withTypeSystem: aTypeSystem [
+GodotZealLinter class >> withTypeSystem: aTypeSystem [
 	^ self new typeSystem: aTypeSystem; yourself
 ]
 
 { #category : 'linting' }
-GDZealLinter >> lintBindingForm: aForm [
+GodotZealLinter >> lintBindingForm: aForm [
 	"Extract the bindings vector, build a name→type map, then walk the body validating
 	 every slash-chain symbol against the map."
 	| exprs bodyForms bindingVec bindings |
@@ -31,7 +31,7 @@ GDZealLinter >> lintBindingForm: aForm [
 ]
 
 { #category : 'linting' }
-GDZealLinter >> lintSource: aSourceString [
+GodotZealLinter >> lintSource: aSourceString [
 	"Parse the source and return an OrderedCollection of diagnostic Dictionaries.
 	 Each diagnostic has #message, #severity (#error/#warning), #startPos, #stopPos."
 	| ast |
@@ -46,7 +46,7 @@ GDZealLinter >> lintSource: aSourceString [
 ]
 
 { #category : 'linting' }
-GDZealLinter >> lintTopLevel: aForm [
+GodotZealLinter >> lintTopLevel: aForm [
 	"Dispatch on top-level form kind. Only defsystem/defcosystem have bindings, so only
 	 those need slash-chain validation. (defcomp doesn't have a body that can reference
 	 fields by binding name; def/defn don't either.)"
@@ -60,7 +60,7 @@ GDZealLinter >> lintTopLevel: aForm [
 ]
 
 { #category : 'linting' }
-GDZealLinter >> parseBindingVector: aVectorNode [
+GodotZealLinter >> parseBindingVector: aVectorNode [
 	"Build a Dictionary of bindingName(String)→typeRef(String) from a defsystem
 	 vector like [@health hp:@velocity]. Plain @foo binds 'foo'->'foo'.
 	 Colon-chain hp:@velocity binds 'hp'->'velocity'."
@@ -87,12 +87,12 @@ GDZealLinter >> parseBindingVector: aVectorNode [
 ]
 
 { #category : 'accessing' }
-GDZealLinter >> typeSystem: aTypeSystem [
+GodotZealLinter >> typeSystem: aTypeSystem [
 	typeSystem := aTypeSystem
 ]
 
 { #category : 'linting' }
-GDZealLinter >> validateSlashChain: aSymbolNode in: bindings [
+GodotZealLinter >> validateSlashChain: aSymbolNode in: bindings [
 	"For a symbol like 'health/maximu', look up 'health' in the bindings to get its type,
 	 then check that 'maximu' is a member of that type. Report a diagnostic if not."
 	| sym parts head field type members tok |
@@ -119,7 +119,7 @@ GDZealLinter >> validateSlashChain: aSymbolNode in: bindings [
 ]
 
 { #category : 'linting' }
-GDZealLinter >> walkExpression: aNode withBindings: bindings [
+GodotZealLinter >> walkExpression: aNode withBindings: bindings [
 	"Recurse into list/vector children. For symbol nodes containing '/', validate the
 	 chain against the bindings."
 	(aNode isKindOf: ZealSymbolNode) ifTrue: [

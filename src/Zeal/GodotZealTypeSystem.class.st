@@ -1,5 +1,5 @@
 Class {
-	#name : 'GDZealTypeSystem',
+	#name : 'GodotZealTypeSystem',
 	#superclass : 'Object',
 	#instVars : [
 		'project',
@@ -13,17 +13,17 @@ Class {
 }
 
 { #category : 'instance creation' }
-GDZealTypeSystem class >> forProject: aProject [
+GodotZealTypeSystem class >> forProject: aProject [
 	^ self new project: aProject
 ]
 
 { #category : 'accessing' }
-GDZealTypeSystem >> builtinTypes [
+GodotZealTypeSystem >> builtinTypes [
 	^ builtinTypes
 ]
 
 { #category : 'initialization' }
-GDZealTypeSystem >> initBuiltinTypes [
+GodotZealTypeSystem >> initBuiltinTypes [
 	"Register Godot variant types with their constants, properties, and methods.
 	 Each type is a Dictionary with keys: #constants #properties #methods
 	 Each member is name -> return type string."
@@ -111,7 +111,7 @@ GDZealTypeSystem >> initBuiltinTypes [
 ]
 
 { #category : 'initialization' }
-GDZealTypeSystem >> initialize [
+GodotZealTypeSystem >> initialize [
 	super initialize.
 	builtinTypes := Dictionary new.
 	classDbCache := Dictionary new.
@@ -120,7 +120,7 @@ GDZealTypeSystem >> initialize [
 ]
 
 { #category : 'resolution' }
-GDZealTypeSystem >> membersOf: typeName [
+GodotZealTypeSystem >> membersOf: typeName [
 	"Return all known members of a type as name→returnType pairs.
 	 Merges constants + properties + methods."
 	| clean result |
@@ -153,23 +153,23 @@ GDZealTypeSystem >> membersOf: typeName [
 ]
 
 { #category : 'accessing' }
-GDZealTypeSystem >> project [
+GodotZealTypeSystem >> project [
 	^ project
 ]
 
 { #category : 'accessing' }
-GDZealTypeSystem >> project: aProject [
+GodotZealTypeSystem >> project: aProject [
 	project := aProject.
 	self scanProject
 ]
 
 { #category : 'accessing' }
-GDZealTypeSystem >> projectTypes [
+GodotZealTypeSystem >> projectTypes [
 	^ projectTypes
 ]
 
 { #category : 'scanning' }
-GDZealTypeSystem >> registerDefinition: aZealClass [
+GodotZealTypeSystem >> registerDefinition: aZealClass [
 	"Register a definition with its type metadata."
 	| info members |
 	info := Dictionary new.
@@ -201,13 +201,13 @@ GDZealTypeSystem >> registerDefinition: aZealClass [
 ]
 
 { #category : 'scanning' }
-GDZealTypeSystem >> rescan [
+GodotZealTypeSystem >> rescan [
 	"Re-scan the project after changes"
 	self scanProject
 ]
 
 { #category : 'resolution' }
-GDZealTypeSystem >> resolveClassRef: aName [
+GodotZealTypeSystem >> resolveClassRef: aName [
 	"Resolve @name to a type name. @vector2 → Vector2, @health → C_Health"
 	| clean |
 	clean := aName.
@@ -223,12 +223,12 @@ GDZealTypeSystem >> resolveClassRef: aName [
 ]
 
 { #category : 'accessing' }
-GDZealTypeSystem >> resolver [
+GodotZealTypeSystem >> resolver [
 	^ resolver
 ]
 
 { #category : 'scanning' }
-GDZealTypeSystem >> scanProject [
+GodotZealTypeSystem >> scanProject [
 	"Scan all project definitions and build type cache.
 	 Components → fields with types.
 	 Entities → component list.
@@ -243,13 +243,13 @@ GDZealTypeSystem >> scanProject [
 ]
 
 { #category : 'private' }
-GDZealTypeSystem >> toPascalCase: aString [
+GodotZealTypeSystem >> toPascalCase: aString [
 	"kebab-name → PascalName, vector2 → Vector2"
 	^ '' join: ((aString substrings: '-') collect: [ :s | s capitalized ])
 ]
 
 { #category : 'resolution' }
-GDZealTypeSystem >> typeOfExpression: exprString [
+GodotZealTypeSystem >> typeOfExpression: exprString [
 	"Resolve the type of a GDZeal expression string.
 	 @vector2/RIGHT → Vector2
 	 health/current → float
@@ -280,7 +280,7 @@ GDZealTypeSystem >> typeOfExpression: exprString [
 ]
 
 { #category : 'resolution' }
-GDZealTypeSystem >> typeOfMember: memberName on: typeName [
+GodotZealTypeSystem >> typeOfMember: memberName on: typeName [
 	"Resolve the return type of a member access: type/member → return type.
 	 Checks constants, properties, methods on builtins and project types."
 	| clean info |

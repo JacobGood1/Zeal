@@ -1,63 +1,63 @@
 Class {
-	#name : 'GDZealTheme',
+	#name : 'GodotZealTheme',
 	#superclass : 'ZealTheme',
 	#category : 'Zeal',
 	#package : 'Zeal'
 }
 
 { #category : 'colors' }
-GDZealTheme class >> backgroundColor [
+GodotZealTheme class >> backgroundColor [
 	^ Color fromHexString: '17171F'
 ]
 
 { #category : 'colors' }
-GDZealTheme class >> braceColor [
+GodotZealTheme class >> braceColor [
 	^ Color fromHexString: '4CC9F0'
 ]
 
 { #category : 'colors' }
-GDZealTheme class >> bracketColor [
+GodotZealTheme class >> bracketColor [
 	^ Color fromHexString: '50FA7B'
 ]
 
 { #category : 'colors' }
-GDZealTheme class >> classRefColor [
+GodotZealTheme class >> classRefColor [
 	"Color for @name class references — Godot blue"
 	^ Color fromHexString: '6FBBF5'
 ]
 
 { #category : 'colors' }
-GDZealTheme class >> colonChainColor [
+GodotZealTheme class >> colonChainColor [
 	^ Color fromHexString: '88DCF6'
 ]
 
 { #category : 'colors' }
-GDZealTheme class >> commentColor [
+GodotZealTheme class >> commentColor [
 	^ Color fromHexString: 'A1A1BA'
 ]
 
 { #category : 'colors' }
-GDZealTheme class >> cursorAlpha [
+GodotZealTheme class >> cursorAlpha [
 	^ 0.5
 ]
 
 { #category : 'colors' }
-GDZealTheme class >> cursorColor [
+GodotZealTheme class >> cursorColor [
 	^ Color cyan
 ]
 
 { #category : 'colors' }
-GDZealTheme class >> cursorWidth [
+GodotZealTheme class >> cursorWidth [
 	^ 8
 ]
 
 { #category : 'colors' }
-GDZealTheme class >> foregroundColor [
+GodotZealTheme class >> foregroundColor [
 	^ Color fromHexString: 'CDD7DC'
 ]
 
 { #category : 'highlighting' }
-GDZealTheme class >> highlight: aString [
+GodotZealTheme class >> highlight: aString [
 	"Tokenize and colorize GDZeal source, return a BlRopedText with attributes.
 	 After highlighting, replaces visual fn with λ."
 	| text i size |
@@ -73,7 +73,7 @@ GDZealTheme class >> highlight: aString [
 ]
 
 { #category : 'highlighting' }
-GDZealTheme class >> highlightTokenAt: i in: aString text: text size: size [
+GodotZealTheme class >> highlightTokenAt: i in: aString text: text size: size [
 	"Highlight one token starting at i, return next position."
 	| ch start j word |
 	ch := aString at: i.
@@ -143,37 +143,37 @@ GDZealTheme class >> highlightTokenAt: i in: aString text: text size: size [
 ]
 
 { #category : 'colors' }
-GDZealTheme class >> keywordColor [
+GodotZealTheme class >> keywordColor [
 	^ Color fromHexString: '69F0AE'
 ]
 
 { #category : 'colors' }
-GDZealTheme class >> numberColor [
+GodotZealTheme class >> numberColor [
 	^ Color fromHexString: 'ACDBFF'
 ]
 
 { #category : 'colors' }
-GDZealTheme class >> operatorColor [
+GodotZealTheme class >> operatorColor [
 	^ Color fromHexString: '8BE9FD'
 ]
 
 { #category : 'tokens' }
-GDZealTheme class >> operators [
+GodotZealTheme class >> operators [
 	^ #('+' '-' '*' '/' '=' '<>' '<' '>' '<=' '>=' '+=' '-=' '*=' '/=' '%' 'and' 'or' 'not')
 ]
 
 { #category : 'colors' }
-GDZealTheme class >> parenColor [
+GodotZealTheme class >> parenColor [
 	^ Color fromHexString: '9580FF'
 ]
 
 { #category : 'colors' }
-GDZealTheme class >> selectionColor [
+GodotZealTheme class >> selectionColor [
 	^ self cursorColor alpha: 0.3
 ]
 
 { #category : 'tokens' }
-GDZealTheme class >> specialForms [
+GodotZealTheme class >> specialForms [
 	| forms |
 	forms := #('def' 'var' 'set' 'defn' 'defcomp' 'defcosystem' 'defco' 'defentity' 'defsystem' 'defobserver' 'defscene' 'fn' 'if' 'when' 'let' 'for' 'match' 'do' 'return' 'as' 'export' 'init' 'query' 'process' 'components' 'spawn' 'watch' 'deps' 'setup' 'on-ready' 'on-destroy' 'on-enable' 'on-disable' 'on-added' 'on-removed' 'on-changed' 'on-input' 'with-all' 'with-any' 'with-none' 'iterate' 'enabled' 'disabled' 'wait' 'loop' 'sync' 'race' 'map' 'filter' 'take' 'drop' 'drop-last' 'take-while' 'drop-while' 'distinct' 'dedupe' 'keep' 'flatten' 'indexed' 'chunk' 'chunk-by' 'mapcat' 'mapcat-indexed' 'keep-indexed' 'interpose' 'interleave' 'juxt' 'sum' 'product' 'tally' 'avg' 'count' 'max' 'min' 'any?' 'every?' 'into-array' 'into-map' 'into-string' 'reduce' 'transduce' 'range' 'repeat' 'cycle' 'comp' 'into' '->') asOrderedCollection.
 	forms add: (Character value: 16r03BB) asString.
@@ -181,11 +181,11 @@ GDZealTheme class >> specialForms [
 ]
 
 { #category : 'colors' }
-GDZealTheme class >> stringColor [
+GodotZealTheme class >> stringColor [
 	^ Color fromHexString: '94FFCD'
 ]
 
 { #category : 'colors' }
-GDZealTheme class >> symbolColor [
+GodotZealTheme class >> symbolColor [
 	^ Color fromHexString: 'D4AAFF'
 ]

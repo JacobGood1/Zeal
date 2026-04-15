@@ -1,5 +1,5 @@
 Class {
-	#name : 'GDZealCodeGenerator',
+	#name : 'GodotZealCodeGenerator',
 	#superclass : 'Object',
 	#instVars : [
 		'stream',
@@ -16,13 +16,13 @@ Class {
 }
 
 { #category : 'compilation' }
-GDZealCodeGenerator class >> compile: aString [
+GodotZealCodeGenerator class >> compile: aString [
 	"Compile GDZeal source to GDScript string. Pre-processes λ to fn."
 	^ self new generate: (ZealParser parse: (self preprocess: aString))
 ]
 
 { #category : 'compilation' }
-GDZealCodeGenerator class >> compile: aString withRegistry: aRegistry [
+GodotZealCodeGenerator class >> compile: aString withRegistry: aRegistry [
 	"Compile GDZeal source with a shared component registry. Pre-processes λ to fn."
 	| gen |
 	gen := self new.
@@ -31,21 +31,21 @@ GDZealCodeGenerator class >> compile: aString withRegistry: aRegistry [
 ]
 
 { #category : 'compilation' }
-GDZealCodeGenerator class >> preprocess: aString [
+GodotZealCodeGenerator class >> preprocess: aString [
 	"Pre-process GDZeal source before parsing. Replaces λ with fn so the SmaCC
 	 parser (which only handles ASCII identifiers) accepts lambda-character source."
 	^ aString copyReplaceAll: (Character value: 16r03BB) asString with: 'fn'
 ]
 
 { #category : 'scope' }
-GDZealCodeGenerator >> bindLocal: aName [
+GodotZealCodeGenerator >> bindLocal: aName [
 	"Add a name to the topmost scope frame."
 	aName ifNil: [ ^ self ].
 	localScope last add: aName asString
 ]
 
 { #category : 'fusion' }
-GDZealCodeGenerator >> classifyXform: aNode [
+GodotZealCodeGenerator >> classifyXform: aNode [
 	"Classify a transducer factory call into a fusion-friendly descriptor.
 	 Returns a Dictionary {#kind, #fn (for filter/map/etc.), #n (for take/drop)}
 	 or nil if not fusible."
@@ -74,17 +74,17 @@ GDZealCodeGenerator >> classifyXform: aNode [
 ]
 
 { #category : 'emitting' }
-GDZealCodeGenerator >> dedent [
+GodotZealCodeGenerator >> dedent [
 	indentLevel := indentLevel - 1
 ]
 
 { #category : 'emitting' }
-GDZealCodeGenerator >> emit: aString [
+GodotZealCodeGenerator >> emit: aString [
 	stream nextPutAll: aString
 ]
 
 { #category : 'generating - GECS helpers' }
-GDZealCodeGenerator >> emitDefineComponents: aListNode [
+GodotZealCodeGenerator >> emitDefineComponents: aListNode [
 	"(components [@health @velocity]) -> func define_components() -> Array: return [C_Health.new(), ...]"
 	| compVector |
 	compVector := aListNode expressions second.
@@ -101,7 +101,7 @@ GDZealCodeGenerator >> emitDefineComponents: aListNode [
 ]
 
 { #category : 'generating - GECS helpers' }
-GDZealCodeGenerator >> emitEntityHook: hookName body: bodyExprs [
+GodotZealCodeGenerator >> emitEntityHook: hookName body: bodyExprs [
 	"Emit an entity lifecycle hook: func on_ready() -> void: body"
 	self emit: 'func '.
 	self emit: hookName.
@@ -115,7 +115,7 @@ GDZealCodeGenerator >> emitEntityHook: hookName body: bodyExprs [
 ]
 
 { #category : 'generating - GECS helpers' }
-GDZealCodeGenerator >> emitExport: aListNode [
+GodotZealCodeGenerator >> emitExport: aListNode [
 	"(export name:type default) -> @export var name: type = default"
 	| exprs nameNode resolved |
 	exprs := aListNode expressions.
@@ -132,7 +132,7 @@ GDZealCodeGenerator >> emitExport: aListNode [
 ]
 
 { #category : 'codegen-fsm' }
-GDZealCodeGenerator >> emitFsmState: state index: i totalStates: total [
+GodotZealCodeGenerator >> emitFsmState: state index: i totalStates: total [
 	"Emit the body of one match arm. Assumes we're already at the right indent.
 	 Uses currentStateVar / currentTimerVar so the same emitter works for the main FSM
 	 and for inlined lane bodies inside sync/race controllers.
@@ -248,14 +248,14 @@ GDZealCodeGenerator >> emitFsmState: state index: i totalStates: total [
 ]
 
 { #category : 'fusion' }
-GDZealCodeGenerator >> emitFusionBody: bodyNode param: paramName as: bindName [
+GodotZealCodeGenerator >> emitFusionBody: bodyNode param: paramName as: bindName [
 	"Emit the lambda body expression. Since the body references the original param
 	 name which we bound as `var paramName = _v`, just visit normally."
 	self visitExpression: bodyNode
 ]
 
 { #category : 'fusion' }
-GDZealCodeGenerator >> emitFusionStep: desc index: idx [
+GodotZealCodeGenerator >> emitFusionStep: desc index: idx [
 	"Emit one step of the fused loop body. Lambda params get unique names _pN
 	 to avoid GDScript redeclaration errors when multiple steps use the same name.
 	 A substitution dict temporarily maps original param -> _pN during body emission."
@@ -340,7 +340,7 @@ GDZealCodeGenerator >> emitFusionStep: desc index: idx [
 ]
 
 { #category : 'generating - control flow' }
-GDZealCodeGenerator >> emitIfChain: args first: isFirst [
+GodotZealCodeGenerator >> emitIfChain: args first: isFirst [
 	"Recursive if/elif/else chain emission"
 	| keyword |
 	args isEmpty ifTrue: [ ^ self ].
@@ -361,12 +361,12 @@ GDZealCodeGenerator >> emitIfChain: args first: isFirst [
 ]
 
 { #category : 'emitting' }
-GDZealCodeGenerator >> emitIndent [
+GodotZealCodeGenerator >> emitIndent [
 	indentLevel timesRepeat: [ stream nextPut: Character tab ]
 ]
 
 { #category : 'generating - GECS helpers' }
-GDZealCodeGenerator >> emitInit: aListNode [
+GodotZealCodeGenerator >> emitInit: aListNode [
 	"(init [param:type default ...] body) -> func _init(param: type = default):
 	 Parameters are paired: [name:type defaultVal name2:type2 defaultVal2]"
 	| exprs paramsVec bodyExprs items pairs i |
@@ -406,7 +406,7 @@ GDZealCodeGenerator >> emitInit: aListNode [
 ]
 
 { #category : 'generating - GECS helpers' }
-GDZealCodeGenerator >> emitInitParam: aNode [
+GodotZealCodeGenerator >> emitInitParam: aNode [
 	"Emit _init parameter with default value.
 	 Colon chains: name:type is emitted, and next sibling in the vector provides default.
 	 For _init, all params must have defaults, so we pair name:type + default."
@@ -423,7 +423,7 @@ GDZealCodeGenerator >> emitInitParam: aNode [
 ]
 
 { #category : 'codegen-fsm' }
-GDZealCodeGenerator >> emitInlineLane: lane [
+GodotZealCodeGenerator >> emitInlineLane: lane [
 	"Emit one lane's state machine inline (no helper function), followed by its done flag.
 	 Used by sync controllers — race needs custom code with the won-flag short-circuit
 	 so it doesn't use this helper."
@@ -450,7 +450,7 @@ GDZealCodeGenerator >> emitInlineLane: lane [
 ]
 
 { #category : 'codegen-fsm' }
-GDZealCodeGenerator >> emitLaneHelper: lane [
+GodotZealCodeGenerator >> emitLaneHelper: lane [
 	"Emit a func _tick_lN(delta, <bindings>) -> bool helper for one lane.
 	 Returns true when _state has advanced past the last real state (sentinel = laneStates size)."
 	| pfx laneStates savedSv savedTv sentinelIdx |
@@ -488,7 +488,7 @@ GDZealCodeGenerator >> emitLaneHelper: lane [
 ]
 
 { #category : 'codegen-fsm' }
-GDZealCodeGenerator >> emitLaneResetBlock: lanes advanceVar: sv toIndex: nextIdx [
+GodotZealCodeGenerator >> emitLaneResetBlock: lanes advanceVar: sv toIndex: nextIdx [
 	"Reset all lanes to state 0 / timer 0, then advance the controller's state var.
 	 Shared by sync (after the and-join fires) and race (after the won flag fires)."
 	lanes do: [ :lane |
@@ -500,7 +500,7 @@ GDZealCodeGenerator >> emitLaneResetBlock: lanes advanceVar: sv toIndex: nextIdx
 ]
 
 { #category : 'transducers' }
-GDZealCodeGenerator >> emitNullaryTransducer: factoryName from: aListNode [
+GodotZealCodeGenerator >> emitNullaryTransducer: factoryName from: aListNode [
 	"Common dispatch for nullary-shape transducers (form) or (form coll).
 	 Z library factory takes no arg; the underscore suffix avoids GDScript reserved words."
 	| exprs |
@@ -514,7 +514,7 @@ GDZealCodeGenerator >> emitNullaryTransducer: factoryName from: aListNode [
 ]
 
 { #category : 'generating - GECS helpers' }
-GDZealCodeGenerator >> emitObserverHandler: methodName params: gdParams form: aListNode [
+GodotZealCodeGenerator >> emitObserverHandler: methodName params: gdParams form: aListNode [
 	"Emit observer handler. Maps user param names to GDScript typed params."
 	| exprs userParams bodyExprs |
 	exprs := aListNode expressions.
@@ -550,7 +550,7 @@ GDZealCodeGenerator >> emitObserverHandler: methodName params: gdParams form: aL
 ]
 
 { #category : 'generating - GECS helpers' }
-GDZealCodeGenerator >> emitObserverMatch: aListNode [
+GodotZealCodeGenerator >> emitObserverMatch: aListNode [
 	"(match (with-all [@health @player])) -> func match() -> QueryBuilder: return q.with_all([...])"
 	| queryClauses |
 	queryClauses := aListNode expressions allButFirst.
@@ -562,7 +562,7 @@ GDZealCodeGenerator >> emitObserverMatch: aListNode [
 ]
 
 { #category : 'generating - GECS helpers' }
-GDZealCodeGenerator >> emitObserverWatch: aListNode [
+GodotZealCodeGenerator >> emitObserverWatch: aListNode [
 	"(watch @health) -> func watch() -> Resource: return C_Health"
 	self emit: 'func watch() -> Resource:'.
 	self indent. self nl.
@@ -572,7 +572,7 @@ GDZealCodeGenerator >> emitObserverWatch: aListNode [
 ]
 
 { #category : 'private - params' }
-GDZealCodeGenerator >> emitParam: aNode [
+GodotZealCodeGenerator >> emitParam: aNode [
 	"Emit a function parameter. Colon chain -> typed, symbol -> untyped."
 	| sym |
 	(aNode isKindOf: ZealColonChainNode) ifTrue: [
@@ -589,7 +589,7 @@ GDZealCodeGenerator >> emitParam: aNode [
 ]
 
 { #category : 'generating - GECS helpers' }
-GDZealCodeGenerator >> emitQueryClause: aListNode [
+GodotZealCodeGenerator >> emitQueryClause: aListNode [
 	"(with-all [@a @b]) -> .with_all([C_A, C_B])
 	 (with-any [@a]) -> .with_any([C_A])
 	 (with-none [@a]) -> .with_none([C_A])
@@ -613,7 +613,7 @@ GDZealCodeGenerator >> emitQueryClause: aListNode [
 ]
 
 { #category : 'transducers-reducers' }
-GDZealCodeGenerator >> emitReducer: factoryName from: aListNode [
+GodotZealCodeGenerator >> emitReducer: factoryName from: aListNode [
 	"Common emission for whole-sequence reducers (form xs) -> Z.factoryName(xs)."
 	| exprs |
 	exprs := aListNode expressions.
@@ -623,7 +623,7 @@ GDZealCodeGenerator >> emitReducer: factoryName from: aListNode [
 ]
 
 { #category : 'visiting - slash' }
-GDZealCodeGenerator >> emitSlashAccess: segments [
+GodotZealCodeGenerator >> emitSlashAccess: segments [
 	"Emit chained slash access: a/b/c -> a.b.c, a/@type/b -> (a as Type).b, a/0 -> a[0]"
 	| result first |
 	first := segments first.
@@ -645,7 +645,7 @@ GDZealCodeGenerator >> emitSlashAccess: segments [
 ]
 
 { #category : 'generating - GECS helpers' }
-GDZealCodeGenerator >> emitSystemDeps: aListNode [
+GodotZealCodeGenerator >> emitSystemDeps: aListNode [
 	"(deps {:after [@physics-system] :before [@ui-system]})
 	 -> func deps() -> Dictionary: return {Runs.After: [...], Runs.Before: [...]}"
 	| mapNode |
@@ -667,7 +667,7 @@ GDZealCodeGenerator >> emitSystemDeps: aListNode [
 ]
 
 { #category : 'generating - GECS helpers' }
-GDZealCodeGenerator >> emitSystemProcess: aListNode [
+GodotZealCodeGenerator >> emitSystemProcess: aListNode [
 	"(process [entities _ delta] body...) -> func process(entities: Array[Entity], _components: Array, delta: float) -> void:
 	 _ in any position adds the GDScript _ prefix for unused params"
 	| exprs paramsVec bodyExprs paramNames p1 p2 p3 |
@@ -700,7 +700,7 @@ GDZealCodeGenerator >> emitSystemProcess: aListNode [
 ]
 
 { #category : 'generating - GECS helpers' }
-GDZealCodeGenerator >> emitSystemQuery: aListNode [
+GodotZealCodeGenerator >> emitSystemQuery: aListNode [
 	"(query (with-all [@velocity]) (iterate [@velocity])) -> func query() -> QueryBuilder: return q.with_all([...]).iterate([...])"
 	| queryClauses |
 	queryClauses := aListNode expressions allButFirst.
@@ -713,7 +713,7 @@ GDZealCodeGenerator >> emitSystemQuery: aListNode [
 ]
 
 { #category : 'generating - GECS helpers' }
-GDZealCodeGenerator >> emitSystemSetup: aListNode [
+GodotZealCodeGenerator >> emitSystemSetup: aListNode [
 	"(setup body...) -> func setup() -> void: body"
 	| bodyExprs |
 	bodyExprs := aListNode expressions allButFirst.
@@ -727,7 +727,7 @@ GDZealCodeGenerator >> emitSystemSetup: aListNode [
 ]
 
 { #category : 'transducers' }
-GDZealCodeGenerator >> emitTransducer: factoryName from: aListNode [
+GodotZealCodeGenerator >> emitTransducer: factoryName from: aListNode [
 	"Common dispatch for transducer forms with shape (form arg) or (form arg coll).
 	 Single-arg → Z.factoryName(arg) (returns xform Callable).
 	 Two-arg → Z.into([], Z.factoryName(arg), coll) (eager, runs through driver)."
@@ -746,7 +746,7 @@ GDZealCodeGenerator >> emitTransducer: factoryName from: aListNode [
 ]
 
 { #category : 'fusion' }
-GDZealCodeGenerator >> extractFnBody: aNode [
+GodotZealCodeGenerator >> extractFnBody: aNode [
 	"If aNode is (fn [params] body), return {#params -> params, #body -> body}.
 	 Returns nil if not a single-expression fn form."
 	| exprs |
@@ -764,12 +764,12 @@ GDZealCodeGenerator >> extractFnBody: aNode [
 ]
 
 { #category : 'fusion' }
-GDZealCodeGenerator >> fusionSubstitutions [
+GodotZealCodeGenerator >> fusionSubstitutions [
 	^ fusionSubs
 ]
 
 { #category : 'generating' }
-GDZealCodeGenerator >> generate: aZealProgramNode [
+GodotZealCodeGenerator >> generate: aZealProgramNode [
 	"Main entry point: walk all top-level expressions"
 	aZealProgramNode expressions
 		do: [ :expr | self visitExpression: expr ]
@@ -778,7 +778,7 @@ GDZealCodeGenerator >> generate: aZealProgramNode [
 ]
 
 { #category : 'transducers-reducers' }
-GDZealCodeGenerator >> generateAnyP: aListNode [
+GodotZealCodeGenerator >> generateAnyP: aListNode [
 	"(any? pred xs) -> Z.any(pred, xs)"
 	| exprs |
 	exprs := aListNode expressions.
@@ -790,7 +790,7 @@ GDZealCodeGenerator >> generateAnyP: aListNode [
 ]
 
 { #category : 'generating - expressions' }
-GDZealCodeGenerator >> generateAs: aListNode [
+GodotZealCodeGenerator >> generateAs: aListNode [
 	"(as expr @type) -> (expr as Type)
 	 (as expr @type field) -> (expr as Type).field
 	 (as expr @type field1 field2) -> (expr as Type).field1.field2"
@@ -812,12 +812,12 @@ GDZealCodeGenerator >> generateAs: aListNode [
 ]
 
 { #category : 'transducers-reducers' }
-GDZealCodeGenerator >> generateAvg: aListNode [
+GodotZealCodeGenerator >> generateAvg: aListNode [
 	^ self emitReducer: 'avg' from: aListNode
 ]
 
 { #category : 'transducers' }
-GDZealCodeGenerator >> generateChunk: aListNode [
+GodotZealCodeGenerator >> generateChunk: aListNode [
 	"(chunk n) -> Z.chunking(n) — transducer, non-overlapping
 	 (chunk n step) -> Z.chunking(n, step) — transducer, sliding window
 	 The eager forms route through `into`: (into [] (chunk n) xs).
@@ -839,12 +839,12 @@ GDZealCodeGenerator >> generateChunk: aListNode [
 ]
 
 { #category : 'transducers' }
-GDZealCodeGenerator >> generateChunkBy: aListNode [
+GodotZealCodeGenerator >> generateChunkBy: aListNode [
 	^ self emitTransducer: 'chunking_by' from: aListNode
 ]
 
 { #category : 'transducers-core' }
-GDZealCodeGenerator >> generateComp: aListNode [
+GodotZealCodeGenerator >> generateComp: aListNode [
 	"(comp xform1 xform2 ...) -> Z.comp([xform1, xform2, ...])
 	 Composes transducers (or any callables) right-to-left during reducer wrapping —
 	 left-most xform runs FIRST on each element."
@@ -859,7 +859,7 @@ GDZealCodeGenerator >> generateComp: aListNode [
 ]
 
 { #category : 'transducers-reducers' }
-GDZealCodeGenerator >> generateCount: aListNode [
+GodotZealCodeGenerator >> generateCount: aListNode [
 	"(count xs) -> xs.size() (no library call needed; built into GDScript Array)"
 	| exprs |
 	exprs := aListNode expressions.
@@ -868,7 +868,7 @@ GDZealCodeGenerator >> generateCount: aListNode [
 ]
 
 { #category : 'transducers-sources' }
-GDZealCodeGenerator >> generateCycle: aListNode [
+GodotZealCodeGenerator >> generateCycle: aListNode [
 	"(cycle xs) -> Z.cycle_(xs) — infinite cycling iterator."
 	| exprs |
 	exprs := aListNode expressions.
@@ -878,12 +878,12 @@ GDZealCodeGenerator >> generateCycle: aListNode [
 ]
 
 { #category : 'transducers' }
-GDZealCodeGenerator >> generateDedupe: aListNode [
+GodotZealCodeGenerator >> generateDedupe: aListNode [
 	^ self emitNullaryTransducer: 'dedupe_' from: aListNode
 ]
 
 { #category : 'generation' }
-GDZealCodeGenerator >> generateDef: aListNode [
+GodotZealCodeGenerator >> generateDef: aListNode [
 	"(def name:type value) -> const name: type = value
 	 Top-level (def name (fn ...)) is not allowed — use (defn name [params] body)
 	 for a real function. We refuse it here so the call-site rule (named function
@@ -914,7 +914,7 @@ GDZealCodeGenerator >> generateDef: aListNode [
 ]
 
 { #category : 'special forms' }
-GDZealCodeGenerator >> generateDefco: aListNode [
+GodotZealCodeGenerator >> generateDefco: aListNode [
 	"Register a coroutine for compile-time expansion at defcosystem sites.
 	 (defco name [params] body...) — emits no GDScript; pure macro definition."
 	| exprs name params body |
@@ -932,7 +932,7 @@ GDZealCodeGenerator >> generateDefco: aListNode [
 ]
 
 { #category : 'generators' }
-GDZealCodeGenerator >> generateDefcomp: aListNode [
+GodotZealCodeGenerator >> generateDefcomp: aListNode [
 	"(defcomp name var1 val1 var2 val2 ... (init [...] body))
 	 Fields are pairs: variable on left, value on right.
 	 Tag: (defcomp dead)"
@@ -977,7 +977,7 @@ GDZealCodeGenerator >> generateDefcomp: aListNode [
 				nextItem := bodyForms at: i + 1.
 				(nextItem isKindOf: ZealColonChainNode)
 					ifFalse: [
-						fieldType ifNil: [ fieldType := GDZealCompiler inferTypeFromValue: nextItem ].
+						fieldType ifNil: [ fieldType := GodotZealCompiler inferTypeFromValue: nextItem ].
 						fieldType ifNotNil: [ :t |
 							self emit: ': '.
 							self emit: (self resolveType: t) ].
@@ -993,7 +993,7 @@ GDZealCodeGenerator >> generateDefcomp: aListNode [
 ]
 
 { #category : 'generation' }
-GDZealCodeGenerator >> generateDefcosystem: aListNode [
+GodotZealCodeGenerator >> generateDefcosystem: aListNode [
 	"(defcosystem name [bindings...] body...)
 	 Generates a Component class with _state/_timer fields and a tick method
 	 containing the FSM state machine."
@@ -1005,10 +1005,10 @@ GDZealCodeGenerator >> generateDefcosystem: aListNode [
 	bodyForms isEmpty ifFalse: [
 		third := bodyForms first.
 		(third isKindOf: ZealVectorNode) ifTrue: [
-			bindings := GDZealCompiler parseFsmBindings: third.
+			bindings := GodotZealCompiler parseFsmBindings: third.
 			bodyForms := bodyForms allButFirst ] ].
 	registry register: name.
-	splitResult := GDZealCompiler fsmSplitBody: bodyForms coroutines: registry coroutines.
+	splitResult := GodotZealCompiler fsmSplitBody: bodyForms coroutines: registry coroutines.
 	states := splitResult at: #states.
 	lanes := splitResult at: #lanes.
 	currentBindings := bindings.
@@ -1052,7 +1052,7 @@ GDZealCodeGenerator >> generateDefcosystem: aListNode [
 ]
 
 { #category : 'generating - GECS' }
-GDZealCodeGenerator >> generateDefentity: aListNode [
+GodotZealCodeGenerator >> generateDefentity: aListNode [
 	"(defentity player (components [@health @velocity]) (on-ready body) ...)
 	 -> @tool / class_name Player / extends Entity / define_components / hooks"
 	| exprs name bodyForms |
@@ -1079,7 +1079,7 @@ GDZealCodeGenerator >> generateDefentity: aListNode [
 ]
 
 { #category : 'generation' }
-GDZealCodeGenerator >> generateDefn: aListNode [
+GodotZealCodeGenerator >> generateDefn: aListNode [
 	"(defn name [params] :retType body...) -> func name(params) -> retType:
 	 When a return type is declared (and isn't void), the last body expression is
 	 implicitly returned (unless it's a statement-only form like set/var/if/for/
@@ -1147,7 +1147,7 @@ GDZealCodeGenerator >> generateDefn: aListNode [
 ]
 
 { #category : 'generating - GECS' }
-GDZealCodeGenerator >> generateDefobserver: aListNode [
+GodotZealCodeGenerator >> generateDefobserver: aListNode [
 	"(defobserver health-observer (watch @health) (match ...) (on-added [...] body) ...)
 	 -> class_name O_HealthObserver / extends Observer / watch / match / handlers"
 	| exprs name bodyForms |
@@ -1172,7 +1172,7 @@ GDZealCodeGenerator >> generateDefobserver: aListNode [
 ]
 
 { #category : 'generation' }
-GDZealCodeGenerator >> generateDefscene: aListNode [
+GodotZealCodeGenerator >> generateDefscene: aListNode [
 	"(defscene name (spawn [@entity1 @entity2]) (on-ready body...) (on-input body...))
 	 Spawns use ClassName.new() since defentity generates class_name — no .tscn needed."
 	| exprs name spawns readyBody inputBody |
@@ -1215,7 +1215,7 @@ GDZealCodeGenerator >> generateDefscene: aListNode [
 ]
 
 { #category : 'generating - GECS' }
-GDZealCodeGenerator >> generateDefsystem: aListNode [
+GodotZealCodeGenerator >> generateDefsystem: aListNode [
 	"Two forms:
 	 Shorthand: (defsystem name [@comp1 @comp2] (with-none [...]) body...)
 	 Full: (defsystem name (query ...) (process [...] body...) (deps {...}) (setup body))
@@ -1236,7 +1236,7 @@ GDZealCodeGenerator >> generateDefsystem: aListNode [
 ]
 
 { #category : 'generating - GECS' }
-GDZealCodeGenerator >> generateDefsystemFull: bodyForms [
+GodotZealCodeGenerator >> generateDefsystemFull: bodyForms [
 	"Full form: (query ...) (process [...] body...) (deps {...}) (setup body)"
 	bodyForms do: [ :form |
 		(form isKindOf: ZealListNode) ifTrue: [
@@ -1249,7 +1249,7 @@ GDZealCodeGenerator >> generateDefsystemFull: bodyForms [
 ]
 
 { #category : 'generation' }
-GDZealCodeGenerator >> generateDefsystemShorthand: name components: compVector rest: restForms [
+GodotZealCodeGenerator >> generateDefsystemShorthand: name components: compVector rest: restForms [
 	"Shorthand: vector = with-all + iterate + auto-bind.
 	 compVector entries: @comp or binding:@comp (colon chain).
 	 restForms: optional query modifiers (with-none, enabled, etc.) + body expressions.
@@ -1324,12 +1324,12 @@ GDZealCodeGenerator >> generateDefsystemShorthand: name components: compVector r
 ]
 
 { #category : 'transducers' }
-GDZealCodeGenerator >> generateDistinct: aListNode [
+GodotZealCodeGenerator >> generateDistinct: aListNode [
 	^ self emitNullaryTransducer: 'distinct_' from: aListNode
 ]
 
 { #category : 'generating - control flow' }
-GDZealCodeGenerator >> generateDo: aListNode [
+GodotZealCodeGenerator >> generateDo: aListNode [
 	"(do expr1 expr2 ...) -> sequential expressions"
 	aListNode expressions allButFirst
 		do: [ :e | self visitExpression: e ]
@@ -1337,12 +1337,12 @@ GDZealCodeGenerator >> generateDo: aListNode [
 ]
 
 { #category : 'transducers' }
-GDZealCodeGenerator >> generateDrop: aListNode [
+GodotZealCodeGenerator >> generateDrop: aListNode [
 	^ self emitTransducer: 'dropping' from: aListNode
 ]
 
 { #category : 'transducers' }
-GDZealCodeGenerator >> generateDropLast: aListNode [
+GodotZealCodeGenerator >> generateDropLast: aListNode [
 	"(drop-last) -> Z.dropping_last() (drops last 1)
 	 (drop-last n) -> Z.dropping_last(n)
 	 (drop-last n xs) -> Z.into([], Z.dropping_last(n), xs)"
@@ -1365,12 +1365,12 @@ GDZealCodeGenerator >> generateDropLast: aListNode [
 ]
 
 { #category : 'transducers' }
-GDZealCodeGenerator >> generateDropWhile: aListNode [
+GodotZealCodeGenerator >> generateDropWhile: aListNode [
 	^ self emitTransducer: 'dropping_while' from: aListNode
 ]
 
 { #category : 'transducers-reducers' }
-GDZealCodeGenerator >> generateEveryP: aListNode [
+GodotZealCodeGenerator >> generateEveryP: aListNode [
 	"(every? pred xs) -> Z.every(pred, xs)"
 	| exprs |
 	exprs := aListNode expressions.
@@ -1382,17 +1382,17 @@ GDZealCodeGenerator >> generateEveryP: aListNode [
 ]
 
 { #category : 'transducers' }
-GDZealCodeGenerator >> generateFilter: aListNode [
+GodotZealCodeGenerator >> generateFilter: aListNode [
 	^ self emitTransducer: 'filtering' from: aListNode
 ]
 
 { #category : 'transducers' }
-GDZealCodeGenerator >> generateFlatten: aListNode [
+GodotZealCodeGenerator >> generateFlatten: aListNode [
 	^ self emitNullaryTransducer: 'flattening' from: aListNode
 ]
 
 { #category : 'generation' }
-GDZealCodeGenerator >> generateFn: aListNode [
+GodotZealCodeGenerator >> generateFn: aListNode [
 	"(fn [params...] body...) -> func(params): body
 	 The last body expression is implicitly returned (unless it's a statement-only
 	 form like set/var/if/for/when/match which can't be the operand of return).
@@ -1438,7 +1438,7 @@ GDZealCodeGenerator >> generateFn: aListNode [
 ]
 
 { #category : 'generation' }
-GDZealCodeGenerator >> generateFor: aListNode [
+GodotZealCodeGenerator >> generateFor: aListNode [
 	"(for [x coll] body...) -> for x in coll: body.
 	 The loop variable enters scope for the duration of the body."
 	| exprs bindingVec bodyExprs items loopVar |
@@ -1461,7 +1461,7 @@ GDZealCodeGenerator >> generateFor: aListNode [
 ]
 
 { #category : 'generation' }
-GDZealCodeGenerator >> generateFunctionCall: aListNode [
+GodotZealCodeGenerator >> generateFunctionCall: aListNode [
 	"(func args...) -> func(args)
 	 Special cases:
 	 - If func is in lexical scope or is a non-symbol expression → .call(args)
@@ -1488,7 +1488,7 @@ GDZealCodeGenerator >> generateFunctionCall: aListNode [
 			ifTrue: [
 				"Single xform: (into [] xform source)"
 				intoNode := self syntheticList: {
-					GDZealCompiler newSymbolNodeWithString: 'into'.
+					GodotZealCompiler newSymbolNodeWithString: 'into'.
 					ZealVectorNode new instVarNamed: 'expressions' put: OrderedCollection new; yourself.
 					xforms first.
 					source }.
@@ -1496,10 +1496,10 @@ GDZealCodeGenerator >> generateFunctionCall: aListNode [
 			ifFalse: [
 				"Multiple xforms: (into [] (comp xform1 xform2 ...) source)"
 				compNode := self syntheticList: 
-					((OrderedCollection with: (GDZealCompiler newSymbolNodeWithString: 'comp'))
+					((OrderedCollection with: (GodotZealCompiler newSymbolNodeWithString: 'comp'))
 						addAll: xforms; yourself).
 				intoNode := self syntheticList: {
-					GDZealCompiler newSymbolNodeWithString: 'into'.
+					GodotZealCompiler newSymbolNodeWithString: 'into'.
 					ZealVectorNode new instVarNamed: 'expressions' put: OrderedCollection new; yourself.
 					compNode.
 					source }.
@@ -1516,7 +1516,7 @@ GDZealCodeGenerator >> generateFunctionCall: aListNode [
 ]
 
 { #category : 'generating - control flow' }
-GDZealCodeGenerator >> generateIf: aListNode [
+GodotZealCodeGenerator >> generateIf: aListNode [
 	"(if cond then) or (if cond then else) or (if c1 t1 c2 t2 ... else)"
 	| args |
 	args := aListNode expressions allButFirst.
@@ -1524,12 +1524,12 @@ GDZealCodeGenerator >> generateIf: aListNode [
 ]
 
 { #category : 'transducers' }
-GDZealCodeGenerator >> generateIndexed: aListNode [
+GodotZealCodeGenerator >> generateIndexed: aListNode [
 	^ self emitNullaryTransducer: 'indexing' from: aListNode
 ]
 
 { #category : 'transducers-core' }
-GDZealCodeGenerator >> generateInterleave: aListNode [
+GodotZealCodeGenerator >> generateInterleave: aListNode [
 	"(interleave xs ys ...) -> Z.interleave([xs, ys, ...]) — variadic, stops at shortest."
 	| exprs args |
 	exprs := aListNode expressions.
@@ -1542,12 +1542,12 @@ GDZealCodeGenerator >> generateInterleave: aListNode [
 ]
 
 { #category : 'transducers' }
-GDZealCodeGenerator >> generateInterpose: aListNode [
+GodotZealCodeGenerator >> generateInterpose: aListNode [
 	^ self emitTransducer: 'interposing' from: aListNode
 ]
 
 { #category : 'transducers-core' }
-GDZealCodeGenerator >> generateInto: aListNode [
+GodotZealCodeGenerator >> generateInto: aListNode [
 	"(into dest) -> dest.duplicate()
 	 (into dest xs) -> Z.into(dest, identity, xs)
 	 (into dest xform xs) -> tries fusion first; falls back to Z.into(dest, xform, xs).
@@ -1579,22 +1579,22 @@ GDZealCodeGenerator >> generateInto: aListNode [
 ]
 
 { #category : 'transducers-reducers' }
-GDZealCodeGenerator >> generateIntoArray: aListNode [
+GodotZealCodeGenerator >> generateIntoArray: aListNode [
 	^ self emitReducer: 'into_array' from: aListNode
 ]
 
 { #category : 'transducers-reducers' }
-GDZealCodeGenerator >> generateIntoMap: aListNode [
+GodotZealCodeGenerator >> generateIntoMap: aListNode [
 	^ self emitReducer: 'into_map' from: aListNode
 ]
 
 { #category : 'transducers-reducers' }
-GDZealCodeGenerator >> generateIntoString: aListNode [
+GodotZealCodeGenerator >> generateIntoString: aListNode [
 	^ self emitReducer: 'into_string' from: aListNode
 ]
 
 { #category : 'transducers-sources' }
-GDZealCodeGenerator >> generateIterate: aListNode [
+GodotZealCodeGenerator >> generateIterate: aListNode [
 	"(iterate f x) -> Z.iterate_(f, x) — infinite iterator. Use take/into to bound."
 	| exprs |
 	exprs := aListNode expressions.
@@ -1606,7 +1606,7 @@ GDZealCodeGenerator >> generateIterate: aListNode [
 ]
 
 { #category : 'transducers-core' }
-GDZealCodeGenerator >> generateJuxt: aListNode [
+GodotZealCodeGenerator >> generateJuxt: aListNode [
 	"(juxt f1 f2 ...) -> Z.juxt([f1, f2, ...]) — returns a Callable that applied
 	 to a value yields [f1(x), f2(x), ...]."
 	| exprs args |
@@ -1620,17 +1620,17 @@ GDZealCodeGenerator >> generateJuxt: aListNode [
 ]
 
 { #category : 'transducers' }
-GDZealCodeGenerator >> generateKeep: aListNode [
+GodotZealCodeGenerator >> generateKeep: aListNode [
 	^ self emitTransducer: 'keeping' from: aListNode
 ]
 
 { #category : 'transducers' }
-GDZealCodeGenerator >> generateKeepIndexed: aListNode [
+GodotZealCodeGenerator >> generateKeepIndexed: aListNode [
 	^ self emitTransducer: 'keeping_indexed' from: aListNode
 ]
 
 { #category : 'generation' }
-GDZealCodeGenerator >> generateLet: aListNode [
+GodotZealCodeGenerator >> generateLet: aListNode [
 	"(let [var1 val1 var2 val2] body...) -> var declarations + body.
 	 Each binding name is added to the current scope so subsequent calls to it
 	 within the body emit .call(...) instead of name(...)."
@@ -1665,22 +1665,22 @@ GDZealCodeGenerator >> generateLet: aListNode [
 ]
 
 { #category : 'transducers' }
-GDZealCodeGenerator >> generateMap: aListNode [
+GodotZealCodeGenerator >> generateMap: aListNode [
 	^ self emitTransducer: 'mapping' from: aListNode
 ]
 
 { #category : 'transducers' }
-GDZealCodeGenerator >> generateMapcat: aListNode [
+GodotZealCodeGenerator >> generateMapcat: aListNode [
 	^ self emitTransducer: 'mapcatting' from: aListNode
 ]
 
 { #category : 'transducers' }
-GDZealCodeGenerator >> generateMapcatIndexed: aListNode [
+GodotZealCodeGenerator >> generateMapcatIndexed: aListNode [
 	^ self emitTransducer: 'mapcatting_indexed' from: aListNode
 ]
 
 { #category : 'generating - control flow' }
-GDZealCodeGenerator >> generateMatch: aListNode [
+GodotZealCodeGenerator >> generateMatch: aListNode [
 	"(match expr pat1 body1 pat2 body2 ...) -> match expr: patterns"
 	| exprs target pairs |
 	exprs := aListNode expressions.
@@ -1701,17 +1701,17 @@ GDZealCodeGenerator >> generateMatch: aListNode [
 ]
 
 { #category : 'transducers-reducers' }
-GDZealCodeGenerator >> generateMax: aListNode [
+GodotZealCodeGenerator >> generateMax: aListNode [
 	^ self emitReducer: 'max_of' from: aListNode
 ]
 
 { #category : 'transducers-reducers' }
-GDZealCodeGenerator >> generateMin: aListNode [
+GodotZealCodeGenerator >> generateMin: aListNode [
 	^ self emitReducer: 'min_of' from: aListNode
 ]
 
 { #category : 'generating - expressions' }
-GDZealCodeGenerator >> generateOperator: aListNode [
+GodotZealCodeGenerator >> generateOperator: aListNode [
 	"(+ a b) -> a + b, (+ a b c) -> a + b + c, (not x) -> not x, (= a b) -> a == b"
 	| exprs op gdOp operands |
 	exprs := aListNode expressions.
@@ -1736,12 +1736,12 @@ GDZealCodeGenerator >> generateOperator: aListNode [
 ]
 
 { #category : 'transducers-reducers' }
-GDZealCodeGenerator >> generateProduct: aListNode [
+GodotZealCodeGenerator >> generateProduct: aListNode [
 	^ self emitReducer: 'product' from: aListNode
 ]
 
 { #category : 'transducers-sources' }
-GDZealCodeGenerator >> generateRange: aListNode [
+GodotZealCodeGenerator >> generateRange: aListNode [
 	"(range n) / (range a b) / (range a b s) -> built-in range(...) (eager Array)."
 	| exprs args |
 	exprs := aListNode expressions.
@@ -1754,7 +1754,7 @@ GDZealCodeGenerator >> generateRange: aListNode [
 ]
 
 { #category : 'transducers-core' }
-GDZealCodeGenerator >> generateReduce: aListNode [
+GodotZealCodeGenerator >> generateReduce: aListNode [
 	"(reduce f xs) -> Z.reduce(f, null, xs)
 	 (reduce f init xs) -> Z.reduce(f, init, xs)
 	 Replaces the older Array.reduce(f) emission — now routes through the library
@@ -1779,7 +1779,7 @@ GDZealCodeGenerator >> generateReduce: aListNode [
 ]
 
 { #category : 'transducers-sources' }
-GDZealCodeGenerator >> generateRepeat: aListNode [
+GodotZealCodeGenerator >> generateRepeat: aListNode [
 	"(repeat x) -> Z.repeat_(x) — infinite iterator."
 	| exprs |
 	exprs := aListNode expressions.
@@ -1789,7 +1789,7 @@ GDZealCodeGenerator >> generateRepeat: aListNode [
 ]
 
 { #category : 'generating - control flow' }
-GDZealCodeGenerator >> generateReturn: aListNode [
+GodotZealCodeGenerator >> generateReturn: aListNode [
 	"(return) -> return, (return expr) -> return expr"
 	| exprs |
 	exprs := aListNode expressions.
@@ -1800,7 +1800,7 @@ GDZealCodeGenerator >> generateReturn: aListNode [
 ]
 
 { #category : 'generating - definitions' }
-GDZealCodeGenerator >> generateSet: aListNode [
+GodotZealCodeGenerator >> generateSet: aListNode [
 	"(set target value) -> target = value
 	 (set target += value) -> target += value
 	 Target can be a symbol, slash path, or expression like (as e @type field)"
@@ -1831,7 +1831,7 @@ GDZealCodeGenerator >> generateSet: aListNode [
 ]
 
 { #category : 'generating - definitions' }
-GDZealCodeGenerator >> generateSetBang: aListNode [
+GodotZealCodeGenerator >> generateSetBang: aListNode [
 	"(set! target value) -> target = value"
 	| exprs target |
 	exprs := aListNode expressions.
@@ -1846,7 +1846,7 @@ GDZealCodeGenerator >> generateSetBang: aListNode [
 ]
 
 { #category : 'visiting - slash' }
-GDZealCodeGenerator >> generateSlashCall: aListNode [
+GodotZealCodeGenerator >> generateSlashCall: aListNode [
 	"Handle (obj/method args...) -> obj.method(args)"
 	| exprs headStr segments args receiver |
 	exprs := aListNode expressions.
@@ -1872,27 +1872,27 @@ GDZealCodeGenerator >> generateSlashCall: aListNode [
 ]
 
 { #category : 'transducers-reducers' }
-GDZealCodeGenerator >> generateSum: aListNode [
+GodotZealCodeGenerator >> generateSum: aListNode [
 	^ self emitReducer: 'sum' from: aListNode
 ]
 
 { #category : 'transducers' }
-GDZealCodeGenerator >> generateTake: aListNode [
+GodotZealCodeGenerator >> generateTake: aListNode [
 	^ self emitTransducer: 'taking' from: aListNode
 ]
 
 { #category : 'transducers' }
-GDZealCodeGenerator >> generateTakeWhile: aListNode [
+GodotZealCodeGenerator >> generateTakeWhile: aListNode [
 	^ self emitTransducer: 'taking_while' from: aListNode
 ]
 
 { #category : 'transducers-reducers' }
-GDZealCodeGenerator >> generateTally: aListNode [
+GodotZealCodeGenerator >> generateTally: aListNode [
 	^ self emitReducer: 'tally' from: aListNode
 ]
 
 { #category : 'threading' }
-GDZealCodeGenerator >> generateThreadFirst: aListNode [
+GodotZealCodeGenerator >> generateThreadFirst: aListNode [
 	"(-> x (f a) (g b _)) — unified threading macro.
 	 _ determines insertion point. If no _ in a form, auto-inserts as first arg.
 	 Bare symbols wrap as (sym accumulated). Subsumes both -> and ->>."
@@ -1921,7 +1921,7 @@ GDZealCodeGenerator >> generateThreadFirst: aListNode [
 ]
 
 { #category : 'transducers-core' }
-GDZealCodeGenerator >> generateTransduce: aListNode [
+GodotZealCodeGenerator >> generateTransduce: aListNode [
 	"(transduce xform rf init xs) -> Z.transduce(xform, rf, init, xs)
 	 The rf must be a reducer Dictionary {step,complete}, typically built via
 	 Z.append_rf() or hand-rolled in user code."
@@ -1939,7 +1939,7 @@ GDZealCodeGenerator >> generateTransduce: aListNode [
 ]
 
 { #category : 'generating - definitions' }
-GDZealCodeGenerator >> generateVar: aListNode [
+GodotZealCodeGenerator >> generateVar: aListNode [
 	"(var name:type value) -> var name: type = value"
 	| exprs nameNode valueNode |
 	exprs := aListNode expressions.
@@ -1964,7 +1964,7 @@ GDZealCodeGenerator >> generateVar: aListNode [
 ]
 
 { #category : 'generating - control flow' }
-GDZealCodeGenerator >> generateWhen: aListNode [
+GodotZealCodeGenerator >> generateWhen: aListNode [
 	"(when cond body...) -> if cond: body (no else)"
 	| exprs |
 	exprs := aListNode expressions.
@@ -1977,34 +1977,34 @@ GDZealCodeGenerator >> generateWhen: aListNode [
 ]
 
 { #category : 'emitting' }
-GDZealCodeGenerator >> indent [
+GodotZealCodeGenerator >> indent [
 	indentLevel := indentLevel + 1
 ]
 
 { #category : 'initialization' }
-GDZealCodeGenerator >> initialize [
+GodotZealCodeGenerator >> initialize [
 	stream := WriteStream on: String new.
 	indentLevel := 0.
-	registry := GDZealComponentRegistry new.
+	registry := GodotZealComponentRegistry new.
 	localScope := OrderedCollection new.
 	localScope add: Set new.
 	fusionSubs := Dictionary new
 ]
 
 { #category : 'scope' }
-GDZealCodeGenerator >> isLocal: aName [
+GodotZealCodeGenerator >> isLocal: aName [
 	"True if aName is bound in any currently-visible scope frame."
 	aName ifNil: [ ^ false ].
 	^ localScope anySatisfy: [ :frame | frame includes: aName asString ]
 ]
 
 { #category : 'private' }
-GDZealCodeGenerator >> isOperator: aString [
+GodotZealCodeGenerator >> isOperator: aString [
 	^ #('+' '-' '*' '%' '=' '<>' '<' '>' '<=' '>=' 'and' 'or' 'not' '+=' '-=' '*=' '/=') includes: aString
 ]
 
 { #category : 'generation' }
-GDZealCodeGenerator >> isStatementForm: aNode [
+GodotZealCodeGenerator >> isStatementForm: aNode [
 	"True if aNode is a special form that emits as a GDScript statement (not an
 	 expression) and therefore can't be the operand of `return`."
 	| head |
@@ -2016,7 +2016,7 @@ GDZealCodeGenerator >> isStatementForm: aNode [
 ]
 
 { #category : 'threading' }
-GDZealCodeGenerator >> isTransducerFactory: aNode [
+GodotZealCodeGenerator >> isTransducerFactory: aNode [
 	"True if aNode is a (transducer-name arg...) form that returns an xform Callable."
 	| head headStr |
 	(aNode isKindOf: ZealListNode) ifFalse: [ ^ false ].
@@ -2030,18 +2030,18 @@ GDZealCodeGenerator >> isTransducerFactory: aNode [
 ]
 
 { #category : 'emitting' }
-GDZealCodeGenerator >> nl [
+GodotZealCodeGenerator >> nl [
 	stream nextPutAll: String crlf.
 	self emitIndent
 ]
 
 { #category : 'accessing' }
-GDZealCodeGenerator >> output [
+GodotZealCodeGenerator >> output [
 	^ stream contents
 ]
 
 { #category : 'generation' }
-GDZealCodeGenerator >> paramName: aNode [
+GodotZealCodeGenerator >> paramName: aNode [
 	"Snake-cased name of a parameter node, stripping any colon-chain type annotation."
 	(aNode isKindOf: ZealColonChainNode) ifTrue: [
 		| resolved |
@@ -2051,24 +2051,24 @@ GDZealCodeGenerator >> paramName: aNode [
 ]
 
 { #category : 'scope' }
-GDZealCodeGenerator >> popScope [
+GodotZealCodeGenerator >> popScope [
 	localScope size > 1 ifTrue: [ localScope removeLast ]
 ]
 
 { #category : 'scope' }
-GDZealCodeGenerator >> pushScope [
+GodotZealCodeGenerator >> pushScope [
 	"Push a fresh local-scope frame. Names bound while this frame is on top are
 	 visible until the matching popScope."
 	localScope add: Set new
 ]
 
 { #category : 'accessing' }
-GDZealCodeGenerator >> registry [
+GodotZealCodeGenerator >> registry [
 	^ registry
 ]
 
 { #category : 'generation' }
-GDZealCodeGenerator >> resolveClassRef: aString [
+GodotZealCodeGenerator >> resolveClassRef: aString [
 	"Resolve @name -> class name. Strip @, PascalCase. Only add C_ prefix for
 	 names that are registered as GECS components. Unregistered names (Godot
 	 built-ins like Vector2, Color, Node2D) are returned as-is."
@@ -2078,7 +2078,7 @@ GDZealCodeGenerator >> resolveClassRef: aString [
 ]
 
 { #category : 'private - types' }
-GDZealCodeGenerator >> resolveColonChain: aString [
+GodotZealCodeGenerator >> resolveColonChain: aString [
 	"GDZeal-aware colon chain resolution. Unlike ZealColonChainResolver,
 	 treats @-prefixed segments as types (not annotations).
 	 entity:@entity -> name='entity', type='@entity'"
@@ -2097,7 +2097,7 @@ GDZealCodeGenerator >> resolveColonChain: aString [
 ]
 
 { #category : 'private - types' }
-GDZealCodeGenerator >> resolveType: aTypeString [
+GodotZealCodeGenerator >> resolveType: aTypeString [
 	"Map GDZeal type names to GDScript types.
 	 int -> int, float -> float, string -> String, bool -> bool,
 	 void -> void, @class refs resolved via registry"
@@ -2108,12 +2108,12 @@ GDZealCodeGenerator >> resolveType: aTypeString [
 ]
 
 { #category : 'accessing' }
-GDZealCodeGenerator >> setRegistry: aRegistry [
+GodotZealCodeGenerator >> setRegistry: aRegistry [
 	registry := aRegistry
 ]
 
 { #category : 'generation' }
-GDZealCodeGenerator >> specialForms [
+GodotZealCodeGenerator >> specialForms [
 	"Dialect-local special forms + transducer protocol + threading macro."
 	| dict |
 	dict := Dictionary new
@@ -2145,7 +2145,7 @@ GDZealCodeGenerator >> specialForms [
 ]
 
 { #category : 'threading' }
-GDZealCodeGenerator >> syntheticList: exprsArray [
+GodotZealCodeGenerator >> syntheticList: exprsArray [
 	"Build a ZealListNode from an array of child AST nodes."
 	| list |
 	list := ZealListNode new.
@@ -2154,14 +2154,14 @@ GDZealCodeGenerator >> syntheticList: exprsArray [
 ]
 
 { #category : 'threading' }
-GDZealCodeGenerator >> threadFormHasPlaceholder: aListNode [
+GodotZealCodeGenerator >> threadFormHasPlaceholder: aListNode [
 	"True if any direct child of the list is the symbol _"
 	^ aListNode expressions anySatisfy: [ :e |
 		(e isKindOf: ZealSymbolNode) and: [ e value value = '_' ] ]
 ]
 
 { #category : 'threading' }
-GDZealCodeGenerator >> threadSubstitute: aListNode with: replacement [
+GodotZealCodeGenerator >> threadSubstitute: aListNode with: replacement [
 	"Return a new synthetic list where every _ symbol child is replaced with replacement."
 	| newExprs |
 	newExprs := aListNode expressions collect: [ :e |
@@ -2172,7 +2172,7 @@ GDZealCodeGenerator >> threadSubstitute: aListNode with: replacement [
 ]
 
 { #category : 'private - naming' }
-GDZealCodeGenerator >> toPascalCase: aString [
+GodotZealCodeGenerator >> toPascalCase: aString [
 	"kebab-case -> PascalCase. Capitalize first letter and after hyphens."
 	^ String streamContents: [ :s |
 		| capitalize |
@@ -2187,13 +2187,13 @@ GDZealCodeGenerator >> toPascalCase: aString [
 ]
 
 { #category : 'private - naming' }
-GDZealCodeGenerator >> toSnakeCase: aString [
+GodotZealCodeGenerator >> toSnakeCase: aString [
 	"kebab-case -> snake_case"
 	^ aString copyReplaceAll: '-' with: '_'
 ]
 
 { #category : 'fusion' }
-GDZealCodeGenerator >> tryFuseInto: xformNode source: sourceNode [
+GodotZealCodeGenerator >> tryFuseInto: xformNode source: sourceNode [
 	"Try to emit a fused loop for (into [] xform source). Returns true if fusion
 	 succeeded, false if the caller should fall back to Z.into(). The fused output
 	 is wrapped in an IIFE so it works as an expression anywhere."
@@ -2240,7 +2240,7 @@ GDZealCodeGenerator >> tryFuseInto: xformNode source: sourceNode [
 ]
 
 { #category : 'generation' }
-GDZealCodeGenerator >> visitAtom: aNode [
+GodotZealCodeGenerator >> visitAtom: aNode [
 	"Handle atoms: @class refs, /slash access, symbols, keywords, literals.
 	 Fusion substitutions are checked for symbols — when a lambda param has been
 	 renamed to _pN during loop fusion, the substitution fires here."
@@ -2290,7 +2290,7 @@ GDZealCodeGenerator >> visitAtom: aNode [
 ]
 
 { #category : 'visiting' }
-GDZealCodeGenerator >> visitExpression: aNode [
+GodotZealCodeGenerator >> visitExpression: aNode [
 	(aNode isKindOf: ZealListNode) ifTrue: [ ^ self visitList: aNode ].
 	(aNode isKindOf: ZealVectorNode) ifTrue: [ ^ self visitVector: aNode ].
 	(aNode isKindOf: ZealMapNode) ifTrue: [ ^ self visitMap: aNode ].
@@ -2298,7 +2298,7 @@ GDZealCodeGenerator >> visitExpression: aNode [
 ]
 
 { #category : 'visiting' }
-GDZealCodeGenerator >> visitList: aNode [
+GodotZealCodeGenerator >> visitList: aNode [
 	"Dispatch: slash call, special form, operator, or function call"
 	| exprs head headStr |
 	exprs := aNode expressions.
@@ -2322,7 +2322,7 @@ GDZealCodeGenerator >> visitList: aNode [
 ]
 
 { #category : 'visiting' }
-GDZealCodeGenerator >> visitMap: aNode [
+GodotZealCodeGenerator >> visitMap: aNode [
 	"{k1 v1 k2 v2} -> {k1: v1, k2: v2}"
 	self emit: '{'.
 	aNode pairs
@@ -2335,7 +2335,7 @@ GDZealCodeGenerator >> visitMap: aNode [
 ]
 
 { #category : 'visiting' }
-GDZealCodeGenerator >> visitVector: aNode [
+GodotZealCodeGenerator >> visitVector: aNode [
 	"[a b c] -> [a, b, c]"
 	self emit: '['.
 	aNode expressions
@@ -2345,7 +2345,7 @@ GDZealCodeGenerator >> visitVector: aNode [
 ]
 
 { #category : 'fusion' }
-GDZealCodeGenerator >> withSubstitution: originalName as: newName do: aBlock [
+GodotZealCodeGenerator >> withSubstitution: originalName as: newName do: aBlock [
 	"Temporarily register a symbol substitution so that visitAtom: emits newName
 	 whenever it encounters originalName. Used by the fusion pass to rename lambda
 	 params to unique _pN names."

@@ -32,7 +32,7 @@ ZealNode >> compileToGDScript [
 ZealNode >> compileToGDScript: stream indent: level [
 	"Default: emit rawSource or subclass override"
 	rawSource ifNotNil: [
-		stream nextPutAll: (GDZealCodeGenerator compile: rawSource).
+		stream nextPutAll: (GodotZealCodeGenerator compile: rawSource).
 		^ stream ].
 	stream nextPutAll: '/* uncompilable: ' , self class name , ' */'.
 	^ stream

@@ -1,12 +1,12 @@
 Class {
-	#name : 'VZealBrowser',
+	#name : 'VerseZealBrowser',
 	#superclass : 'ZealBrowser',
 	#category : 'Zeal',
 	#package : 'Zeal'
 }
 
 { #category : 'opening' }
-VZealBrowser class >> open [
+VerseZealBrowser class >> open [
 	"Open Zeal launcher with themed folder picker."
 	| space root titleLabel sampleBtn fileSelector |
 	space := BlSpace new.
@@ -58,14 +58,14 @@ VZealBrowser class >> open [
 ]
 
 { #category : 'opening' }
-VZealBrowser class >> openFolder: aPathString [
+VerseZealBrowser class >> openFolder: aPathString [
 	| project |
 	project := ZealProject new scanFolder: aPathString asFileReference.
 	^ self openProject: project
 ]
 
 { #category : 'opening' }
-VZealBrowser class >> openProject: aZealProject [
+VerseZealBrowser class >> openProject: aZealProject [
 	| browser space pager |
 	browser := self new.
 	browser project: aZealProject.
@@ -85,7 +85,7 @@ VZealBrowser class >> openProject: aZealProject [
 ]
 
 { #category : 'opening' }
-VZealBrowser class >> openSample [
+VerseZealBrowser class >> openSample [
 	"Open a browser with a sample in-memory project for testing."
 	| project mod1 mod2 |
 	project := ZealProject new name: 'SampleGame'; path: '/SampleGame'.
@@ -111,7 +111,7 @@ VZealBrowser class >> openSample [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> addCompiled: compiled to: aNode [
+VerseZealBrowser >> addCompiled: compiled to: aNode [
 	"Add or replace a compiled definition. Matches by name AND parameter signature
 	 to support Verse method overloading."
 	(compiled isKindOf: ZealFunction) ifTrue: [
@@ -158,7 +158,7 @@ VZealBrowser >> addCompiled: compiled to: aNode [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> addMethodTo: aNode [
+VerseZealBrowser >> addMethodTo: aNode [
 	"Add a new empty method to the class/interface"
 	| newMethod |
 	newMethod := ZealFunction new name: 'new-method'; type: 'void'; 
@@ -171,7 +171,7 @@ VZealBrowser >> addMethodTo: aNode [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> addSlotTo: aNode [
+VerseZealBrowser >> addSlotTo: aNode [
 	"Add a new empty slot to the class/interface"
 	| newField |
 	newField := ZealField new name: 'new-field'; type: 'int'; isMutable: false.
@@ -188,7 +188,7 @@ VZealBrowser >> addSlotTo: aNode [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> addSlotTo: aNode mutable: isMutable [
+VerseZealBrowser >> addSlotTo: aNode mutable: isMutable [
 	"Add a new empty slot to the class/interface"
 	| newField |
 	newField := ZealField new name: 'new-field'; type: 'int'; isMutable: isMutable.
@@ -204,7 +204,7 @@ VZealBrowser >> addSlotTo: aNode mutable: isMutable [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> allModuleNames [
+VerseZealBrowser >> allModuleNames [
 	"Collect all folder module names with paths"
 	| result rootMod |
 	result := OrderedCollection new.
@@ -215,7 +215,7 @@ VZealBrowser >> allModuleNames [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> badgeLetterFor: item [
+VerseZealBrowser >> badgeLetterFor: item [
 	(item isKindOf: ZealTreeGroup) ifTrue: [ ^ '▸' ].
 	(item isKindOf: ZealModule) ifTrue: [ ^ 'M' ].
 	(item isKindOf: ZealClass) ifTrue: [ ^ 'C' ].
@@ -228,7 +228,7 @@ VZealBrowser >> badgeLetterFor: item [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> browseDefinitionAt: anEditor [
+VerseZealBrowser >> browseDefinitionAt: anEditor [
 	"Find the word under cursor, resolve it, and open it"
 	| text cursorPos source wordStart wordEnd word node |
 	text := anEditor editor text asString.
@@ -266,7 +266,7 @@ VZealBrowser >> browseDefinitionAt: anEditor [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> buildAddEditor: aNode inContainer: aContainer [
+VerseZealBrowser >> buildAddEditor: aNode inContainer: aContainer [
 	"A Zeal code editor. Ctrl+S adds to class and rebuilds THIS container."
 	| wrapper label editor initialText |
 	wrapper := BlElement new
@@ -317,7 +317,7 @@ VZealBrowser >> buildAddEditor: aNode inContainer: aContainer [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> buildAllSlotsEditor: aNode inContainer: aContainer [
+VerseZealBrowser >> buildAllSlotsEditor: aNode inContainer: aContainer [
 	"All slots editor. Ctrl+S saves to memory, generated class, and .verse file."
 	| container allMembers fields zealLines editor |
 	container := BlElement new
@@ -384,7 +384,7 @@ VZealBrowser >> buildAllSlotsEditor: aNode inContainer: aContainer [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> buildChatPanel [
+VerseZealBrowser >> buildChatPanel [
 	"Build the embedded Zeal Bot chat panel"
 	| chat panel |
 	chat := ZealBot new browser: self.
@@ -402,12 +402,12 @@ VZealBrowser >> buildChatPanel [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> buildClassDetail: aNode [
+VerseZealBrowser >> buildClassDetail: aNode [
 	^ self buildClassDetail: aNode expandMethod: nil
 ]
 
 { #category : 'verse' }
-VZealBrowser >> buildClassDetail: aNode expandMethod: aMethodOrNil [
+VerseZealBrowser >> buildClassDetail: aNode expandMethod: aMethodOrNil [
 	"Class/interface view: header, module, using, slots, extends, methods, source editor"
 	| container allMembers fields methods mutableFields immutableFields |
 	container := BlElement new
@@ -467,7 +467,7 @@ VZealBrowser >> buildClassDetail: aNode expandMethod: aMethodOrNil [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> buildClassHeader: aNode [
+VerseZealBrowser >> buildClassHeader: aNode [
 	"Header — type label + name + show in folder button"
 	| header topRow typeLabel |
 	header := BlElement new
@@ -496,7 +496,7 @@ VZealBrowser >> buildClassHeader: aNode [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> buildClassSourceEditor: aNode inContainer: aContainer [
+VerseZealBrowser >> buildClassSourceEditor: aNode inContainer: aContainer [
 	"Full Zeal source editor for the entire class. Ctrl+S recompiles and updates."
 	| wrapper label editor zealSrc |
 	wrapper := BlElement new
@@ -525,7 +525,7 @@ VZealBrowser >> buildClassSourceEditor: aNode inContainer: aContainer [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> buildCommandBar [
+VerseZealBrowser >> buildCommandBar [
 	"Input bar for creating modules and definitions"
 	| wrapper label editor |
 	wrapper := BlElement new
@@ -574,7 +574,7 @@ VZealBrowser >> buildCommandBar [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> buildCompileAllButton [
+VerseZealBrowser >> buildCompileAllButton [
 	"Button that compiles all definitions and writes .verse files"
 	| btn |
 	btn := BlElement new
@@ -594,7 +594,7 @@ VZealBrowser >> buildCompileAllButton [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> buildDefinitionView: aNode [
+VerseZealBrowser >> buildDefinitionView: aNode [
 	"Build a view for any definition with module, using, and code editor"
 	| container source editor |
 	((aNode isKindOf: ZealClass) or: [aNode isKindOf: ZealInterface]) ifTrue: [
@@ -632,7 +632,7 @@ VZealBrowser >> buildDefinitionView: aNode [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> buildDetail [
+VerseZealBrowser >> buildDetail [
 	detailElement := BlElement new.
 	detailElement layout: BlLinearLayout vertical.
 	detailElement constraintsDo: [:c | c horizontal matchParent. c vertical fitContent ].
@@ -643,7 +643,7 @@ VZealBrowser >> buildDetail [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> buildExtendsEditor: aNode inContainer: aContainer [
+VerseZealBrowser >> buildExtendsEditor: aNode inContainer: aContainer [
 	"Editable extends field for classes/interfaces"
 	| row extensionsEditor currentExtensions strategy |
 	row := BlElement new
@@ -696,7 +696,7 @@ VZealBrowser >> buildExtendsEditor: aNode inContainer: aContainer [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> buildMethodItem: aMethod [
+VerseZealBrowser >> buildMethodItem: aMethod [
 	"A collapsible method — simple toggle with arrow (no class context)"
 	| container headerRow sig expanded contentHolder arrow label |
 	sig := (self toKebab: aMethod name).
@@ -764,7 +764,7 @@ VZealBrowser >> buildMethodItem: aMethod [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> buildMethodItem: aMethod forClass: aClassNode inContainer: aContainer [
+VerseZealBrowser >> buildMethodItem: aMethod forClass: aClassNode inContainer: aContainer [
 	"A collapsible method with minus button to remove"
 	| container headerRow sig expanded contentHolder arrow label minusBtn |
 	sig := (self toKebab: aMethod name).
@@ -841,7 +841,7 @@ VZealBrowser >> buildMethodItem: aMethod forClass: aClassNode inContainer: aCont
 ]
 
 { #category : 'verse' }
-VZealBrowser >> buildMinusButton: aBlock [
+VerseZealBrowser >> buildMinusButton: aBlock [
 	"A themed minus button"
 	| btn label |
 	label := BrLabel new
@@ -863,7 +863,7 @@ VZealBrowser >> buildMinusButton: aBlock [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> buildModuleDropdown: aNode inContainer: aContainer [
+VerseZealBrowser >> buildModuleDropdown: aNode inContainer: aContainer [
 	"A themed dropdown to move a definition between modules"
 	| row currentMod moduleNames currentName btn |
 	row := BlElement new
@@ -939,7 +939,7 @@ VZealBrowser >> buildModuleDropdown: aNode inContainer: aContainer [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> buildSectionWithAdd: title count: count action: aBlock [
+VerseZealBrowser >> buildSectionWithAdd: title count: count action: aBlock [
 	"Section label with a + button"
 	| row label |
 	row := BlElement new
@@ -965,7 +965,7 @@ VZealBrowser >> buildSectionWithAdd: title count: count action: aBlock [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> buildShowInFolderButton: aNode [
+VerseZealBrowser >> buildShowInFolderButton: aNode [
 	"Button that opens the .verse file location in Windows Explorer"
 	^ BrButton new
 		aptitude: (BrGlamorousButtonWithLabelAptitude new);
@@ -993,7 +993,7 @@ VZealBrowser >> buildShowInFolderButton: aNode [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> buildSlotItem: aField forClass: aClassNode inContainer: aContainer [
+VerseZealBrowser >> buildSlotItem: aField forClass: aClassNode inContainer: aContainer [
 	"A clickable slot row with minus button to remove"
 	| row label isMut labelEl minusBtn |
 	isMut := (aField respondsTo: #isMutable) ifTrue: [aField isMutable] ifFalse: [false].
@@ -1038,7 +1038,7 @@ VZealBrowser >> buildSlotItem: aField forClass: aClassNode inContainer: aContain
 ]
 
 { #category : 'verse' }
-VZealBrowser >> buildTree [
+VerseZealBrowser >> buildTree [
 	treeElement := BrSimpleTree new.
 	treeElement
 		nodeStencil: [
@@ -1074,7 +1074,7 @@ VZealBrowser >> buildTree [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> buildUI [
+VerseZealBrowser >> buildUI [
 	| leftPane topBar content mainLayout chatBtn |
 	self removeChildren.
 	
@@ -1120,7 +1120,7 @@ VZealBrowser >> buildUI [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> buildUsingEditor: aNode [
+VerseZealBrowser >> buildUsingEditor: aNode [
 	"Editable using paths — comma separated, Ctrl+S to save, with module completion"
 	| row editor currentUsings strategy |
 	row := BlElement new
@@ -1173,7 +1173,7 @@ VZealBrowser >> buildUsingEditor: aNode [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> chatSystemPrompt [
+VerseZealBrowser >> chatSystemPrompt [
 	^ 'You are a Zeal programming assistant embedded in the Zeal IDE.
 Zeal is a Lisp-syntax language that transpiles to Epic Verse (UEFN).
 
@@ -1198,7 +1198,7 @@ Be concise. Context about the selected definition is provided below.'
 ]
 
 { #category : 'verse' }
-VZealBrowser >> childrenOf: item [
+VerseZealBrowser >> childrenOf: item [
 	"Modules show definitions grouped by type, alphabetically sorted."
 	(item isKindOf: ZealModule) ifTrue: [ 
 		| allDefs subModules classes interfaces structs enums functions variables groups |
@@ -1231,7 +1231,7 @@ VZealBrowser >> childrenOf: item [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> collectModuleNames: aModule path: prefix into: result [
+VerseZealBrowser >> collectModuleNames: aModule path: prefix into: result [
 	"Only collect folder modules, NOT file namespaces"
 	aModule definitions do: [:d |
 		((d isKindOf: ZealModule) and: [d kind = #folder]) ifTrue: [
@@ -1244,7 +1244,7 @@ VZealBrowser >> collectModuleNames: aModule path: prefix into: result [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> compileAll [
+VerseZealBrowser >> compileAll [
 	"Compile all definitions and write each to its own .verse file"
 	| count |
 	count := 0.
@@ -1288,7 +1288,7 @@ VZealBrowser >> compileAll [
 ]
 
 { #category : 'actions' }
-VZealBrowser >> compileAndSave: anEditor forNode: aNode [
+VerseZealBrowser >> compileAndSave: anEditor forNode: aNode [
 	"Compile Zeal → sync node → persist to class and .verse file."
 	| zealSource compiled compiledNodes isExpander oldZeal |
 	zealSource := anEditor editor text asString.
@@ -1333,7 +1333,7 @@ VZealBrowser >> compileAndSave: anEditor forNode: aNode [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> compileClassSource: editor forNode: aNode inContainer: aContainer [
+VerseZealBrowser >> compileClassSource: editor forNode: aNode inContainer: aContainer [
 	"Compile the full class source editor, rebuild the view, restore cursor"
 	| src compiled cursorPos |
 	src := editor editor text asString trimBoth.
@@ -1386,7 +1386,7 @@ VZealBrowser >> compileClassSource: editor forNode: aNode inContainer: aContaine
 ]
 
 { #category : 'building' }
-VZealBrowser >> configureZealEditor: anEditor [
+VerseZealBrowser >> configureZealEditor: anEditor [
 	"Verse editor: shared setup + completion + browse shortcut"
 	super configureZealEditor: anEditor.
 	self setupCompletion: anEditor.
@@ -1397,7 +1397,7 @@ VZealBrowser >> configureZealEditor: anEditor [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> createDefinition: zealSource [
+VerseZealBrowser >> createDefinition: zealSource [
 	"Compile Zeal source and add/replace definition directly in the root module."
 	| compiled nodes rootMod |
 	[ compiled := ZealCompiler compile: zealSource ] on: Error do: [ ^ self ].
@@ -1422,7 +1422,7 @@ VZealBrowser >> createDefinition: zealSource [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> createModule: nameStr [
+VerseZealBrowser >> createModule: nameStr [
 	"Create a folder module — removes any existing definition with same name first"
 	| parts current packageName parentClassName parentClass |
 	parts := nameStr substrings: '/'.
@@ -1464,7 +1464,7 @@ VZealBrowser >> createModule: nameStr [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> currentModuleOf: aNode [
+VerseZealBrowser >> currentModuleOf: aNode [
 	"Find which module a definition currently lives in"
 	| found |
 	found := nil.
@@ -1474,7 +1474,7 @@ VZealBrowser >> currentModuleOf: aNode [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> expandedNodeNames [
+VerseZealBrowser >> expandedNodeNames [
 	"Get names of currently expanded expander nodes from the main editor"
 	| names |
 	names := OrderedCollection new.
@@ -1489,7 +1489,7 @@ VZealBrowser >> expandedNodeNames [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> generatedClassFor: aNode [
+VerseZealBrowser >> generatedClassFor: aNode [
 	"Find the generated Smalltalk class for a ZealNode. 
 	 Checks cached reference first, then name-based lookup."
 	| name gc |
@@ -1509,12 +1509,12 @@ VZealBrowser >> generatedClassFor: aNode [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> highlightWithExpanders: zealText [
+VerseZealBrowser >> highlightWithExpanders: zealText [
 	^ self highlightWithExpanders: zealText nested: false
 ]
 
 { #category : 'verse' }
-VZealBrowser >> highlightWithExpanders: zealText nested: isNested [
+VerseZealBrowser >> highlightWithExpanders: zealText nested: isNested [
 	"Highlight Zeal source and attach inline expanders"
 	| highlighted resolver |
 	highlighted := ZealTheme highlight: zealText.
@@ -1525,7 +1525,7 @@ VZealBrowser >> highlightWithExpanders: zealText nested: isNested [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> iconColorFor: item [
+VerseZealBrowser >> iconColorFor: item [
 	"Muted colors for tree badges"
 	(item isKindOf: ZealTreeGroup) ifTrue: [ ^ Color fromHexString: '444444' ].
 	(item isKindOf: ZealModule) ifTrue: [ ^ Color fromHexString: '2D6A8A' ].
@@ -1539,7 +1539,7 @@ VZealBrowser >> iconColorFor: item [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> iconElementFor: item [
+VerseZealBrowser >> iconElementFor: item [
 	"Colored badge with letter — visible on dark theme"
 	| badge label |
 	badge := BlElement new
@@ -1557,7 +1557,7 @@ VZealBrowser >> iconElementFor: item [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> iconFor: item [
+VerseZealBrowser >> iconFor: item [
 	"Return an emoji icon for tree items"
 	(item isKindOf: ZealModule) ifTrue: [ ^ '📦 ' ].
 	(item isKindOf: ZealClass) ifTrue: [ ^ '🔷 ' ].
@@ -1570,7 +1570,7 @@ VZealBrowser >> iconFor: item [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> labelFor: item [
+VerseZealBrowser >> labelFor: item [
 	(item isKindOf: ZealTreeGroup) ifTrue: [ ^ item name ].
 	(item isKindOf: ZealModule) ifTrue: [ ^ item name ].
 	(item isKindOf: ZealClass) ifTrue: [ ^ item name ].
@@ -1588,7 +1588,7 @@ VZealBrowser >> labelFor: item [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> metadataForNode: aNode [
+VerseZealBrowser >> metadataForNode: aNode [
 	"Extract all metadata from a node as a dictionary for storage on the generated class"
 	| meta |
 	meta := Dictionary new.
@@ -1654,7 +1654,7 @@ VZealBrowser >> metadataForNode: aNode [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> moveNode: aNode toModule: targetModule [
+VerseZealBrowser >> moveNode: aNode toModule: targetModule [
 	"Move a definition from its current module to targetModule"
 	| currentMod |
 	currentMod := self currentModuleOf: aNode.
@@ -1666,7 +1666,7 @@ VZealBrowser >> moveNode: aNode toModule: targetModule [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> newZealEditor: sourceText [
+VerseZealBrowser >> newZealEditor: sourceText [
 	"Create a fully configured Zeal code editor using the styler system."
 	| editor styler |
 	styler := ZealTextStyler new project: project; browser: self.
@@ -1682,19 +1682,19 @@ VZealBrowser >> newZealEditor: sourceText [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> paramSignatureOf: aFunction [
+VerseZealBrowser >> paramSignatureOf: aFunction [
 	"Return a string representing the parameter types for overload comparison"
 	^ ', ' join: (aFunction parameters collect: [:p | p type ifNil: ['any']])
 ]
 
 { #category : 'verse' }
-VZealBrowser >> persistClassNode: aNode [
+VerseZealBrowser >> persistClassNode: aNode [
 	"Delegate to unified persistence"
 	self persistNode: aNode
 ]
 
 { #category : 'verse' }
-VZealBrowser >> persistDefinition: aNode inNamespace: aNs [
+VerseZealBrowser >> persistDefinition: aNode inNamespace: aNs [
 	"Generate a Smalltalk class for a definition directly under the module class"
 	| packageName projectPrefix modClassName moduleClass defClass zealSrc verseSrc modName |
 	(aNode respondsTo: #name) ifFalse: [ ^ self ].
@@ -1722,7 +1722,7 @@ VZealBrowser >> persistDefinition: aNode inNamespace: aNs [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> persistMetadata: aNode to: genClass [
+VerseZealBrowser >> persistMetadata: aNode to: genClass [
 	"Store all node metadata as class-side methods on the generated class.
 	 Prefix with 'zeal' where it collides with Smalltalk built-ins."
 	
@@ -1771,7 +1771,7 @@ VZealBrowser >> persistMetadata: aNode to: genClass [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> persistNode: aNode [
+VerseZealBrowser >> persistNode: aNode [
 	"Persist a node's complete state to class variables, zealSource, verseSource, and .verse file."
 	| genClass zealSrc verseSrc filePath lf |
 	genClass := self generatedClassFor: aNode.
@@ -1808,7 +1808,7 @@ VZealBrowser >> persistNode: aNode [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> rebuildClassIn: parentElement node: aNode [
+VerseZealBrowser >> rebuildClassIn: parentElement node: aNode [
 	"Rebuild the class detail inside its own parent element"
 	| newDetail |
 	newDetail := self buildClassDetail: aNode.
@@ -1817,7 +1817,7 @@ VZealBrowser >> rebuildClassIn: parentElement node: aNode [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> rebuildTree [
+VerseZealBrowser >> rebuildTree [
 	"Refresh tree items and restore expanded state"
 	| expandedNames root |
 	expandedNames := Set new.
@@ -1843,7 +1843,7 @@ VZealBrowser >> rebuildTree [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> refreshClassView: aNode [
+VerseZealBrowser >> refreshClassView: aNode [
 	"Rebuild the class detail view wherever it currently lives.
 	 If it's in detailElement (selected from tree), rebuild there.
 	 If it's in a pager page (via Ctrl+B), rebuild in that page."
@@ -1854,7 +1854,7 @@ VZealBrowser >> refreshClassView: aNode [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> removeDefinition: aNode [
+VerseZealBrowser >> removeDefinition: aNode [
 	"Remove a definition from the project and delete its generated class"
 	| genClass |
 	"Remove from module"
@@ -1866,7 +1866,7 @@ VZealBrowser >> removeDefinition: aNode [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> removeNodeFromModule: aModule node: aNode [
+VerseZealBrowser >> removeNodeFromModule: aModule node: aNode [
 	"Recursively remove a node from a module"
 	aModule definitions: (aModule definitions asOrderedCollection reject: [:d | d == aNode]) asArray.
 	aModule definitions do: [:d |
@@ -1874,7 +1874,7 @@ VZealBrowser >> removeNodeFromModule: aModule node: aNode [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> reopenExpanders: nodeNames [
+VerseZealBrowser >> reopenExpanders: nodeNames [
 	"After rebuilding, find expander attributes matching nodeNames and expand them"
 	| text |
 	nodeNames isEmpty ifTrue: [ ^ self ].
@@ -1891,7 +1891,7 @@ VZealBrowser >> reopenExpanders: nodeNames [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> searchModule: aModule forNode: aNode path: prefix found: foundBlock [
+VerseZealBrowser >> searchModule: aModule forNode: aNode path: prefix found: foundBlock [
 	"Recursively search for a node in modules"
 	aModule definitions do: [:d |
 		(d isKindOf: ZealModule) ifTrue: [
@@ -1903,7 +1903,7 @@ VZealBrowser >> searchModule: aModule forNode: aNode path: prefix found: foundBl
 ]
 
 { #category : 'verse' }
-VZealBrowser >> selectNode: aNode [
+VerseZealBrowser >> selectNode: aNode [
 	| verseText zealText generatedClass headerRow |
 	selectedNode := aNode.
 	
@@ -1968,7 +1968,7 @@ VZealBrowser >> selectNode: aNode [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> setupCompletion: anEditor [
+VerseZealBrowser >> setupCompletion: anEditor [
 	"Install themed code completion"
 	| strategy controller |
 	strategy := ZealCompletionStrategy new project: project.
@@ -1983,7 +1983,7 @@ VZealBrowser >> setupCompletion: anEditor [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> setupRehighlight: anEditor [
+VerseZealBrowser >> setupRehighlight: anEditor [
 	"Debounced rehighlight on text changes"
 	anEditor editor
 		when: BrTextEditorInsertedEvent do: [:e | self scheduleRehighlight: anEditor ];
@@ -1991,7 +1991,7 @@ VZealBrowser >> setupRehighlight: anEditor [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> showClassDetail: cls [
+VerseZealBrowser >> showClassDetail: cls [
 	cls superclass ifNotNil: [:p |
 		detailElement addChild: (BrLabel new
 			aptitude: (BrGlamorousLabelAptitude new foreground: ZealTheme operatorColor; fontSize: 12);
@@ -2002,14 +2002,14 @@ VZealBrowser >> showClassDetail: cls [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> showEnumDetail: en [
+VerseZealBrowser >> showEnumDetail: en [
 	detailElement addChild: (BrLabel new
 		aptitude: (BrGlamorousLabelAptitude new foreground: ZealTheme commentColor; fontSize: 12);
 		text: 'Values: ' , (en values joinUsing: ', '))
 ]
 
 { #category : 'verse' }
-VZealBrowser >> showFunctionDetail: func [
+VerseZealBrowser >> showFunctionDetail: func [
 	detailElement addChild: (BrLabel new
 		aptitude: (BrGlamorousLabelAptitude new foreground: ZealTheme commentColor; fontSize: 12);
 		text: 'Parameters:').
@@ -2021,7 +2021,7 @@ VZealBrowser >> showFunctionDetail: func [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> showModuleDetail: mod [
+VerseZealBrowser >> showModuleDetail: mod [
 	mod usings notEmpty ifTrue: [
 		detailElement addChild: (BrLabel new
 			aptitude: (BrGlamorousLabelAptitude new foreground: ZealTheme commentColor; fontSize: 12);
@@ -2039,7 +2039,7 @@ VZealBrowser >> showModuleDetail: mod [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> showWelcome [
+VerseZealBrowser >> showWelcome [
 	detailElement removeChildren.
 	detailElement addChild: (BrLabel new
 		aptitude: (BrGlamorousLabelAptitude new foreground: ZealTheme commentColor; fontSize: 16);
@@ -2047,7 +2047,7 @@ VZealBrowser >> showWelcome [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> splitTopLevelForms: aString [
+VerseZealBrowser >> splitTopLevelForms: aString [
 	"Split Zeal source into top-level forms by matching parens at depth 0"
 	| forms current depth inString |
 	forms := OrderedCollection new.
@@ -2070,7 +2070,7 @@ VZealBrowser >> splitTopLevelForms: aString [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> storeIndividualZeal: fullZealSource forDefinitions: compiledNodes [
+VerseZealBrowser >> storeIndividualZeal: fullZealSource forDefinitions: compiledNodes [
 	"Parse the full Zeal source into individual definitions and store each in its generated class"
 	| zealParts |
 	zealParts := self splitTopLevelForms: fullZealSource.
@@ -2088,7 +2088,7 @@ VZealBrowser >> storeIndividualZeal: fullZealSource forDefinitions: compiledNode
 ]
 
 { #category : 'verse' }
-VZealBrowser >> surgicallyReplace: oldText with: newText in: mainEditor [
+VerseZealBrowser >> surgicallyReplace: oldText with: newText in: mainEditor [
 	"Replace oldText with newText in the main editor, preserving other attributes.
 	 If oldText not found (nested expander case), skip silently."
 	| mainStr startIdx endIdx highlighted |
@@ -2118,7 +2118,7 @@ VZealBrowser >> surgicallyReplace: oldText with: newText in: mainEditor [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> surgicallyUpdate: aNode in: mainEditor [
+VerseZealBrowser >> surgicallyUpdate: aNode in: mainEditor [
 	"Find the old definition text in the main editor and replace it with the new stored Zeal."
 	| mainText oldZeal newZeal startIdx endIdx highlighted |
 	mainEditor ifNil: [ ^ self ].
@@ -2143,7 +2143,7 @@ VZealBrowser >> surgicallyUpdate: aNode in: mainEditor [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> syncNode: aNode withCompiled: compiledNode [
+VerseZealBrowser >> syncNode: aNode withCompiled: compiledNode [
 	"Update the project tree node with properties from the freshly compiled node"
 	aNode name: compiledNode name.
 	(aNode respondsTo: #type:) ifTrue: [ aNode type: compiledNode type ].
@@ -2163,12 +2163,12 @@ VZealBrowser >> syncNode: aNode withCompiled: compiledNode [
 ]
 
 { #category : 'hooks' }
-VZealBrowser >> themeClass [
-	^ VZealTheme
+VerseZealBrowser >> themeClass [
+	^ VerseZealTheme
 ]
 
 { #category : 'verse' }
-VZealBrowser >> toKebab: aString [
+VerseZealBrowser >> toKebab: aString [
 	"Convert PascalCase/snake_case to kebab-case"
 	| result |
 	result := WriteStream on: String new.
@@ -2181,7 +2181,7 @@ VZealBrowser >> toKebab: aString [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> toggleChat [
+VerseZealBrowser >> toggleChat [
 	"Toggle the chat panel on the right side"
 	| content chatPanel |
 	content := self children first children last. "The horizontal content element"
@@ -2198,7 +2198,7 @@ VZealBrowser >> toggleChat [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> verseFilePathFor: aNamespace [
+VerseZealBrowser >> verseFilePathFor: aNamespace [
 	"Find the .verse file path for a namespace (ZealModule kind: #file)."
 	| dir files |
 	((aNamespace isKindOf: ZealModule) and: [aNamespace kind = #file]) ifFalse: [ ^ nil ].
@@ -2210,7 +2210,7 @@ VZealBrowser >> verseFilePathFor: aNamespace [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> verseFilePathForDefinition: aNode [
+VerseZealBrowser >> verseFilePathForDefinition: aNode [
 	"Build .verse file path from the generated class hierarchy. 
 	 Uses the actual Fortnite Projects Content folder."
 	| genClass segments parts contentDir |
@@ -2240,7 +2240,7 @@ VZealBrowser >> verseFilePathForDefinition: aNode [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> wrapInDarkPage: anElement [
+VerseZealBrowser >> wrapInDarkPage: anElement [
 	"Wrap an element in a scrollable dark container for pager pages"
 	| inner |
 	inner := BlElement new
@@ -2254,7 +2254,7 @@ VZealBrowser >> wrapInDarkPage: anElement [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> writeNamespaceToFile: aNamespace path: filePath [
+VerseZealBrowser >> writeNamespaceToFile: aNamespace path: filePath [
 	"Write all definitions in a namespace to the .verse file.
 	 Uses stored verse from generated classes when available."
 	| stream |
@@ -2275,7 +2275,7 @@ VZealBrowser >> writeNamespaceToFile: aNamespace path: filePath [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> zealSourceFor: aNode generatedClass: genClass [
+VerseZealBrowser >> zealSourceFor: aNode generatedClass: genClass [
 	"Get Zeal source. For namespaces, assemble from children. 
 	 For definitions, use stored Zeal from generated class if available."
 	
@@ -2294,7 +2294,7 @@ VZealBrowser >> zealSourceFor: aNode generatedClass: genClass [
 ]
 
 { #category : 'verse' }
-VZealBrowser >> zealSourceForNamespace: aModule [
+VerseZealBrowser >> zealSourceForNamespace: aModule [
 	"Build Zeal source for a namespace by checking each definition's generated class first.
 	 If a definition has stored Zeal (and its Verse matches), use that. Otherwise decompile."
 	| parts |

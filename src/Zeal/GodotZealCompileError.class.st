@@ -1,5 +1,5 @@
 Class {
-	#name : 'GDZealCompileError',
+	#name : 'GodotZealCompileError',
 	#superclass : 'Object',
 	#instVars : [
 		'source',
@@ -11,31 +11,31 @@ Class {
 }
 
 { #category : 'accessing' }
-GDZealCompileError >> compilerError [
+GodotZealCompileError >> compilerError [
 	^ compilerError
 ]
 
 { #category : 'accessing' }
-GDZealCompileError >> compilerError: anError [
+GodotZealCompileError >> compilerError: anError [
 	compilerError := anError
 ]
 
 { #category : 'accessing' }
-GDZealCompileError >> linterDiags [
+GodotZealCompileError >> linterDiags [
 	^ linterDiags ifNil: [ #() ]
 ]
 
 { #category : 'accessing' }
-GDZealCompileError >> linterDiags: aCollection [
+GodotZealCompileError >> linterDiags: aCollection [
 	linterDiags := aCollection
 ]
 
 { #category : 'accessing' }
-GDZealCompileError >> source [
+GodotZealCompileError >> source [
 	^ source
 ]
 
 { #category : 'accessing' }
-GDZealCompileError >> source: aString [
+GodotZealCompileError >> source: aString [
 	source := aString
 ]

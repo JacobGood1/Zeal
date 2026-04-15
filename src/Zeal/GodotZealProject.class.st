@@ -1,5 +1,5 @@
 Class {
-	#name : 'GDZealProject',
+	#name : 'GodotZealProject',
 	#superclass : 'Object',
 	#instVars : [
 		'name',
@@ -12,7 +12,7 @@ Class {
 }
 
 { #category : 'transducer library' }
-GDZealProject class >> transducerLibrarySource [
+GodotZealProject class >> transducerLibrarySource [
 	"Returns the full text of the Zeal transducer runtime library as a single
 	 GDScript file. Auto-deployed by ensureTransducerLibrary on first compile."
 	^ 'class_name Z
@@ -505,7 +505,7 @@ static func interleave(arrays: Array) -> Array:
 ]
 
 { #category : 'definitions' }
-GDZealProject >> addDefinition: aNode fromSource: sourceString [
+GodotZealProject >> addDefinition: aNode fromSource: sourceString [
 	"Add a definition to the right module based on its type. If a definition with
 	 the same name exists in a DIFFERENT module (e.g. defsystem → defcosystem rename),
 	 delete the old one (and its files) before adding the new one. This prevents
@@ -533,13 +533,13 @@ GDZealProject >> addDefinition: aNode fromSource: sourceString [
 ]
 
 { #category : 'accessing' }
-GDZealProject >> allDefinitions [
+GodotZealProject >> allDefinitions [
 	"All definitions across all modules"
 	^ modules values flatCollect: [ :mod | mod definitions ]
 ]
 
 { #category : 'persistence' }
-GDZealProject >> compileAll [
+GodotZealProject >> compileAll [
 	"Compile all definitions to GDScript"
 	| count errors |
 	count := 0. errors := 0.
@@ -551,7 +551,7 @@ GDZealProject >> compileAll [
 ]
 
 { #category : 'compiling' }
-GDZealProject >> compileDefinition: aNode [
+GodotZealProject >> compileDefinition: aNode [
 	"Compile a single definition to GDScript and write to Godot project."
 	| gdScript gdPath snakeName folder source absRef |
 	self ensureTransducerLibrary.
@@ -564,7 +564,7 @@ GDZealProject >> compileDefinition: aNode [
 	folder = 'scenes' ifTrue: [ gdPath := 'scenes/' , snakeName , '.gd' ].
 	gdPath ifNil: [ gdPath := 'scripts/' , snakeName , '.gd' ].
 	source := aNode rawSource.
-	gdScript := GDZealCodeGenerator compile: source withRegistry: registry.
+	gdScript := GodotZealCodeGenerator compile: source withRegistry: registry.
 	"scripts/ need extends RefCounted for preload().new()"
 	folder = 'scripts' ifTrue: [
 		gdScript := 'extends RefCounted' , String lf , String lf , gdScript ].
@@ -574,10 +574,10 @@ GDZealProject >> compileDefinition: aNode [
 		ensureDelete;
 		writeStreamDo: [ :s | s nextPutAll: gdScript ].
 	"defcosystem: generate sibling system"
-	(GDZealCompiler isDefcosystem: source) ifTrue: [
+	(GodotZealCompiler isDefcosystem: source) ifTrue: [
 		| systemSrc systemPath bindings sysRef sysSnake |
-		bindings := GDZealCompiler defcosystemBindings: source.
-		systemSrc := GDZealCompiler compileFsmSystemFor: aNode name withBindings: bindings.
+		bindings := GodotZealCompiler defcosystemBindings: source.
+		systemSrc := GodotZealCompiler compileFsmSystemFor: aNode name withBindings: bindings.
 		sysSnake := snakeName.
 		(sysSnake endsWith: '_system') ifTrue: [ sysSnake := sysSnake allButLast: 7 ].
 		systemPath := 'systems/' , sysSnake , '_system.gd'.
@@ -591,7 +591,7 @@ GDZealProject >> compileDefinition: aNode [
 ]
 
 { #category : 'definitions' }
-GDZealProject >> deleteDefinition: aNode [
+GodotZealProject >> deleteDefinition: aNode [
 	"Remove a definition from the project: deletes the .zeal source file, the
 	 generated .gd file, and the sibling _system.gd for defcosystems. Strips
 	 -system suffix from names to match the compile path logic."
@@ -606,7 +606,7 @@ GDZealProject >> deleteDefinition: aNode [
 		ifFalse: [ gdPath := folder , '/' , snakeName , '.gd' ].
 	(path , '/' , gdPath) asFileReference ensureDelete.
 	src := aNode rawSource.
-	(src notNil and: [ GDZealCompiler isDefcosystem: src ]) ifTrue: [
+	(src notNil and: [ GodotZealCompiler isDefcosystem: src ]) ifTrue: [
 		| sysSnake |
 		sysSnake := snakeName.
 		(sysSnake endsWith: '_system') ifTrue: [ sysSnake := sysSnake allButLast: 7 ].
@@ -617,7 +617,7 @@ GDZealProject >> deleteDefinition: aNode [
 ]
 
 { #category : 'transducer library' }
-GDZealProject >> ensureTransducerLibrary [
+GodotZealProject >> ensureTransducerLibrary [
 	"Write addons/zeal/zeal_transducers.gd to disk if it doesn't exist OR if its
 	 contents differ from the embedded source. Called from compileDefinition: so
 	 every compile guarantees the library is present and up to date."
@@ -625,7 +625,7 @@ GDZealProject >> ensureTransducerLibrary [
 	libRef := (path , '/addons/zeal/zeal_transducers.gd') asFileReference.
 	libDir := libRef parent.
 	libDir ensureCreateDirectory.
-	embedded := GDZealProject transducerLibrarySource.
+	embedded := GodotZealProject transducerLibrarySource.
 	libRef exists ifTrue: [
 		current := [ libRef contents ] on: Error do: [ :e | nil ].
 		current = embedded ifTrue: [ ^ self ] ].
@@ -635,13 +635,13 @@ GDZealProject >> ensureTransducerLibrary [
 ]
 
 { #category : 'accessing' }
-GDZealProject >> externalModules [
+GodotZealProject >> externalModules [
 	"GDZeal has no external modules"
 	^ #()
 ]
 
 { #category : 'private' }
-GDZealProject >> extractDefName: source [
+GodotZealProject >> extractDefName: source [
 	| forms |
 	forms := #('defcomp ' 'defentity ' 'defsystem ' 'defobserver ' 'defn ').
 	forms do: [ :form |
@@ -657,7 +657,7 @@ GDZealProject >> extractDefName: source [
 ]
 
 { #category : 'accessing' }
-GDZealProject >> findDefinition: aName [
+GodotZealProject >> findDefinition: aName [
 	"Find a definition by name across all modules"
 	^ self allDefinitions
 		detect: [ :d | d name = aName ]
@@ -665,7 +665,7 @@ GDZealProject >> findDefinition: aName [
 ]
 
 { #category : 'definitions' }
-GDZealProject >> folderFor: aNode [
+GodotZealProject >> folderFor: aNode [
 	"Determine folder for a definition based on superclass/annotations"
 	(aNode isKindOf: ZealClass) ifFalse: [ ^ 'scripts' ].
 	aNode superclass = 'Component' ifTrue: [ ^ 'components' ].
@@ -677,7 +677,7 @@ GDZealProject >> folderFor: aNode [
 ]
 
 { #category : 'compiling' }
-GDZealProject >> generateEntityTscn: snakeName gdPath: gdPath [
+GodotZealProject >> generateEntityTscn: snakeName gdPath: gdPath [
 	"Generate a .tscn scene file for a defentity. Root node is Entity with the script attached."
 	| tscnPath |
 	tscnPath := path , '/entities/' , snakeName , '.tscn'.
@@ -690,7 +690,7 @@ GDZealProject >> generateEntityTscn: snakeName gdPath: gdPath [
 ]
 
 { #category : 'compiling' }
-GDZealProject >> generateSceneTscn: snakeName gdPath: gdPath [
+GodotZealProject >> generateSceneTscn: snakeName gdPath: gdPath [
 	"Generate a .tscn scene file for a defscene. Includes a World node with all
 	 known systems auto-added as children."
 	| tscnPath systemFiles resourceIdx |
@@ -731,9 +731,9 @@ GDZealProject >> generateSceneTscn: snakeName gdPath: gdPath [
 ]
 
 { #category : 'initialization' }
-GDZealProject >> initialize [
+GodotZealProject >> initialize [
 	modules := OrderedDictionary new.
-	registry := GDZealComponentRegistry new.
+	registry := GodotZealComponentRegistry new.
 	#('components' 'entities' 'systems' 'observers' 'scenes' 'scripts') do: [ :folder |
 		| mod |
 		mod := ZealModule new name: folder; kind: #folder; definitions: OrderedCollection new.
@@ -741,7 +741,7 @@ GDZealProject >> initialize [
 ]
 
 { #category : 'loading' }
-GDZealProject >> loadFromDirectory [
+GodotZealProject >> loadFromDirectory [
 	"Scan gdzeal/ directory and load all .zeal files as ZealNode definitions"
 	| zealDir |
 	zealDir := (path , '/gdzeal') asFileReference.
@@ -767,7 +767,7 @@ GDZealProject >> loadFromDirectory [
 			(dir children select: [ :f | f extension = 'zeal' ]) do: [ :f |
 				| src node |
 				src := f contents.
-				[ node := GDZealCompiler compile: src.
+				[ node := GodotZealCompiler compile: src.
 				  node rawSource: src.
 				  node parent: mod.
 				  mod definitions add: node ]
@@ -775,7 +775,7 @@ GDZealProject >> loadFromDirectory [
 ]
 
 { #category : 'loading' }
-GDZealProject >> loadFromImage [
+GodotZealProject >> loadFromImage [
 	"Reload project from generated Smalltalk classes"
 	| genClasses |
 	genClasses := Smalltalk globals allClasses select: [ :c |
@@ -783,7 +783,7 @@ GDZealProject >> loadFromImage [
 	genClasses do: [ :cls |
 		| source node |
 		[ source := cls zealSource.
-		  node := GDZealCompiler compile: source.
+		  node := GodotZealCompiler compile: source.
 		  node rawSource: source.
 		  node generatedClass: cls.
 		  self addDefinition: node fromSource: source ]
@@ -791,32 +791,32 @@ GDZealProject >> loadFromImage [
 ]
 
 { #category : 'accessing' }
-GDZealProject >> modules [
+GodotZealProject >> modules [
 	^ modules
 ]
 
 { #category : 'accessing' }
-GDZealProject >> name [
+GodotZealProject >> name [
 	^ name ifNil: [ 'GDZeal' ]
 ]
 
 { #category : 'accessing' }
-GDZealProject >> name: aString [
+GodotZealProject >> name: aString [
 	name := aString
 ]
 
 { #category : 'accessing' }
-GDZealProject >> path [
+GodotZealProject >> path [
 	^ path
 ]
 
 { #category : 'accessing' }
-GDZealProject >> path: aString [
+GodotZealProject >> path: aString [
 	path := aString
 ]
 
 { #category : 'persistence' }
-GDZealProject >> persistToImage [
+GodotZealProject >> persistToImage [
 	"Persist all definitions as generated Smalltalk classes for image-based storage.
 	 Generated classes go in GDZeal-Generated package, methods classified under 'metadata'.
 	 Only proper ZealDefinitions (not stray top-level expressions) get persisted."
@@ -838,19 +838,19 @@ GDZealProject >> persistToImage [
 ]
 
 { #category : 'accessing' }
-GDZealProject >> registry [
+GodotZealProject >> registry [
 	^ registry
 ]
 
 { #category : 'actions' }
-GDZealProject >> removeDefinition: aNode [
+GodotZealProject >> removeDefinition: aNode [
 	"Remove a definition from its module"
 	modules valuesDo: [ :mod |
 		mod definitions remove: aNode ifAbsent: [] ]
 ]
 
 { #category : 'persistence' }
-GDZealProject >> saveDefinition: aNode [
+GodotZealProject >> saveDefinition: aNode [
 	"Save .zeal source file for a definition"
 	| folder fileName filePath |
 	folder := self folderFor: aNode.

@@ -1,5 +1,5 @@
 Class {
-	#name : 'GDZealLspTcpClient',
+	#name : 'GodotZealLspTcpClient',
 	#superclass : 'GtLanguageServerProtocolStdioClient',
 	#instVars : [
 		'socket',
@@ -13,7 +13,7 @@ Class {
 }
 
 { #category : 'instance creation' }
-GDZealLspTcpClient class >> host: aHost port: aPort [
+GodotZealLspTcpClient class >> host: aHost port: aPort [
 	"Build a client that connects to an LSP server over TCP (e.g. Godot's GDScript LSP
 	 on localhost:6005). Inherits all JSON-RPC framing and message routing from the
 	 stdio client; only the transport methods are overridden."
@@ -24,32 +24,32 @@ GDZealLspTcpClient class >> host: aHost port: aPort [
 ]
 
 { #category : 'accessing' }
-GDZealLspTcpClient >> host [
+GodotZealLspTcpClient >> host [
 	^ host ifNil: [ 'localhost' ]
 ]
 
 { #category : 'accessing' }
-GDZealLspTcpClient >> host: aString [
+GodotZealLspTcpClient >> host: aString [
 	host := aString
 ]
 
 { #category : 'testing' }
-GDZealLspTcpClient >> isRunning [
+GodotZealLspTcpClient >> isRunning [
 	^ socket notNil and: [ socket isConnected ]
 ]
 
 { #category : 'accessing' }
-GDZealLspTcpClient >> port [
+GodotZealLspTcpClient >> port [
 	^ port ifNil: [ 6005 ]
 ]
 
 { #category : 'accessing' }
-GDZealLspTcpClient >> port: anInteger [
+GodotZealLspTcpClient >> port: anInteger [
 	port := anInteger
 ]
 
 { #category : 'protocol' }
-GDZealLspTcpClient >> send: aString with: aStructure id: id [
+GodotZealLspTcpClient >> send: aString with: aStructure id: id [
 	"Format an LSP JSON-RPC frame and write it to the TCP socket. Same wire format
 	 as the parent stdio version (Content-Length header + JSON body) — only the
 	 sink differs."
@@ -73,7 +73,7 @@ GDZealLspTcpClient >> send: aString with: aStructure id: id [
 ]
 
 { #category : 'protocol' }
-GDZealLspTcpClient >> sendNotification: aString with: aStructure [
+GodotZealLspTcpClient >> sendNotification: aString with: aStructure [
 	"TCP variant — same wire format as parent but writes to socket and checks
 	 socket health instead of externalProcess (which is always nil for us)."
 	| string data jsonData dict |
@@ -94,7 +94,7 @@ GDZealLspTcpClient >> sendNotification: aString with: aStructure [
 ]
 
 { #category : 'lifecycle' }
-GDZealLspTcpClient >> start [
+GodotZealLspTcpClient >> start [
 	"Connect to the remote LSP server over TCP and spawn a background process that
 	 polls the socket, accumulating bytes into a buffer and feeding them to the inherited
 	 processMessagePart: parser. Reuses all JSON-RPC framing/handler logic from the parent."
@@ -125,7 +125,7 @@ GDZealLspTcpClient >> start [
 ]
 
 { #category : 'lifecycle' }
-GDZealLspTcpClient >> terminate [
+GodotZealLspTcpClient >> terminate [
 	"Close socket and stop the read loop. Reset all handler dictionaries (parent
 	 maintains those for stdio in the same way)."
 	socket ifNotNil: [

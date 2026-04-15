@@ -1,12 +1,12 @@
 Class {
-	#name : 'VZealTheme',
+	#name : 'VerseZealTheme',
 	#superclass : 'ZealTheme',
 	#category : 'Zeal',
 	#package : 'Zeal'
 }
 
 { #category : 'highlighting' }
-VZealTheme class >> attachExpanders: text source: aString resolver: aResolver browser: aBrowser nested: isNested [
+VerseZealTheme class >> attachExpanders: text source: aString resolver: aResolver browser: aBrowser nested: isNested [
 	"Find function/class/method references and attach inline expanders."
 	| i size |
 	aResolver ifNil: [ ^ self ].
@@ -52,53 +52,53 @@ VZealTheme class >> attachExpanders: text source: aString resolver: aResolver br
 ]
 
 { #category : 'colors' }
-VZealTheme class >> backgroundColor [
+VerseZealTheme class >> backgroundColor [
 	^ Color fromHexString: '17171F'
 ]
 
 { #category : 'colors' }
-VZealTheme class >> braceColor [
+VerseZealTheme class >> braceColor [
 	^ Color fromHexString: '4CC9F0'
 ]
 
 { #category : 'colors' }
-VZealTheme class >> bracketColor [
+VerseZealTheme class >> bracketColor [
 	"Bright green for brackets — #50FA7B"
 	^ Color fromHexString: '50FA7B'
 ]
 
 { #category : 'colors' }
-VZealTheme class >> colonChainColor [
+VerseZealTheme class >> colonChainColor [
 	^ Color fromHexString: '88DCF6'
 ]
 
 { #category : 'colors' }
-VZealTheme class >> commentColor [
+VerseZealTheme class >> commentColor [
 	^ Color fromHexString: 'A1A1BA'
 ]
 
 { #category : 'colors' }
-VZealTheme class >> cursorAlpha [
+VerseZealTheme class >> cursorAlpha [
 	^ 0.5
 ]
 
 { #category : 'colors' }
-VZealTheme class >> cursorColor [
+VerseZealTheme class >> cursorColor [
 	^ Color fromHexString: '00FFFF'
 ]
 
 { #category : 'colors' }
-VZealTheme class >> cursorWidth [
+VerseZealTheme class >> cursorWidth [
 	^ 8
 ]
 
 { #category : 'colors' }
-VZealTheme class >> foregroundColor [
+VerseZealTheme class >> foregroundColor [
 	^ Color fromHexString: 'CDD7DC'
 ]
 
 { #category : 'highlighting' }
-VZealTheme class >> highlightTokenAt: i in: aString text: text size: size [
+VerseZealTheme class >> highlightTokenAt: i in: aString text: text size: size [
 	"Highlight one token starting at i, return next position."
 	| ch start j word |
 	ch := aString at: i.
@@ -162,34 +162,34 @@ VZealTheme class >> highlightTokenAt: i in: aString text: text size: size [
 ]
 
 { #category : 'colors' }
-VZealTheme class >> keywordColor [
+VerseZealTheme class >> keywordColor [
 	^ Color fromHexString: '69F0AE'
 ]
 
 { #category : 'colors' }
-VZealTheme class >> numberColor [
+VerseZealTheme class >> numberColor [
 	^ Color fromHexString: 'ACDBFF'
 ]
 
 { #category : 'colors' }
-VZealTheme class >> operatorColor [
+VerseZealTheme class >> operatorColor [
 	"Bright cyan for operators — #8BE9FD"
 	^ Color fromHexString: '8BE9FD'
 ]
 
 { #category : 'highlighting' }
-VZealTheme class >> operators [
+VerseZealTheme class >> operators [
 	^ #('+' '-' '*' '/' '=' '<>' '<' '>' '<=' '>=')
 ]
 
 { #category : 'colors' }
-VZealTheme class >> parenColor [
+VerseZealTheme class >> parenColor [
 	"Dimmed purple for parens — #9580FF"
 	^ Color fromHexString: '9580FF'
 ]
 
 { #category : 'highlighting' }
-VZealTheme class >> resolveExpander: word with: aResolver [
+VerseZealTheme class >> resolveExpander: word with: aResolver [
 	"Resolve a word to a ZealNode for expanding. Returns nil if not found."
 	| node kebab pascal |
 	aResolver ifNil: [ ^ nil ].
@@ -214,22 +214,22 @@ VZealTheme class >> resolveExpander: word with: aResolver [
 ]
 
 { #category : 'colors' }
-VZealTheme class >> selectionColor [
+VerseZealTheme class >> selectionColor [
 	^ self cursorColor alpha: 0.3
 ]
 
 { #category : 'highlighting' }
-VZealTheme class >> specialForms [
+VerseZealTheme class >> specialForms [
 	^ #('def' 'var' 'set' 'defn' 'defstruct' 'defenum' 'defclass' 'definterface' 'if' 'let' 'for' 'loop' 'block' 'defer' 'case' 'module' 'using' 'do' 'break' 'return')
 ]
 
 { #category : 'colors' }
-VZealTheme class >> stringColor [
+VerseZealTheme class >> stringColor [
 	^ Color fromHexString: '94FFCD'
 ]
 
 { #category : 'highlighting' }
-VZealTheme class >> styler [
+VerseZealTheme class >> styler [
 	| styler |
 	styler := GtSmaCCParserStyler forParser: ZealParser.
 	styler addStylerRule: (GtSmaCCTokenStylerRule tokenName: '<comment>' styleBlock: [:s | s foreground: self commentColor]).
@@ -256,7 +256,7 @@ VZealTheme class >> styler [
 ]
 
 { #category : 'colors' }
-VZealTheme class >> symbolColor [
+VerseZealTheme class >> symbolColor [
 	"Light lilac purple for symbols — #D4AAFF"
 	^ Color fromHexString: 'D4AAFF'
 ]

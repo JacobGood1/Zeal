@@ -1,12 +1,12 @@
 Class {
-	#name : 'VZealCodeGenerator',
+	#name : 'VerseZealCodeGenerator',
 	#superclass : 'ZealCodeGenerator',
 	#category : 'Zeal',
 	#package : 'Zeal'
 }
 
 { #category : 'generation' }
-VZealCodeGenerator >> emitBinding: nameNode value: valueNode [
+VerseZealCodeGenerator >> emitBinding: nameNode value: valueNode [
 	(nameNode isKindOf: ZealColonChainNode) ifTrue: [
 		| resolved |
 		resolved := ZealColonChainResolver resolve: nameNode value value.
@@ -19,7 +19,7 @@ VZealCodeGenerator >> emitBinding: nameNode value: valueNode [
 ]
 
 { #category : 'generation' }
-VZealCodeGenerator >> emitIfChain: args [
+VerseZealCodeGenerator >> emitIfChain: args [
 	| cond body rest |
 	args size < 2 ifTrue: [ ^ self ].
 	cond := args first. body := args second. rest := args allButFirst allButFirst.
@@ -36,14 +36,14 @@ VZealCodeGenerator >> emitIfChain: args [
 ]
 
 { #category : 'generation' }
-VZealCodeGenerator >> emitLetAsBlock: bindings body: bodyExprs [
+VerseZealCodeGenerator >> emitLetAsBlock: bindings body: bodyExprs [
 	self emit: 'block:'. self indent.
 	bindings do: [:pair | self nl. self emitBinding: pair first value: pair second ].
 	bodyExprs do: [:e | self nl. self visitExpression: e ]. self dedent
 ]
 
 { #category : 'generation' }
-VZealCodeGenerator >> emitLetAsIf: bindings predicates: predicates body: bodyExprs [
+VerseZealCodeGenerator >> emitLetAsIf: bindings predicates: predicates body: bodyExprs [
 	self emit: 'if:'. self indent.
 	bindings do: [:pair | self nl. self emitBinding: pair first value: pair second ].
 	predicates do: [:p | self nl. self visitExpression: p ].
@@ -52,7 +52,7 @@ VZealCodeGenerator >> emitLetAsIf: bindings predicates: predicates body: bodyExp
 ]
 
 { #category : 'generation' }
-VZealCodeGenerator >> emitParam: aNode [
+VerseZealCodeGenerator >> emitParam: aNode [
 	(aNode isKindOf: ZealColonChainNode) ifTrue: [
 		| resolved |
 		resolved := ZealColonChainResolver resolve: aNode value value.
@@ -63,18 +63,18 @@ VZealCodeGenerator >> emitParam: aNode [
 ]
 
 { #category : 'generation' }
-VZealCodeGenerator >> generateBlock: aListNode [
+VerseZealCodeGenerator >> generateBlock: aListNode [
 	self emit: 'block:'. self indent.
 	aListNode expressions allButFirst do: [:e | self nl. self visitExpression: e ]. self dedent
 ]
 
 { #category : 'generation' }
-VZealCodeGenerator >> generateBreak: aListNode [
+VerseZealCodeGenerator >> generateBreak: aListNode [
 	self emit: 'break'
 ]
 
 { #category : 'generation' }
-VZealCodeGenerator >> generateCase: aListNode [
+VerseZealCodeGenerator >> generateCase: aListNode [
 	| exprs pairs |
 	exprs := aListNode expressions. pairs := exprs allButFirst allButFirst.
 	self emit: 'case('. self visitExpression: exprs second. self emit: '):'.
@@ -85,7 +85,7 @@ VZealCodeGenerator >> generateCase: aListNode [
 ]
 
 { #category : 'generation' }
-VZealCodeGenerator >> generateDef: aListNode [
+VerseZealCodeGenerator >> generateDef: aListNode [
 	| exprs nameNode valueNode |
 	exprs := aListNode expressions. nameNode := exprs second. valueNode := exprs third.
 	(nameNode isKindOf: ZealColonChainNode) ifTrue: [
@@ -101,7 +101,7 @@ VZealCodeGenerator >> generateDef: aListNode [
 ]
 
 { #category : 'generation' }
-VZealCodeGenerator >> generateDefclass: aListNode [
+VerseZealCodeGenerator >> generateDefclass: aListNode [
 	| exprs nameNode resolved declSpecs parent rest |
 	exprs := aListNode expressions. nameNode := exprs second.
 	(nameNode isKindOf: ZealColonChainNode)
@@ -123,7 +123,7 @@ VZealCodeGenerator >> generateDefclass: aListNode [
 ]
 
 { #category : 'generation' }
-VZealCodeGenerator >> generateDefenum: aListNode [
+VerseZealCodeGenerator >> generateDefenum: aListNode [
 	| exprs values |
 	exprs := aListNode expressions.
 	values := exprs allButFirst allButFirst.
@@ -137,13 +137,13 @@ VZealCodeGenerator >> generateDefenum: aListNode [
 ]
 
 { #category : 'generation' }
-VZealCodeGenerator >> generateDefer: aListNode [
+VerseZealCodeGenerator >> generateDefer: aListNode [
 	self emit: 'defer:'. self indent.
 	aListNode expressions allButFirst do: [:e | self nl. self visitExpression: e ]. self dedent
 ]
 
 { #category : 'generation' }
-VZealCodeGenerator >> generateDefinterface: aListNode [
+VerseZealCodeGenerator >> generateDefinterface: aListNode [
 	| exprs rest |
 	exprs := aListNode expressions. rest := exprs allButFirst allButFirst.
 	self emit: (self toSnakeCase: (exprs second) value value). self emit: ' := interface:'.
@@ -151,7 +151,7 @@ VZealCodeGenerator >> generateDefinterface: aListNode [
 ]
 
 { #category : 'generation' }
-VZealCodeGenerator >> generateDefn: aListNode [
+VerseZealCodeGenerator >> generateDefn: aListNode [
 	| exprs nameNode resolved params bodyExprs declSpecs sigSpecs retType |
 	exprs := aListNode expressions. nameNode := exprs second.
 	(nameNode isKindOf: ZealColonChainNode) ifTrue: [
@@ -179,7 +179,7 @@ VZealCodeGenerator >> generateDefn: aListNode [
 ]
 
 { #category : 'generation' }
-VZealCodeGenerator >> generateDefstruct: aListNode [
+VerseZealCodeGenerator >> generateDefstruct: aListNode [
 	| exprs nameNode fields |
 	exprs := aListNode expressions. nameNode := exprs second. fields := exprs allButFirst allButFirst.
 	self emit: (self toSnakeCase: nameNode value value). self emit: ' := struct:'. self indent.
@@ -200,12 +200,12 @@ VZealCodeGenerator >> generateDefstruct: aListNode [
 ]
 
 { #category : 'generation' }
-VZealCodeGenerator >> generateDo: aListNode [
+VerseZealCodeGenerator >> generateDo: aListNode [
 	self generateBlock: aListNode
 ]
 
 { #category : 'generation' }
-VZealCodeGenerator >> generateFor: aListNode [
+VerseZealCodeGenerator >> generateFor: aListNode [
 	| exprs bindingVec bodyExprs bindings predicates |
 	exprs := aListNode expressions. bindingVec := exprs second.
 	bodyExprs := exprs allButFirst allButFirst.
@@ -219,7 +219,7 @@ VZealCodeGenerator >> generateFor: aListNode [
 ]
 
 { #category : 'generation' }
-VZealCodeGenerator >> generateFunctionCall: aListNode [
+VerseZealCodeGenerator >> generateFunctionCall: aListNode [
 	| exprs |
 	exprs := aListNode expressions.
 	self visitExpression: exprs first.
@@ -229,12 +229,12 @@ VZealCodeGenerator >> generateFunctionCall: aListNode [
 ]
 
 { #category : 'generation' }
-VZealCodeGenerator >> generateIf: aListNode [
+VerseZealCodeGenerator >> generateIf: aListNode [
 	self emitIfChain: aListNode expressions allButFirst
 ]
 
 { #category : 'generation' }
-VZealCodeGenerator >> generateLet: aListNode [
+VerseZealCodeGenerator >> generateLet: aListNode [
 	| exprs bindingVec bodyExprs bindings predicates |
 	exprs := aListNode expressions. bindingVec := exprs second.
 	bodyExprs := exprs allButFirst allButFirst.
@@ -246,13 +246,13 @@ VZealCodeGenerator >> generateLet: aListNode [
 ]
 
 { #category : 'generation' }
-VZealCodeGenerator >> generateLoop: aListNode [
+VerseZealCodeGenerator >> generateLoop: aListNode [
 	self emit: 'loop:'. self indent.
 	aListNode expressions allButFirst do: [:e | self nl. self visitExpression: e ]. self dedent
 ]
 
 { #category : 'generation' }
-VZealCodeGenerator >> generateModule: aListNode [
+VerseZealCodeGenerator >> generateModule: aListNode [
 	| exprs |
 	exprs := aListNode expressions.
 	self emit: (self toSnakeCase: (exprs second) value value). self emit: ' := module:'.
@@ -260,7 +260,7 @@ VZealCodeGenerator >> generateModule: aListNode [
 ]
 
 { #category : 'generation' }
-VZealCodeGenerator >> generateOperator: aListNode [
+VerseZealCodeGenerator >> generateOperator: aListNode [
 	| exprs op |
 	exprs := aListNode expressions.
 	op := exprs first value value.
@@ -272,14 +272,14 @@ VZealCodeGenerator >> generateOperator: aListNode [
 ]
 
 { #category : 'generation' }
-VZealCodeGenerator >> generateReturn: aListNode [
+VerseZealCodeGenerator >> generateReturn: aListNode [
 	self emit: 'return'.
 	aListNode expressions size > 1 ifTrue: [
 		self emit: ' '. self visitExpression: aListNode expressions second ]
 ]
 
 { #category : 'generation' }
-VZealCodeGenerator >> generateSet: aListNode [
+VerseZealCodeGenerator >> generateSet: aListNode [
 	| exprs |
 	exprs := aListNode expressions.
 	self emit: 'set '. self emit: (self toPascalCase: exprs second value value).
@@ -287,12 +287,12 @@ VZealCodeGenerator >> generateSet: aListNode [
 ]
 
 { #category : 'generation' }
-VZealCodeGenerator >> generateUsing: aListNode [
+VerseZealCodeGenerator >> generateUsing: aListNode [
 	self emit: 'using { '. self emit: aListNode expressions second value value. self emit: ' }'
 ]
 
 { #category : 'generation' }
-VZealCodeGenerator >> generateVar: aListNode [
+VerseZealCodeGenerator >> generateVar: aListNode [
 	| exprs nameNode valueNode |
 	exprs := aListNode expressions. nameNode := exprs second. valueNode := exprs third.
 	self emit: 'var '.
@@ -308,18 +308,18 @@ VZealCodeGenerator >> generateVar: aListNode [
 ]
 
 { #category : 'generation' }
-VZealCodeGenerator >> isOperator: aString [
+VerseZealCodeGenerator >> isOperator: aString [
 	^ #('+' '-' '*' '/' '=' '<>' '<' '>' '<=' '>=' 'and' 'or' 'not' '+=' '-=' '*=' '_') includes: aString
 ]
 
 { #category : 'generation' }
-VZealCodeGenerator >> nl [
+VerseZealCodeGenerator >> nl [
 	stream cr.
 	self emitIndent
 ]
 
 { #category : 'generation' }
-VZealCodeGenerator >> parseBindingVector: aVectorNode bindings: bindings predicates: predicates [
+VerseZealCodeGenerator >> parseBindingVector: aVectorNode bindings: bindings predicates: predicates [
 	| items i |
 	items := aVectorNode expressions. i := 1.
 	[ i <= items size ] whileTrue: [
@@ -334,7 +334,7 @@ VZealCodeGenerator >> parseBindingVector: aVectorNode bindings: bindings predica
 ]
 
 { #category : 'generation' }
-VZealCodeGenerator >> specialForms [
+VerseZealCodeGenerator >> specialForms [
 	^ Dictionary new
 		at: 'def' put: #generateDef:; at: 'var' put: #generateVar:; at: 'set' put: #generateSet:;
 		at: 'defn' put: #generateDefn:; at: 'defstruct' put: #generateDefstruct:;
@@ -349,12 +349,12 @@ VZealCodeGenerator >> specialForms [
 ]
 
 { #category : 'generation' }
-VZealCodeGenerator >> toEnumValue: aString [
+VerseZealCodeGenerator >> toEnumValue: aString [
 	^ self toPascalCase: aString
 ]
 
 { #category : 'generation' }
-VZealCodeGenerator >> toPascalCase: aString [
+VerseZealCodeGenerator >> toPascalCase: aString [
 	^ String streamContents: [:s |
 		| capitalize |
 		capitalize := true.
@@ -368,12 +368,12 @@ VZealCodeGenerator >> toPascalCase: aString [
 ]
 
 { #category : 'generation' }
-VZealCodeGenerator >> toSnakeCase: aString [
+VerseZealCodeGenerator >> toSnakeCase: aString [
 	^ aString copyReplaceAll: '-' with: '_'
 ]
 
 { #category : 'generation' }
-VZealCodeGenerator >> visitAtom: aNode [
+VerseZealCodeGenerator >> visitAtom: aNode [
 	(aNode isKindOf: ZealSymbolNode) ifTrue: [
 		| sym |
 		sym := aNode value value.
@@ -392,7 +392,7 @@ VZealCodeGenerator >> visitAtom: aNode [
 ]
 
 { #category : 'generation' }
-VZealCodeGenerator >> visitList: aNode [
+VerseZealCodeGenerator >> visitList: aNode [
 	| exprs head headStr |
 	exprs := aNode expressions.
 	exprs isEmpty ifTrue: [ self emit: '()'. ^ self ].
@@ -407,7 +407,7 @@ VZealCodeGenerator >> visitList: aNode [
 ]
 
 { #category : 'generation' }
-VZealCodeGenerator >> visitMap: aNode [
+VerseZealCodeGenerator >> visitMap: aNode [
 	self emit: 'map{'.
 	aNode pairs do: [:pair |
 		self visitExpression: pair key. self emit: ' => '. self visitExpression: pair value ]
@@ -416,7 +416,7 @@ VZealCodeGenerator >> visitMap: aNode [
 ]
 
 { #category : 'generation' }
-VZealCodeGenerator >> visitVector: aNode [
+VerseZealCodeGenerator >> visitVector: aNode [
 	self emit: 'array{'.
 	aNode expressions do: [:e | self visitExpression: e ] separatedBy: [ self emit: ', ' ].
 	self emit: '}'

@@ -7,7 +7,7 @@ Class {
 
 { #category : 'colors' }
 GDScriptTheme class >> backgroundColor [
-	^ GDZealTheme backgroundColor
+	^ GodotZealTheme backgroundColor
 ]
 
 { #category : 'colors' }
@@ -23,7 +23,7 @@ GDScriptTheme class >> decoratorColor [
 
 { #category : 'colors' }
 GDScriptTheme class >> foregroundColor [
-	^ GDZealTheme foregroundColor
+	^ GodotZealTheme foregroundColor
 ]
 
 { #category : 'colors' }

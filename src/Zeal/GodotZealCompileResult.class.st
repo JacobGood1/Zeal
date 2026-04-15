@@ -1,5 +1,5 @@
 Class {
-	#name : 'GDZealCompileResult',
+	#name : 'GodotZealCompileResult',
 	#superclass : 'Object',
 	#instVars : [
 		'definitionName',
@@ -12,37 +12,37 @@ Class {
 }
 
 { #category : 'accessing' }
-GDZealCompileResult >> definitionName [
+GodotZealCompileResult >> definitionName [
 	^ definitionName
 ]
 
 { #category : 'accessing' }
-GDZealCompileResult >> definitionName: aName [
+GodotZealCompileResult >> definitionName: aName [
 	definitionName := aName
 ]
 
 { #category : 'accessing' }
-GDZealCompileResult >> gdPath [
+GodotZealCompileResult >> gdPath [
 	^ gdPath
 ]
 
 { #category : 'accessing' }
-GDZealCompileResult >> gdPath: aPath [
+GodotZealCompileResult >> gdPath: aPath [
 	gdPath := aPath
 ]
 
 { #category : 'accessing' }
-GDZealCompileResult >> generated [
+GodotZealCompileResult >> generated [
 	^ generated
 ]
 
 { #category : 'accessing' }
-GDZealCompileResult >> generated: aString [
+GodotZealCompileResult >> generated: aString [
 	generated := aString
 ]
 
 { #category : 'gt-views' }
-GDZealCompileResult >> gtCompiledFor: aView [
+GodotZealCompileResult >> gtCompiledFor: aView [
 	<gtView>
 	^ aView textEditor
 		title: 'GDScript';
@@ -53,19 +53,19 @@ GDZealCompileResult >> gtCompiledFor: aView [
 ]
 
 { #category : 'gt-views' }
-GDZealCompileResult >> gtMetaFor: aView [
+GodotZealCompileResult >> gtMetaFor: aView [
 	<gtView>
 	^ aView empty
 ]
 
 { #category : 'gt-views' }
-GDZealCompileResult >> gtPrintFor: aView [
+GodotZealCompileResult >> gtPrintFor: aView [
 	<gtView>
 	^ aView empty
 ]
 
 { #category : 'gt-views' }
-GDZealCompileResult >> gtRawFor: aView [
+GodotZealCompileResult >> gtRawFor: aView [
 	"Hide the inherited Raw view — this object is meant to show only its
 	 GDZeal source and GDScript views."
 	<gtView>
@@ -73,22 +73,22 @@ GDZealCompileResult >> gtRawFor: aView [
 ]
 
 { #category : 'gt-views' }
-GDZealCompileResult >> gtSourceFor: aView [
+GodotZealCompileResult >> gtSourceFor: aView [
 	<gtView>
 	^ aView textEditor
 		title: 'GDZeal source';
 		priority: 10;
-		styler: GDZealTextStyler new;
+		styler: GodotZealTextStyler new;
 		text: [ source ifNil: [ '' ] ];
 		actionUpdateButton
 ]
 
 { #category : 'accessing' }
-GDZealCompileResult >> source [
+GodotZealCompileResult >> source [
 	^ source
 ]
 
 { #category : 'accessing' }
-GDZealCompileResult >> source: aString [
+GodotZealCompileResult >> source: aString [
 	source := aString
 ]

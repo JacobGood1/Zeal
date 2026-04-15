@@ -1,5 +1,5 @@
 Class {
-	#name : 'GDZealTextStyler',
+	#name : 'GodotZealTextStyler',
 	#superclass : 'ZealTextStyler',
 	#instVars : [
 		'editorElement'
@@ -9,37 +9,37 @@ Class {
 }
 
 { #category : 'instance creation' }
-GDZealTextStyler class >> new [
+GodotZealTextStyler class >> new [
 	^ super new
 ]
 
 { #category : 'styling' }
-GDZealTextStyler >> applySyntaxHighlighting: aString to: text [
+GodotZealTextStyler >> applySyntaxHighlighting: aString to: text [
 	"Delegate to GDZealTheme highlight: and copy attributes onto text"
 	| highlighted |
-	highlighted := GDZealTheme highlight: aString.
+	highlighted := GodotZealTheme highlight: aString.
 	1 to: aString size do: [ :i |
 		(highlighted attributesAt: i) do: [ :a |
 			(text from: i to: i) attribute: a ] ]
 ]
 
 { #category : 'accessing' }
-GDZealTextStyler >> browser: aBrowser [
+GodotZealTextStyler >> browser: aBrowser [
 	browser := aBrowser
 ]
 
 { #category : 'accessing' }
-GDZealTextStyler >> editorElement [
+GodotZealTextStyler >> editorElement [
 	^ editorElement
 ]
 
 { #category : 'accessing' }
-GDZealTextStyler >> editorElement: aBrEditor [
+GodotZealTextStyler >> editorElement: aBrEditor [
 	editorElement := aBrEditor
 ]
 
 { #category : 'styling' }
-GDZealTextStyler >> privateStyle: aText [
+GodotZealTextStyler >> privateStyle: aText [
 	"Apply syntax highlighting. If the source contains standalone fn, schedule
 	 a deferred replacement (fn→λ) on the editor after styling completes."
 	| text source |
@@ -54,7 +54,7 @@ GDZealTextStyler >> privateStyle: aText [
 ]
 
 { #category : 'styling' }
-GDZealTextStyler >> replaceFnWithLambda: text [
+GodotZealTextStyler >> replaceFnWithLambda: text [
 	"Scan text for standalone fn tokens and replace with λ in-place."
 	| src i size lambda |
 	lambda := (Character value: 16r03BB) asString.
@@ -78,7 +78,7 @@ GDZealTextStyler >> replaceFnWithLambda: text [
 ]
 
 { #category : 'lambda' }
-GDZealTextStyler >> scheduleFnReplacement [
+GodotZealTextStyler >> scheduleFnReplacement [
 	"Schedule a deferred task to replace fn→λ in the editor text.
 	 Preserves cursor position (adjusted for the 1-char shrink per replacement)."
 	| lambda el |
@@ -113,7 +113,7 @@ GDZealTextStyler >> scheduleFnReplacement [
 ]
 
 { #category : 'lambda' }
-GDZealTextStyler >> sourceHasStandaloneFn: src [
+GodotZealTextStyler >> sourceHasStandaloneFn: src [
 	"True if src contains at least one standalone fn token."
 	| i size |
 	i := 1.

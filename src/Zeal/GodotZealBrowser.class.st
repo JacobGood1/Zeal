@@ -1,5 +1,5 @@
 Class {
-	#name : 'GDZealBrowser',
+	#name : 'GodotZealBrowser',
 	#superclass : 'ZealBrowser',
 	#instVars : [
 		'typeSystem',
@@ -10,40 +10,40 @@ Class {
 }
 
 { #category : 'opening' }
-GDZealBrowser class >> open [
+GodotZealBrowser class >> open [
 	"Open on the default project"
 	^ self openOn: 'C:/projects/bible-app-warhill'
 ]
 
 { #category : 'opening' }
-GDZealBrowser class >> openOn: aGodotPath [
+GodotZealBrowser class >> openOn: aGodotPath [
 	"Open a GDZeal browser on a Godot project, wrapped in a GtPager so that
 	 compile success/error results can be spawned as pager pages."
 	| proj browser pager space |
-	proj := GDZealProject new.
+	proj := GodotZealProject new.
 	proj path: aGodotPath.
 	proj name: aGodotPath asFileReference basename.
 	proj loadFromDirectory.
 	browser := self new.
 	browser project: proj.
-	browser typeSystem: (GDZealTypeSystem forProject: proj).
+	browser typeSystem: (GodotZealTypeSystem forProject: proj).
 	pager := GtPager createWrappedOn: browser.
-	pager background: GDZealTheme backgroundColor.
+	pager background: GodotZealTheme backgroundColor.
 	pager allChildrenBreadthFirstDo: [ :c |
 		(c background isKindOf: BlPaintBackground) ifTrue: [
 			c background paint color = Color white ifTrue: [
-				c background: GDZealTheme backgroundColor ] ] ].
+				c background: GodotZealTheme backgroundColor ] ] ].
 	space := BlSpace new.
 	space title: 'GDZeal // ' , proj name.
 	space extent: 1100 @ 700.
-	space root background: GDZealTheme backgroundColor.
+	space root background: GodotZealTheme backgroundColor.
 	space root addChild: pager.
 	space show.
 	^ browser
 ]
 
 { #category : 'building' }
-GDZealBrowser >> buildAddDefinitionButton [
+GodotZealBrowser >> buildAddDefinitionButton [
 	"A '+' button next to Compile All in the top bar. Clicking spawns a draft
 	 editor pager page; the user types any kind of definition (defcomp, defsystem,
 	 defcosystem, defentity, defobserver) and Ctrl+S compiles it into the project."
@@ -55,7 +55,7 @@ GDZealBrowser >> buildAddDefinitionButton [
 ]
 
 { #category : 'building' }
-GDZealBrowser >> buildCategoryContent: aCategory [
+GodotZealBrowser >> buildCategoryContent: aCategory [
 	"Vertically-scrolling column of definition expander cards for the given category."
 	| column scroll defs |
 	defs := self definitionsForCategory: aCategory.
@@ -69,7 +69,7 @@ GDZealBrowser >> buildCategoryContent: aCategory [
 	defs isEmpty ifTrue: [
 		column addChild: (BrLabel new
 			aptitude: (BrGlamorousLabelAptitude new
-				foreground: GDZealTheme commentColor;
+				foreground: GodotZealTheme commentColor;
 				fontSize: 12);
 			text: 'No ' , aCategory , ' yet.';
 			margin: (BlInsets all: 12)) ].
@@ -77,7 +77,7 @@ GDZealBrowser >> buildCategoryContent: aCategory [
 		layout: BlLinearLayout vertical;
 		constraintsDo: [ :c | c horizontal matchParent. c vertical matchParent ];
 		clipChildren: true;
-		background: GDZealTheme backgroundColor.
+		background: GodotZealTheme backgroundColor.
 	scroll addChild: (column asScrollableElement
 		constraintsDo: [ :c | c horizontal matchParent. c vertical matchParent ];
 		yourself).
@@ -85,7 +85,7 @@ GDZealBrowser >> buildCategoryContent: aCategory [
 ]
 
 { #category : 'building' }
-GDZealBrowser >> buildCategoryTab: aCategory [
+GodotZealBrowser >> buildCategoryTab: aCategory [
 	"One tab: label = display name for the category, content = scrollable column of
 	 inline-expandable definition cards. The per-tab aptitude is required for the
 	 label to actually render in the header bar."
@@ -98,7 +98,7 @@ GDZealBrowser >> buildCategoryTab: aCategory [
 ]
 
 { #category : 'building - tabs' }
-GDZealBrowser >> buildCategoryTabs [
+GodotZealBrowser >> buildCategoryTabs [
 	"BrTabGroup with one tab per category present in the project."
 	| group tabs |
 	group := BrTabGroup new.
@@ -110,13 +110,13 @@ GDZealBrowser >> buildCategoryTabs [
 ]
 
 { #category : 'building' }
-GDZealBrowser >> buildCommandBar [
+GodotZealBrowser >> buildCommandBar [
 	| input |
 	input := BrEditor new
 		aptitude: (BrGlamorousCodeEditorAptitude new);
-		styler: GDZealTextStyler new;
+		styler: GodotZealTextStyler new;
 		text: '';
-		background: GDZealTheme backgroundColor;
+		background: GodotZealTheme backgroundColor;
 		padding: (BlInsets all: 6);
 		constraintsDo: [ :c | c horizontal matchParent. c vertical exact: 60 ].
 	input addShortcut: (BlShortcutWithAction new
@@ -126,7 +126,7 @@ GDZealBrowser >> buildCommandBar [
 ]
 
 { #category : 'building' }
-GDZealBrowser >> buildCompileAllButton [
+GodotZealBrowser >> buildCompileAllButton [
 	^ BrButton new
 		aptitude: (BrGlamorousButtonWithLabelAptitude new);
 		label: 'Compile All';
@@ -138,7 +138,7 @@ GDZealBrowser >> buildCompileAllButton [
 ]
 
 { #category : 'building' }
-GDZealBrowser >> buildDefinitionBody: aDef [
+GodotZealBrowser >> buildDefinitionBody: aDef [
 	"Expanded card body: just the syntax-colored source editor.
 	 Compile feedback is shown by spawning a pager page (success or error)
 	 via compileNode:editor: — no inline diagnostics strip."
@@ -157,7 +157,7 @@ GDZealBrowser >> buildDefinitionBody: aDef [
 ]
 
 { #category : 'building' }
-GDZealBrowser >> buildDefinitionExpander: aDef [
+GodotZealBrowser >> buildDefinitionExpander: aDef [
 	"Inline-expandable card for a single definition. Uses ZealExpanderAptitude
 	 which starts dark — no white flash on tab switch."
 	| expander |
@@ -173,7 +173,7 @@ GDZealBrowser >> buildDefinitionExpander: aDef [
 ]
 
 { #category : 'building' }
-GDZealBrowser >> buildDefinitionHeader: aDef [
+GodotZealBrowser >> buildDefinitionHeader: aDef [
 	"Compact header row: type tag (faded) + bold name + small delete button on the right."
 	| row typeText spacer deleteBtn |
 	typeText := (aDef isKindOf: ZealClass)
@@ -186,13 +186,13 @@ GDZealBrowser >> buildDefinitionHeader: aDef [
 	typeText isEmpty ifFalse: [
 		row addChild: (BrLabel new
 			aptitude: (BrGlamorousLabelAptitude new
-				foreground: GDZealTheme operatorColor;
+				foreground: GodotZealTheme operatorColor;
 				fontSize: 11);
 			text: typeText;
 			margin: (BlInsets right: 8)) ].
 	row addChild: (BrLabel new
 		aptitude: (BrGlamorousLabelAptitude new
-			foreground: GDZealTheme keywordColor;
+			foreground: GodotZealTheme keywordColor;
 			fontSize: 13;
 			bold);
 		text: aDef name).
@@ -208,7 +208,7 @@ GDZealBrowser >> buildDefinitionHeader: aDef [
 ]
 
 { #category : 'building' }
-GDZealBrowser >> buildDeleteButtonFor: aDef [
+GodotZealBrowser >> buildDeleteButtonFor: aDef [
 	"Small minus/x button: deletes the definition (and its .gd file) and rebuilds."
 	^ BrButton new
 		aptitude: BrGlamorousButtonWithLabelAptitude;
@@ -218,7 +218,7 @@ GDZealBrowser >> buildDeleteButtonFor: aDef [
 ]
 
 { #category : 'building' }
-GDZealBrowser >> buildDraftAccordion [
+GodotZealBrowser >> buildDraftAccordion [
 	"Pharo class-browser style 'add new method' inline editor: a BrExpander dropped
 	 into the draftSlot above the tab group. Header shows 'New definition'; body is
 	 an empty Zeal editor. Ctrl+S compiles via compileNode:editor: which routes the
@@ -236,7 +236,7 @@ GDZealBrowser >> buildDraftAccordion [
 ]
 
 { #category : 'building' }
-GDZealBrowser >> buildDraftAccordionBody [
+GodotZealBrowser >> buildDraftAccordionBody [
 	"Body of the draft accordion: an empty GDZeal editor; Ctrl+S compiles."
 	| body editor hint |
 	body := BlElement new
@@ -245,7 +245,7 @@ GDZealBrowser >> buildDraftAccordionBody [
 		padding: (BlInsets top: 4 left: 12 bottom: 8 right: 8).
 	hint := BrLabel new
 		aptitude: (BrGlamorousLabelAptitude new
-			foreground: GDZealTheme commentColor;
+			foreground: GodotZealTheme commentColor;
 			fontSize: 11);
 		text: 'Write any (defcomp/defsystem/defcosystem/defentity/defobserver ...) and press Ctrl+S';
 		margin: (BlInsets bottom: 4).
@@ -260,7 +260,7 @@ GDZealBrowser >> buildDraftAccordionBody [
 ]
 
 { #category : 'building' }
-GDZealBrowser >> buildDraftAccordionHeader [
+GodotZealBrowser >> buildDraftAccordionHeader [
 	"Header row for the draft accordion: type tag + label + close button on the right.
 	 Must return a BlElement row (BrGlamorousExpanderAptitude doesn't render a bare
 	 BrLabel as a stencil result)."
@@ -271,13 +271,13 @@ GDZealBrowser >> buildDraftAccordionHeader [
 		padding: (BlInsets top: 2 right: 8 bottom: 2 left: 0).
 	row addChild: (BrLabel new
 		aptitude: (BrGlamorousLabelAptitude new
-			foreground: GDZealTheme operatorColor;
+			foreground: GodotZealTheme operatorColor;
 			fontSize: 11);
 		text: 'New';
 		margin: (BlInsets right: 8)).
 	row addChild: (BrLabel new
 		aptitude: (BrGlamorousLabelAptitude new
-			foreground: GDZealTheme keywordColor;
+			foreground: GodotZealTheme keywordColor;
 			fontSize: 13;
 			bold);
 		text: 'definition').
@@ -294,7 +294,7 @@ GDZealBrowser >> buildDraftAccordionHeader [
 ]
 
 { #category : 'building' }
-GDZealBrowser >> buildErrorPage: anError [
+GodotZealBrowser >> buildErrorPage: anError [
 	"Pager page shown after a compile failure or linter error. Lists the diagnostics
 	 and shows the GDZeal source with the offending text underlined in red."
 	| page header diagsBox sourceEditor text src |
@@ -344,7 +344,7 @@ GDZealBrowser >> buildErrorPage: anError [
 ]
 
 { #category : 'building' }
-GDZealBrowser >> buildErrorPageMessageRow: aMessage [
+GodotZealBrowser >> buildErrorPageMessageRow: aMessage [
 	^ BrLabel new
 		aptitude: (BrGlamorousLabelAptitude new
 			fontSize: 12;
@@ -354,7 +354,7 @@ GDZealBrowser >> buildErrorPageMessageRow: aMessage [
 ]
 
 { #category : 'building' }
-GDZealBrowser >> buildErrorPageRow: aDiag [
+GodotZealBrowser >> buildErrorPageRow: aDiag [
 	| label msg |
 	msg := aDiag at: #message ifAbsent: [ '?' ].
 	label := BrLabel new
@@ -367,20 +367,20 @@ GDZealBrowser >> buildErrorPageRow: aDiag [
 ]
 
 { #category : 'building' }
-GDZealBrowser >> buildFieldItem: aField [
+GodotZealBrowser >> buildFieldItem: aField [
 	| label |
 	label := aField name.
 	aField type ifNotNil: [ :t | label := label , ' : ' , t ].
 	aField defaultValue ifNotNil: [ :v |
 		(v isKindOf: ZealLiteral) ifTrue: [ label := label , ' = ' , v value ] ].
 	^ BrLabel new
-		aptitude: (BrGlamorousLabelAptitude new foreground: GDZealTheme colonChainColor; fontSize: 12);
+		aptitude: (BrGlamorousLabelAptitude new foreground: GodotZealTheme colonChainColor; fontSize: 12);
 		text: label;
 		margin: (BlInsets left: 12)
 ]
 
 { #category : 'building' }
-GDZealBrowser >> buildNewFileButton [
+GodotZealBrowser >> buildNewFileButton [
 	^ BrButton new
 		aptitude: (BrGlamorousButtonWithLabelAptitude new);
 		label: '+ New';
@@ -389,7 +389,7 @@ GDZealBrowser >> buildNewFileButton [
 ]
 
 { #category : 'building' }
-GDZealBrowser >> buildUI [
+GodotZealBrowser >> buildUI [
 	"Pharo class-browser style:
 	  topBar (project name + Compile All + +)
 	  draftSlot (empty container; the + button drops a draft accordion in here)
@@ -399,11 +399,11 @@ GDZealBrowser >> buildUI [
 	topBar := BlElement new
 		layout: (BlLinearLayout horizontal alignCenterLeft);
 		constraintsDo: [ :c | c horizontal matchParent. c vertical fitContent ];
-		background: GDZealTheme backgroundColor darker;
+		background: GodotZealTheme backgroundColor darker;
 		padding: (BlInsets all: 8).
 	topBar addChild: (BrLabel new
 		aptitude: (BrGlamorousLabelAptitude new
-			foreground: GDZealTheme classRefColor;
+			foreground: GodotZealTheme classRefColor;
 			fontSize: 14;
 			bold);
 		text: 'GDZeal // ' , project name;
@@ -421,19 +421,19 @@ GDZealBrowser >> buildUI [
 ]
 
 { #category : 'building' }
-GDZealBrowser >> buildWelcome [
+GodotZealBrowser >> buildWelcome [
 	^ BrLabel new
-		aptitude: (BrGlamorousLabelAptitude new foreground: GDZealTheme commentColor; fontSize: 13);
+		aptitude: (BrGlamorousLabelAptitude new foreground: GodotZealTheme commentColor; fontSize: 13);
 		text: 'Select a definition or create a new one'
 ]
 
 { #category : 'building' }
-GDZealBrowser >> buildZealEditor: sourceString [
+GodotZealBrowser >> buildZealEditor: sourceString [
 	"Create a fully configured GDZeal code editor. Replaces fn with λ in the
 	 initial source. The styler schedules ongoing fn→λ replacement on each restyle."
 	| editor styler text src |
 	src := self replaceFnWithLambdaIn: sourceString.
-	styler := GDZealTextStyler new.
+	styler := GodotZealTextStyler new.
 	styler browser: self.
 	text := self themeClass highlight: src.
 	editor := BrEditor new
@@ -450,7 +450,7 @@ GDZealBrowser >> buildZealEditor: sourceString [
 ]
 
 { #category : 'refreshing' }
-GDZealBrowser >> captureUiState [
+GodotZealBrowser >> captureUiState [
 	"Snapshot the on-screen state so we can restore it after a rebuildTree.
 	 Returns a Dictionary with: selectedTabIndex, expandedNames (Set of String def names),
 	 focusedName (String or nil), cursorPosition (Integer or nil)."
@@ -485,7 +485,7 @@ GDZealBrowser >> captureUiState [
 ]
 
 { #category : 'categories' }
-GDZealBrowser >> categoriesPresent [
+GodotZealBrowser >> categoriesPresent [
 	"Distinct categories appearing in the project's definitions, in display order."
 	| order present |
 	project isNil ifTrue: [ ^ #() ].
@@ -496,7 +496,7 @@ GDZealBrowser >> categoriesPresent [
 ]
 
 { #category : 'categories' }
-GDZealBrowser >> categoryFor: aDefinition [
+GodotZealBrowser >> categoryFor: aDefinition [
 	"Bucket a ZealDefinition into one of the GDZeal category groups based on its annotations."
 	| anns |
 	anns := aDefinition annotations ifNil: [ ^ 'misc' ].
@@ -511,7 +511,7 @@ GDZealBrowser >> categoryFor: aDefinition [
 ]
 
 { #category : 'actions' }
-GDZealBrowser >> closeDraftAccordion [
+GodotZealBrowser >> closeDraftAccordion [
 	"Remove the draft accordion from the draftSlot."
 	self allChildrenBreadthFirstDo: [ :c |
 		(c userData at: #role ifAbsent: [ nil ]) = #draftSlot ifTrue: [
@@ -519,13 +519,13 @@ GDZealBrowser >> closeDraftAccordion [
 ]
 
 { #category : 'actions' }
-GDZealBrowser >> compileAll [
+GodotZealBrowser >> compileAll [
 	"Compile all .zeal files in the project"
 	| zealDir count errors |
 	zealDir := (godotPath , '/gdzeal') asFileReference.
 	zealDir exists ifFalse: [ ^ self ].
 	count := 0. errors := 0.
-	registry := GDZealComponentRegistry new.
+	registry := GodotZealComponentRegistry new.
 	"First pass: register all components"
 	(zealDir allFiles select: [ :f | f extension = 'zeal' ]) do: [ :f |
 		| source |
@@ -540,7 +540,7 @@ GDZealBrowser >> compileAll [
 		source := f contents.
 		folder := f parent basenameWithoutExtension.
 		name := f basenameWithoutExtension.
-		[ gdScript := GDZealCodeGenerator compile: source withRegistry: registry.
+		[ gdScript := GodotZealCodeGenerator compile: source withRegistry: registry.
 		  path := self gdScriptPathFor: name inFolder: folder.
 		  (godotPath , '/' , path) asFileReference
 			ensureDelete;
@@ -551,7 +551,7 @@ GDZealBrowser >> compileAll [
 ]
 
 { #category : 'actions' }
-GDZealBrowser >> compileCurrentFile: editor statusLabel: statusLabel [
+GodotZealBrowser >> compileCurrentFile: editor statusLabel: statusLabel [
 	"Compile the current editor content to GDScript and save"
 	| source gdScript path folder name |
 	source := editor editor text asString.
@@ -564,20 +564,20 @@ GDZealBrowser >> compileCurrentFile: editor statusLabel: statusLabel [
 		writeStreamDo: [ :s | s nextPutAll: source ].
 	
 	"Compile"
-	[ gdScript := GDZealCodeGenerator compile: source withRegistry: registry.
+	[ gdScript := GodotZealCodeGenerator compile: source withRegistry: registry.
 	  "Determine output path"
 	  path := self gdScriptPathFor: name inFolder: folder.
 	  "Write .gd file"
 	  (godotPath , '/' , path) asFileReference
 		ensureDelete;
 		writeStreamDo: [ :s | s nextPutAll: gdScript ].
-	  statusLabel text: ('Compiled -> ' , path) asRopedText foreground: GDZealTheme keywordColor ]
+	  statusLabel text: ('Compiled -> ' , path) asRopedText foreground: GodotZealTheme keywordColor ]
 	on: Error do: [ :e |
-		statusLabel text: ('Error: ' , e messageText) asRopedText foreground: GDZealTheme specialFormColor ]
+		statusLabel text: ('Error: ' , e messageText) asRopedText foreground: GodotZealTheme specialFormColor ]
 ]
 
 { #category : 'actions' }
-GDZealBrowser >> compileNode: aNode editor: editor [
+GodotZealBrowser >> compileNode: aNode editor: editor [
 	"Compile the editor content. On success, save and spawn a pager page showing
 	 the GDZeal source + generated GDScript. On error (linter or compiler),
 	 spawn an error pager page that highlights the offending text.
@@ -596,7 +596,7 @@ GDZealBrowser >> compileNode: aNode editor: editor [
 		self spawnErrorPageOn: editor source: source linterDiags: linterDiags compilerError: nil.
 		^ self ].
 	"2. Compile pass."
-	[ newNode := GDZealCompiler compile: source.
+	[ newNode := GodotZealCompiler compile: source.
 	  newNode rawSource: source.
 	  project addDefinition: newNode fromSource: source.
 	  project saveDefinition: newNode.
@@ -611,7 +611,7 @@ GDZealBrowser >> compileNode: aNode editor: editor [
 	gdAbsPath := project path , '/' , gdPath.
 	gdSource := [ gdAbsPath asFileReference contents ]
 		on: Error do: [ :e | '" failed to read: ' , gdAbsPath , ' (' , e messageText , ')' ].
-	result := GDZealCompileResult new
+	result := GodotZealCompileResult new
 		definitionName: newNode name;
 		source: source;
 		generated: gdSource;
@@ -631,12 +631,12 @@ GDZealBrowser >> compileNode: aNode editor: editor [
 ]
 
 { #category : 'commands' }
-GDZealBrowser >> createFromInput: editor [
+GodotZealBrowser >> createFromInput: editor [
 	"Create a new definition from the command bar."
 	| source node |
 	source := editor editor text asString.
 	source isEmpty ifTrue: [ ^ self ].
-	[ node := GDZealCompiler compile: source.
+	[ node := GodotZealCompiler compile: source.
 	  node rawSource: source.
 	  project addDefinition: node fromSource: source.
 	  project saveDefinition: node.
@@ -648,7 +648,7 @@ GDZealBrowser >> createFromInput: editor [
 ]
 
 { #category : 'accessing' }
-GDZealBrowser >> definitionSignature [
+GodotZealBrowser >> definitionSignature [
 	"Stable signature of the project's definitions for change detection: a sorted array
 	 of (name, category) pairs. If this differs before/after a compile, structural change
 	 happened (new def, removed def, renamed def, or category changed) and the UI needs
@@ -661,7 +661,7 @@ GDZealBrowser >> definitionSignature [
 ]
 
 { #category : 'accessing' }
-GDZealBrowser >> definitionsForCategory: aCategory [
+GodotZealBrowser >> definitionsForCategory: aCategory [
 	"All definitions in the project belonging to the given category, sorted by name."
 	| defs |
 	project isNil ifTrue: [ ^ #() ].
@@ -671,7 +671,7 @@ GDZealBrowser >> definitionsForCategory: aCategory [
 ]
 
 { #category : 'actions' }
-GDZealBrowser >> deleteDefinition: aDef [
+GodotZealBrowser >> deleteDefinition: aDef [
 	"Delete a definition from the project (and its .gd file on disk), persist, and
 	 rebuild the browser preserving tab/expander state where possible."
 	| state |
@@ -684,7 +684,7 @@ GDZealBrowser >> deleteDefinition: aDef [
 ]
 
 { #category : 'private' }
-GDZealBrowser >> extractDefName: source [
+GodotZealBrowser >> extractDefName: source [
 	"Extract the name after the first def-form in source"
 	| forms |
 	forms := #('defcomp ' 'defentity ' 'defsystem ' 'defobserver ' 'defn ').
@@ -701,7 +701,7 @@ GDZealBrowser >> extractDefName: source [
 ]
 
 { #category : 'private' }
-GDZealBrowser >> folderForSource: source [
+GodotZealBrowser >> folderForSource: source [
 	"Determine which folder a definition belongs in"
 	(source includesSubstring: '(defcomp ') ifTrue: [ ^ 'components' ].
 	(source includesSubstring: '(defentity ') ifTrue: [ ^ 'entities' ].
@@ -711,7 +711,7 @@ GDZealBrowser >> folderForSource: source [
 ]
 
 { #category : 'private' }
-GDZealBrowser >> gdScriptPathFor: name inFolder: folder [
+GodotZealBrowser >> gdScriptPathFor: name inFolder: folder [
 	"Map GDZeal file name and folder to GDScript output path"
 	| snakeName |
 	snakeName := name copyReplaceAll: '-' with: '_'.
@@ -723,7 +723,7 @@ GDZealBrowser >> gdScriptPathFor: name inFolder: folder [
 ]
 
 { #category : 'model' }
-GDZealBrowser >> gecsModules [
+GodotZealBrowser >> gecsModules [
 	"Return tree data: folders with their .zeal files (or .gd files to convert)"
 	| components entities systems observers zealDir modules |
 	zealDir := godotPath , '/gdzeal'.
@@ -745,13 +745,13 @@ GDZealBrowser >> gecsModules [
 ]
 
 { #category : 'accessing' }
-GDZealBrowser >> godotPath: aString [
+GodotZealBrowser >> godotPath: aString [
 	godotPath := aString.
 	self buildUI
 ]
 
 { #category : 'building' }
-GDZealBrowser >> labelForCategory: aCategory [
+GodotZealBrowser >> labelForCategory: aCategory [
 	"Display label for a category tab. Special-cased for defcosystems which reads
 	 better as 'Coroutine Systems'; everything else is just title-cased."
 	aCategory = 'defcosystems' ifTrue: [ ^ 'Coroutine Systems' ].
@@ -759,45 +759,45 @@ GDZealBrowser >> labelForCategory: aCategory [
 ]
 
 { #category : 'lsp' }
-GDZealBrowser >> lintSource: aSource [
+GodotZealBrowser >> lintSource: aSource [
 	"Run the GDZeal source linter against this source. Returns OC of diagnostic Dicts.
 	 Empty if there's no type system or the lint succeeds."
 	typeSystem ifNil: [ ^ #() ].
-	^ (GDZealLinter withTypeSystem: typeSystem) lintSource: aSource
+	^ (GodotZealLinter withTypeSystem: typeSystem) lintSource: aSource
 ]
 
 { #category : 'lsp' }
-GDZealBrowser >> lspModel [
+GodotZealBrowser >> lspModel [
 	"Lazy-init the GDScript LSP model on first access. Returns nil if Godot's LSP isn't
 	 reachable on localhost:6005 — diagnostics just won't show, but everything else
 	 keeps working."
 	lspModel ifNotNil: [ ^ lspModel ].
 	project ifNil: [ ^ nil ].
-	lspModel := [ GDZealLspModel onDirectory: project path asFileReference ]
+	lspModel := [ GodotZealLspModel onDirectory: project path asFileReference ]
 		on: Error 
 		do: [ :e | nil ].
 	^ lspModel
 ]
 
 { #category : 'accessing' }
-GDZealBrowser >> project [
+GodotZealBrowser >> project [
 	^ project
 ]
 
 { #category : 'actions' }
-GDZealBrowser >> promptNewFile [
+GodotZealBrowser >> promptNewFile [
 	"Create a blank file — just focus the command bar"
 	self inform: 'Type a definition in the command bar (bottom-left) and press Ctrl+S'
 ]
 
 { #category : 'refreshing' }
-GDZealBrowser >> rebuildTree [
+GodotZealBrowser >> rebuildTree [
 	"Refresh the entire view after project state changes (callers expect this name)."
 	self buildUI
 ]
 
 { #category : 'building' }
-GDZealBrowser >> replaceFnWithLambdaIn: aString [
+GodotZealBrowser >> replaceFnWithLambdaIn: aString [
 	"Replace all standalone fn tokens with λ in a source string."
 	| src i result lambda |
 	lambda := (Character value: 16r03BB) asString.
@@ -824,7 +824,7 @@ GDZealBrowser >> replaceFnWithLambdaIn: aString [
 ]
 
 { #category : 'actions' }
-GDZealBrowser >> restoreUiState: state [
+GodotZealBrowser >> restoreUiState: state [
 	"After a rebuildTree, re-apply the snapshot taken by captureUiState. If the
 	 state has a #targetCategory key (set by compileNode after a fresh compile),
 	 jump to that category tab instead of the previously-selected one so the user
@@ -863,7 +863,7 @@ GDZealBrowser >> restoreUiState: state [
 ]
 
 { #category : 'actions' }
-GDZealBrowser >> selectFile: anAssociation [
+GodotZealBrowser >> selectFile: anAssociation [
 	"Show editor for selected file"
 	| name path source editor header compileBtn statusLabel |
 	selectedFile := anAssociation.
@@ -877,7 +877,7 @@ GDZealBrowser >> selectFile: anAssociation [
 	
 	"Header with file name and compile button"
 	statusLabel := BrLabel new
-		aptitude: (BrGlamorousLabelAptitude new foreground: GDZealTheme commentColor; fontSize: 11);
+		aptitude: (BrGlamorousLabelAptitude new foreground: GodotZealTheme commentColor; fontSize: 11);
 		text: '';
 		margin: (BlInsets left: 12).
 	
@@ -886,7 +886,7 @@ GDZealBrowser >> selectFile: anAssociation [
 		constraintsDo: [ :c | c horizontal matchParent. c vertical fitContent ];
 		padding: (BlInsets bottom: 8).
 	header addChild: (BrLabel new
-		aptitude: (BrGlamorousLabelAptitude new foreground: GDZealTheme definitionNameColor; fontSize: 14; bold);
+		aptitude: (BrGlamorousLabelAptitude new foreground: GodotZealTheme definitionNameColor; fontSize: 14; bold);
 		text: name).
 	compileBtn := BrButton new
 		aptitude: (BrGlamorousButtonWithLabelAptitude new);
@@ -907,7 +907,7 @@ GDZealBrowser >> selectFile: anAssociation [
 ]
 
 { #category : 'commands' }
-GDZealBrowser >> selectNode: aDef [
+GodotZealBrowser >> selectNode: aDef [
 	"In the new tab+expander layout there is no separate detail pane — each definition is
 	 inline-expandable in its category tab. Selecting from outside (e.g. ClaudeMcpServer
 	 after creating a definition) just rebuilds the view so the new card appears."
@@ -915,7 +915,7 @@ GDZealBrowser >> selectNode: aDef [
 ]
 
 { #category : 'actions' }
-GDZealBrowser >> spawnDraftPage [
+GodotZealBrowser >> spawnDraftPage [
 	"Drop a draft accordion (BrExpander) into the draftSlot between the top bar and
 	 the tab group, like Pharo's class browser 'add new method' panel. Stays
 	 collapsed initially — user clicks the triangle to expand and start typing."
@@ -932,10 +932,10 @@ GDZealBrowser >> spawnDraftPage [
 ]
 
 { #category : 'actions' }
-GDZealBrowser >> spawnErrorPageOn: editor source: aSource linterDiags: linterDiags compilerError: anError [
+GodotZealBrowser >> spawnErrorPageOn: editor source: aSource linterDiags: linterDiags compilerError: anError [
 	"Open a pager page showing a compile/lint error with the offending text highlighted."
 	| errorObj |
-	errorObj := GDZealCompileError new
+	errorObj := GodotZealCompileError new
 		source: aSource;
 		linterDiags: linterDiags;
 		compilerError: anError;
@@ -947,7 +947,7 @@ GDZealBrowser >> spawnErrorPageOn: editor source: aSource linterDiags: linterDia
 ]
 
 { #category : 'actions' }
-GDZealBrowser >> spawnResultPageOn: editor result: aResult [
+GodotZealBrowser >> spawnResultPageOn: editor result: aResult [
 	"Open a new pager page on the compile result. The result class defines its own
 	 GDZeal source / GDScript views (and hides Raw/Print/Meta) so the inspector
 	 page shows exactly those two views."
@@ -956,22 +956,22 @@ GDZealBrowser >> spawnResultPageOn: editor result: aResult [
 ]
 
 { #category : 'hooks' }
-GDZealBrowser >> themeClass [
-	^ GDZealTheme
+GodotZealBrowser >> themeClass [
+	^ GodotZealTheme
 ]
 
 { #category : 'accessing' }
-GDZealBrowser >> typeSystem [
+GodotZealBrowser >> typeSystem [
 	^ typeSystem
 ]
 
 { #category : 'accessing' }
-GDZealBrowser >> typeSystem: aGDZealTypeSystem [
+GodotZealBrowser >> typeSystem: aGDZealTypeSystem [
 	typeSystem := aGDZealTypeSystem
 ]
 
 { #category : 'lsp' }
-GDZealBrowser >> updateDiagnosticsFor: editor with: diagnostics [
+GodotZealBrowser >> updateDiagnosticsFor: editor with: diagnostics [
 	"Find the diagnostics container belonging to the same definition as `editor` and
 	 repopulate it with one row per diagnostic message. Empty if no diagnostics."
 	| defName container |

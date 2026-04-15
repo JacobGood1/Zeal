@@ -1,12 +1,12 @@
 Class {
-	#name : 'GDZealCompiler',
+	#name : 'GodotZealCompiler',
 	#superclass : 'ZealCompiler',
 	#category : 'Zeal',
 	#package : 'Zeal'
 }
 
 { #category : 'building - forms' }
-GDZealCompiler class >> buildAs: aListNode [
+GodotZealCompiler class >> buildAs: aListNode [
 	"(as expr @type field...) -> ZealFunctionCall with 'as' + property chain"
 	| exprs |
 	exprs := aListNode expressions.
@@ -16,13 +16,13 @@ GDZealCompiler class >> buildAs: aListNode [
 ]
 
 { #category : 'helpers' }
-GDZealCompiler class >> buildBody: exprs [
+GodotZealCompiler class >> buildBody: exprs [
 	"Build body expressions"
 	^ exprs collect: [ :e | self buildExpression: e ]
 ]
 
 { #category : 'special forms' }
-GDZealCompiler class >> buildDefcomp: aListNode [
+GodotZealCompiler class >> buildDefcomp: aListNode [
 	"(defcomp name var1 val1 var2 val2 ... (init [...] body))
 	 Fields are simply pairs: variable on left, value on right.
 	 Tag form: (defcomp dead) — no fields."
@@ -93,7 +93,7 @@ GDZealCompiler class >> buildDefcomp: aListNode [
 ]
 
 { #category : 'building' }
-GDZealCompiler class >> buildDefcosystem: aListNode [
+GodotZealCompiler class >> buildDefcosystem: aListNode [
 	"(defcosystem name body...)
 	 (defcosystem name [binding1 binding2 ...] body...)
 	 Builds a ZealClass for a coroutine-system component (formerly defcosystem) — a stateful
@@ -129,7 +129,7 @@ GDZealCompiler class >> buildDefcosystem: aListNode [
 ]
 
 { #category : 'building - GECS' }
-GDZealCompiler class >> buildDefentity: aListNode [
+GodotZealCompiler class >> buildDefentity: aListNode [
 	"(defentity player (components [@health @velocity]) (on-ready body)) -> ZealClass"
 	| exprs name methods cls componentRefs |
 	exprs := aListNode expressions.
@@ -159,7 +159,7 @@ GDZealCompiler class >> buildDefentity: aListNode [
 ]
 
 { #category : 'building - GECS' }
-GDZealCompiler class >> buildDefobserver: aListNode [
+GodotZealCompiler class >> buildDefobserver: aListNode [
 	"(defobserver health-observer (watch @health) (match ...) (on-changed [...] body)) -> ZealClass"
 	| exprs name methods cls watchRef |
 	exprs := aListNode expressions.
@@ -199,7 +199,7 @@ GDZealCompiler class >> buildDefobserver: aListNode [
 ]
 
 { #category : 'building' }
-GDZealCompiler class >> buildDefscene: aListNode [
+GodotZealCompiler class >> buildDefscene: aListNode [
 	"(defscene name (spawn [...]) (on-ready body...)) -> ZealClass with gecs_scene annotation"
 	| exprs name cls |
 	exprs := aListNode expressions.
@@ -214,7 +214,7 @@ GDZealCompiler class >> buildDefscene: aListNode [
 ]
 
 { #category : 'building - GECS' }
-GDZealCompiler class >> buildDefsystem: aListNode [
+GodotZealCompiler class >> buildDefsystem: aListNode [
 	"Handles both shorthand and full form.
 	 Shorthand: (defsystem name [@comp1 @comp2] (with-none [...]) body...)
 	 Full: (defsystem name (query ...) (process [...] body...) ...)"
@@ -272,14 +272,14 @@ GDZealCompiler class >> buildDefsystem: aListNode [
 ]
 
 { #category : 'compiling' }
-GDZealCompiler class >> buildExpression: aNode [
+GodotZealCompiler class >> buildExpression: aNode [
 	"Dispatch — lists go through our buildList, atoms/vectors/maps delegate to ZealCompiler"
 	(aNode isKindOf: ZealListNode) ifTrue: [ ^ self buildList: aNode ].
 	^ ZealCompiler buildExpression: aNode
 ]
 
 { #category : 'compiling' }
-GDZealCompiler class >> buildFromAST: aZealProgramNode [
+GodotZealCompiler class >> buildFromAST: aZealProgramNode [
 	"Walk AST and build ZealNode objects"
 	| results |
 	results := aZealProgramNode expressions collect: [ :expr |
@@ -289,7 +289,7 @@ GDZealCompiler class >> buildFromAST: aZealProgramNode [
 ]
 
 { #category : 'helpers' }
-GDZealCompiler class >> buildInitParams: aVectorNode [
+GodotZealCompiler class >> buildInitParams: aVectorNode [
 	"Parse init params: [name:type default name:type default ...]"
 	| items params i |
 	items := aVectorNode expressions.
@@ -322,7 +322,7 @@ GDZealCompiler class >> buildInitParams: aVectorNode [
 ]
 
 { #category : 'building' }
-GDZealCompiler class >> buildList: aListNode [
+GodotZealCompiler class >> buildList: aListNode [
 	"Check GDZeal forms first, then delegate to ZealCompiler for everything else.
 	 If the head is a non-symbol expression (e.g. ((juxt f g) x) — calling the result
 	 of another expression), we can't dispatch to a name-based builder; return a
@@ -348,7 +348,7 @@ GDZealCompiler class >> buildList: aListNode [
 ]
 
 { #category : 'building - forms' }
-GDZealCompiler class >> buildMatch: aListNode [
+GodotZealCompiler class >> buildMatch: aListNode [
 	"(match expr pat1 body1 pat2 body2 ...) -> ZealCase"
 	| exprs target cases pairs |
 	exprs := aListNode expressions.
@@ -361,7 +361,7 @@ GDZealCompiler class >> buildMatch: aListNode [
 ]
 
 { #category : 'building - forms' }
-GDZealCompiler class >> buildWhen: aListNode [
+GodotZealCompiler class >> buildWhen: aListNode [
 	"(when cond body...) -> ZealIf with no else"
 	| exprs cond body |
 	exprs := aListNode expressions.
@@ -373,12 +373,12 @@ GDZealCompiler class >> buildWhen: aListNode [
 ]
 
 { #category : 'compiling' }
-GDZealCompiler class >> compile: aString [
+GodotZealCompiler class >> compile: aString [
 	"Parse GDZeal source -> ZealNode objects, store rawSource.
 	 Pre-processes λ to fn so the parser accepts lambda-character source.
 	 Stores the ORIGINAL source (with λ) as rawSource so the editor preserves it."
 	| preprocessed ast result |
-	preprocessed := GDZealCodeGenerator preprocess: aString.
+	preprocessed := GodotZealCodeGenerator preprocess: aString.
 	ast := ZealParser parse: preprocessed.
 	result := self buildFromAST: ast.
 	(result isKindOf: Collection)
@@ -388,13 +388,13 @@ GDZealCompiler class >> compile: aString [
 ]
 
 { #category : 'special forms' }
-GDZealCompiler class >> compileFsmSystemFor: aName [
+GodotZealCompiler class >> compileFsmSystemFor: aName [
 	"Backwards-compat: no bindings"
 	^ self compileFsmSystemFor: aName withBindings: #()
 ]
 
 { #category : 'compiling' }
-GDZealCompiler class >> compileFsmSystemFor: aName withBindings: bindings [
+GodotZealCompiler class >> compileFsmSystemFor: aName withBindings: bindings [
 	"Generate the GDScript for a sibling system that ticks an FSM component each frame.
 	 Strips trailing -system from the name to avoid HealthDrainSystemSystem."
 	| baseName pascalName allComponents |
@@ -430,19 +430,19 @@ GDZealCompiler class >> compileFsmSystemFor: aName withBindings: bindings [
 ]
 
 { #category : 'compiling' }
-GDZealCompiler class >> compileToGDScript: aString [
+GodotZealCompiler class >> compileToGDScript: aString [
 	"Full pipeline: parse -> ZealNode objects -> GDScript string"
-	^ GDZealCodeGenerator compile: aString
+	^ GodotZealCodeGenerator compile: aString
 ]
 
 { #category : 'compiling' }
-GDZealCompiler class >> compileToGDScript: aString withRegistry: aRegistry [
+GodotZealCompiler class >> compileToGDScript: aString withRegistry: aRegistry [
 	"Full pipeline with shared component registry"
-	^ GDZealCodeGenerator compile: aString withRegistry: aRegistry
+	^ GodotZealCodeGenerator compile: aString withRegistry: aRegistry
 ]
 
 { #category : 'parsing' }
-GDZealCompiler class >> defcosystemBindings: aSourceString [
+GodotZealCompiler class >> defcosystemBindings: aSourceString [
 	"Extract the bindings from a defcosystem source. Returns OrderedCollection of {#name #type}."
 	| parsed first bodyForms third |
 	[ parsed := ZealParser parse: aSourceString ] on: Error do: [ ^ #() ].
@@ -458,7 +458,7 @@ GDZealCompiler class >> defcosystemBindings: aSourceString [
 ]
 
 { #category : 'parsing' }
-GDZealCompiler class >> defcosystemName: aSourceString [
+GodotZealCompiler class >> defcosystemName: aSourceString [
 	"Extract the name from a defcosystem source. Returns kebab-case name or nil."
 	| parsed first |
 	[ parsed := ZealParser parse: aSourceString ] on: Error do: [ ^ nil ].
@@ -470,7 +470,7 @@ GDZealCompiler class >> defcosystemName: aSourceString [
 ]
 
 { #category : 'fsm' }
-GDZealCompiler class >> errorPlaceholderFor: aTag [
+GodotZealCompiler class >> errorPlaceholderFor: aTag [
 	"Build a synthetic AST node that prints to GDScript as a runtime push_error call,
 	 so coroutine misuse surfaces visibly at runtime instead of silently miscompiling."
 	| placeholder |
@@ -482,7 +482,7 @@ GDZealCompiler class >> errorPlaceholderFor: aTag [
 ]
 
 { #category : 'special forms' }
-GDZealCompiler class >> fsmContainsWait: aForm [
+GodotZealCompiler class >> fsmContainsWait: aForm [
 	"True if aForm is a (wait) call or contains one anywhere"
 	(aForm isKindOf: ZealListNode) ifFalse: [ ^ false ].
 	aForm expressions isEmpty ifTrue: [ ^ false ].
@@ -494,13 +494,13 @@ GDZealCompiler class >> fsmContainsWait: aForm [
 ]
 
 { #category : 'special forms' }
-GDZealCompiler class >> fsmEmitBranch: cond then: thenForm else: elseForm ctx: ctx [
+GodotZealCompiler class >> fsmEmitBranch: cond then: thenForm else: elseForm ctx: ctx [
 	"Single-form then variant. Wraps in a list."
 	self fsmEmitBranch: cond thenForms: { thenForm } else: elseForm ctx: ctx
 ]
 
 { #category : 'special forms' }
-GDZealCompiler class >> fsmEmitBranch: cond thenForms: thenForms else: elseForm ctx: ctx [
+GodotZealCompiler class >> fsmEmitBranch: cond thenForms: thenForms else: elseForm ctx: ctx [
 	"Emit a branch (if/when with waits inside).
 	 Algorithm:
 	   1. Mark current state as #branch with the condition; record then-start and else-start indices.
@@ -558,7 +558,7 @@ GDZealCompiler class >> fsmEmitBranch: cond thenForms: thenForms else: elseForm 
 ]
 
 { #category : 'fsm' }
-GDZealCompiler class >> fsmExpandCoroutine: aListNode ctx: ctx [
+GodotZealCompiler class >> fsmExpandCoroutine: aListNode ctx: ctx [
 	"Expand a coroutine call site by inlining its body into ctx with parameter substitution.
 	 Cycle detection via stack-membership; depth limit as fail-safe.
 	 Errors emit a runtime push_error stmt instead of raising — `self error:` was being
@@ -589,7 +589,7 @@ GDZealCompiler class >> fsmExpandCoroutine: aListNode ctx: ctx [
 ]
 
 { #category : 'fsm' }
-GDZealCompiler class >> fsmHandleConcurrent: aListNode ctx: ctx kind: kindSym [
+GodotZealCompiler class >> fsmHandleConcurrent: aListNode ctx: ctx kind: kindSym [
 	"Handle (sync ...) or (race ...).
 	 Each branch becomes its own lane (sub-FSM with its own state space and per-lane fields).
 	 The current state becomes a controller state of kind #sync or #race that ticks all lanes
@@ -634,7 +634,7 @@ GDZealCompiler class >> fsmHandleConcurrent: aListNode ctx: ctx kind: kindSym [
 ]
 
 { #category : 'special forms' }
-GDZealCompiler class >> fsmHandleIf: aListNode ctx: ctx [
+GodotZealCompiler class >> fsmHandleIf: aListNode ctx: ctx [
 	"Handle (if cond then) or (if cond then else).
 	 If neither branch contains a wait, emit inline as a regular statement.
 	 Otherwise, split into branch states with then/else/join."
@@ -657,7 +657,7 @@ GDZealCompiler class >> fsmHandleIf: aListNode ctx: ctx [
 ]
 
 { #category : 'special forms' }
-GDZealCompiler class >> fsmHandleLoop: aListNode ctx: ctx [
+GodotZealCompiler class >> fsmHandleLoop: aListNode ctx: ctx [
 	"Handle (loop body...).
 	 Walk the body, then make the current state's #next point back to the loop's first state."
 	| loopStart bodyForms current |
@@ -671,7 +671,7 @@ GDZealCompiler class >> fsmHandleLoop: aListNode ctx: ctx [
 ]
 
 { #category : 'special forms' }
-GDZealCompiler class >> fsmHandleWait: aListNode ctx: ctx [
+GodotZealCompiler class >> fsmHandleWait: aListNode ctx: ctx [
 	"Handle (wait) or (wait n).
 	 (wait) — finalize current state as #waitFrame, start new state.
 	 (wait n) — finalize current state as #waitTime with duration n, start new state."
@@ -689,7 +689,7 @@ GDZealCompiler class >> fsmHandleWait: aListNode ctx: ctx [
 ]
 
 { #category : 'special forms' }
-GDZealCompiler class >> fsmHandleWhen: aListNode ctx: ctx [
+GodotZealCompiler class >> fsmHandleWhen: aListNode ctx: ctx [
 	"Handle (when cond body...). Equivalent to (if cond (do body...)).
 	 If body has no waits, emit inline."
 	| exprs cond bodyForms hasWait |
@@ -708,7 +708,7 @@ GDZealCompiler class >> fsmHandleWhen: aListNode ctx: ctx [
 ]
 
 { #category : 'special forms' }
-GDZealCompiler class >> fsmNewState [
+GodotZealCompiler class >> fsmNewState [
 	"Create a new empty state dictionary.
 	 #stmts — OrderedCollection of statements to emit
 	 #kind — #normal, #waitFrame, #waitTime, #terminal, #loopEnd
@@ -723,13 +723,13 @@ GDZealCompiler class >> fsmNewState [
 ]
 
 { #category : 'fsm' }
-GDZealCompiler class >> fsmSplitBody: bodyForms [
+GodotZealCompiler class >> fsmSplitBody: bodyForms [
 	"Backwards-compat shim — uses an empty coroutine dict."
 	^ self fsmSplitBody: bodyForms coroutines: nil
 ]
 
 { #category : 'fsm' }
-GDZealCompiler class >> fsmSplitBody: bodyForms coroutines: aDict [
+GodotZealCompiler class >> fsmSplitBody: bodyForms coroutines: aDict [
 	"Split a sequence of forms into states with coroutine expansion support."
 	| states currentState ctx current |
 	states := OrderedCollection new.
@@ -750,7 +750,7 @@ GDZealCompiler class >> fsmSplitBody: bodyForms coroutines: aDict [
 ]
 
 { #category : 'fsm' }
-GDZealCompiler class >> fsmWalk: forms ctx: ctx [
+GodotZealCompiler class >> fsmWalk: forms ctx: ctx [
 	"Walk forms, dispatching to handlers for special FSM forms or to coroutine expansion."
 	forms do: [ :form |
 		(form isKindOf: ZealListNode) ifTrue: [
@@ -783,7 +783,7 @@ GDZealCompiler class >> fsmWalk: forms ctx: ctx [
 ]
 
 { #category : 'special forms' }
-GDZealCompiler class >> inferTypeFromLiteral: aNode [
+GodotZealCompiler class >> inferTypeFromLiteral: aNode [
 	"Infer GDScript type from a literal or symbol value"
 	| val |
 	(aNode isKindOf: ZealSymbolRef) ifTrue: [
@@ -798,7 +798,7 @@ GDZealCompiler class >> inferTypeFromLiteral: aNode [
 ]
 
 { #category : 'special forms' }
-GDZealCompiler class >> inferTypeFromValue: aParseNode [
+GodotZealCompiler class >> inferTypeFromValue: aParseNode [
 	"Infer type from a raw parse node value.
 	 10.0 → float, 42 → int, true → bool, @vector2/RIGHT → @vector2"
 	| val |
@@ -824,7 +824,7 @@ GDZealCompiler class >> inferTypeFromValue: aParseNode [
 ]
 
 { #category : 'parsing' }
-GDZealCompiler class >> isDefcosystem: aSourceString [
+GodotZealCompiler class >> isDefcosystem: aSourceString [
 	"Check if a source string is a defcosystem form"
 	| parsed first |
 	[ parsed := ZealParser parse: aSourceString ] on: Error do: [ ^ false ].
@@ -836,7 +836,7 @@ GDZealCompiler class >> isDefcosystem: aSourceString [
 ]
 
 { #category : 'fsm-coroutines' }
-GDZealCompiler class >> newSymbolNodeWithString: aString [
+GodotZealCompiler class >> newSymbolNodeWithString: aString [
 	"Construct a fresh ZealSymbolNode whose value is a fake token responding to #value
 	 with aString. Used by symbol substitution during coroutine inlining."
 	| token |
@@ -845,7 +845,7 @@ GDZealCompiler class >> newSymbolNodeWithString: aString [
 ]
 
 { #category : 'special forms' }
-GDZealCompiler class >> parseFsmBindings: aVectorNode [
+GodotZealCompiler class >> parseFsmBindings: aVectorNode [
 	"Parse a binding vector like [vel:@velocity health:@health] into 
 	 an OrderedCollection of {#name: 'vel', #type: '@velocity'} dictionaries.
 	 Bare @type forms get the type name as the binding name."
@@ -876,12 +876,12 @@ GDZealCompiler class >> parseFsmBindings: aVectorNode [
 ]
 
 { #category : 'helpers' }
-GDZealCompiler class >> resolveNameNode: aNode [
+GodotZealCompiler class >> resolveNameNode: aNode [
 	^ ZealCompiler resolveNameNode: aNode
 ]
 
 { #category : 'building' }
-GDZealCompiler class >> specialFormBuilders [
+GodotZealCompiler class >> specialFormBuilders [
 	"Only GDZeal-specific forms. Shared forms delegate to ZealCompiler."
 	^ Dictionary new
 		at: 'defcomp' put: #buildDefcomp:;
@@ -897,12 +897,12 @@ GDZealCompiler class >> specialFormBuilders [
 ]
 
 { #category : 'helpers' }
-GDZealCompiler class >> stripClassPrefix: aName [
+GodotZealCompiler class >> stripClassPrefix: aName [
 	^ ZealCompiler stripClassPrefix: aName
 ]
 
 { #category : 'fsm-coroutines' }
-GDZealCompiler class >> substituteSymbolsIn: aNode bindings: aDict [
+GodotZealCompiler class >> substituteSymbolsIn: aNode bindings: aDict [
 	"Walk an AST node, substituting symbol references whose name (or slash prefix) matches
 	 a key in aDict. Returns either the original node (if no substitution needed) or a new
 	 node tree with structural sharing.
@@ -946,7 +946,7 @@ GDZealCompiler class >> substituteSymbolsIn: aNode bindings: aDict [
 ]
 
 { #category : 'fsm-coroutines' }
-GDZealCompiler class >> substitutedSymbolString: sym bindings: aDict [
+GodotZealCompiler class >> substitutedSymbolString: sym bindings: aDict [
 	"If sym matches a binding key (exactly, or as a slash-prefix), return substituted string.
 	 Otherwise return sym unchanged.
 	 paramName 'pos', arg symbol 'position':

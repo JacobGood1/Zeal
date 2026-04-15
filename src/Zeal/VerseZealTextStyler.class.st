@@ -1,12 +1,12 @@
 Class {
-	#name : 'VZealTextStyler',
+	#name : 'VerseZealTextStyler',
 	#superclass : 'ZealTextStyler',
 	#category : 'Zeal',
 	#package : 'Zeal'
 }
 
 { #category : 'styling' }
-VZealTextStyler >> applyAdditionalStyles: source to: text [
+VerseZealTextStyler >> applyAdditionalStyles: source to: text [
 	"Verse: add definition colors and expanders"
 	self applyDefinitionColors: source to: text.
 	project ifNotNil: [
@@ -17,7 +17,7 @@ VZealTextStyler >> applyAdditionalStyles: source to: text [
 ]
 
 { #category : 'styling' }
-VZealTextStyler >> applyCursorHighlight: aString to: text [
+VerseZealTextStyler >> applyCursorHighlight: aString to: text [
 	"Add cursor highlight — single character under cursor turns white"
 	1 to: aString size do: [:i |
 		| ch |
@@ -30,7 +30,7 @@ VZealTextStyler >> applyCursorHighlight: aString to: text [
 ]
 
 { #category : 'styling' }
-VZealTextStyler >> applyDefinitionColors: aString to: text [
+VerseZealTextStyler >> applyDefinitionColors: aString to: text [
 	"Color definition names (after defn, defclass, etc) in pink/purple"
 	| defForms i size |
 	defForms := #('defn ' 'defclass ' 'definterface ' 'defstruct ' 'defenum ' 'def ' 'var ' 'set ').
@@ -61,7 +61,7 @@ VZealTextStyler >> applyDefinitionColors: aString to: text [
 ]
 
 { #category : 'styling' }
-VZealTextStyler >> applyExpanders: aString to: text resolver: aResolver [
+VerseZealTextStyler >> applyExpanders: aString to: text resolver: aResolver [
 	"Attach expander attributes to function/class/method references"
 	| i size |
 	i := 1. size := aString size.
@@ -103,11 +103,11 @@ VZealTextStyler >> applyExpanders: aString to: text resolver: aResolver [
 ]
 
 { #category : 'styling' }
-VZealTextStyler >> applyFormHighlight: aString to: text [
+VerseZealTextStyler >> applyFormHighlight: aString to: text [
 	"No-op — form highlighting is now handled by the editor's cursor change listener"
 ]
 
 { #category : 'styling' }
-VZealTextStyler >> project: aProject [
+VerseZealTextStyler >> project: aProject [
 	project := aProject
 ]
