@@ -677,6 +677,19 @@ GDZealProject >> folderFor: aNode [
 ]
 
 { #category : 'compiling' }
+GDZealProject >> generateEntityTscn: snakeName gdPath: gdPath [
+	"Generate a .tscn scene file for a defentity. Root node is Entity with the script attached."
+	| tscnPath |
+	tscnPath := path , '/entities/' , snakeName , '.tscn'.
+	tscnPath asFileReference exists ifTrue: [ ^ self ].  "don't overwrite existing scene"
+	tscnPath asFileReference writeStreamDo: [ :s |
+		s nextPutAll: '[gd_scene load_steps=2 format=3]'; lf; lf.
+		s nextPutAll: '[ext_resource type="Script" path="res://'; nextPutAll: gdPath; nextPutAll: '" id="1_entity"]'; lf; lf.
+		s nextPutAll: '[node name="'; nextPutAll: (snakeName copyReplaceAll: '_' with: ' ') capitalized; nextPutAll: '" type="Node"]'; lf.
+		s nextPutAll: 'script = ExtResource("1_entity")'; lf ]
+]
+
+{ #category : 'compiling' }
 GDZealProject >> generateSceneTscn: snakeName gdPath: gdPath [
 	"Generate a .tscn scene file for a defscene. Includes a World node with all
 	 known systems auto-added as children."
