@@ -72,76 +72,6 @@ GodotZealTheme class >> highlight: aString [
 	^ text
 ]
 
-{ #category : 'highlighting' }
-GodotZealTheme class >> highlightTokenAt: i in: aString text: text size: size [
-	"Highlight one token starting at i, return next position."
-	| ch start j word |
-	ch := aString at: i.
-	"Comments"
-	ch = $; ifTrue: [
-		start := i. j := i.
-		[ j <= size and: [ (aString at: j) ~= Character cr and: [ (aString at: j) ~= Character lf ] ] ] whileTrue: [ j := j + 1 ].
-		(text from: start to: j - 1) foreground: self commentColor.
-		^ j ].
-	"Strings"
-	ch = $" ifTrue: [
-		start := i. j := i + 1.
-		[ j <= size and: [ (aString at: j) ~= $" ] ] whileTrue: [
-			(aString at: j) = $\ ifTrue: [ j := j + 1 ]. j := j + 1 ].
-		j <= size ifTrue: [ j := j + 1 ].
-		(text from: start to: j - 1) foreground: self stringColor.
-		^ j ].
-	"Parens"
-	('()' includes: ch) ifTrue: [
-		(text from: i to: i) foreground: self parenColor. ^ i + 1 ].
-	"Brackets"
-	('[]' includes: ch) ifTrue: [
-		(text from: i to: i) foreground: self bracketColor. ^ i + 1 ].
-	"Braces"
-	('{}' includes: ch) ifTrue: [
-		(text from: i to: i) foreground: self braceColor. ^ i + 1 ].
-	"Numbers"
-	(ch isDigit or: [ ch = $- and: [ i + 1 <= size and: [ (aString at: i + 1) isDigit ] ] ]) ifTrue: [
-		start := i. j := i + 1.
-		[ j <= size and: [ (aString at: j) isDigit or: [ '.xabcdefABCDEF' includes: (aString at: j) ] ] ] whileTrue: [ j := j + 1 ].
-		(text from: start to: j - 1) foreground: self numberColor.
-		^ j ].
-	"Keywords :name"
-	ch = $: ifTrue: [
-		start := i. j := i + 1.
-		[ j <= size and: [ (aString at: j) isLetter or: [ (aString at: j) = $- ] ] ] whileTrue: [ j := j + 1 ].
-		j > (start + 1)
-			ifTrue: [ (text from: start to: j - 1) foreground: self keywordColor ]
-			ifFalse: [ (text from: start to: start) foreground: self operatorColor ].
-		^ j ].
-	"@class references"
-	ch = $@ ifTrue: [
-		start := i. j := i + 1.
-		[ j <= size and: [ | c | c := aString at: j. c isLetter or: [ c isDigit or: [ '_-/@' includes: c ] ] ] ] whileTrue: [ j := j + 1 ].
-		(text from: start to: j - 1) foreground: self classRefColor.
-		^ j ].
-	"Words"
-	(ch isLetter or: [ ch = $_ or: [ ch = $? ] ]) ifTrue: [
-		start := i. j := i.
-		[ j <= size and: [ | c | c := aString at: j. c isLetter or: [ c isDigit or: [ '_-?!/@' includes: c ] ] ] ] whileTrue: [ j := j + 1 ].
-		word := aString copyFrom: start to: j - 1.
-		(j <= size and: [ (aString at: j) = $: ]) ifTrue: [
-			[ j <= size and: [ | c | c := aString at: j. c isLetter or: [ c isDigit or: [ '_-?!/@:' includes: c ] ] ] ] whileTrue: [ j := j + 1 ].
-			(text from: start to: j - 1) foreground: self colonChainColor. ^ j ].
-		(self specialForms includes: word) ifTrue: [
-			(text from: start to: j - 1) foreground: self specialFormColor. ^ j ].
-		(self operators includes: word) ifTrue: [
-			(text from: start to: j - 1) foreground: self operatorColor. ^ j ].
-		(text from: start to: j - 1) foreground: self symbolColor. ^ j ].
-	"Operator chars"
-	('+-*/<>=!' includes: ch) ifTrue: [
-		start := i. j := i.
-		[ j <= size and: [ '+-*/<>=!' includes: (aString at: j) ] ] whileTrue: [ j := j + 1 ].
-		(text from: start to: j - 1) foreground: self operatorColor. ^ j ].
-	"Skip"
-	^ i + 1
-]
-
 { #category : 'colors' }
 GodotZealTheme class >> keywordColor [
 	^ Color fromHexString: '69F0AE'
@@ -188,4 +118,9 @@ GodotZealTheme class >> stringColor [
 { #category : 'colors' }
 GodotZealTheme class >> symbolColor [
 	^ Color fromHexString: 'D4AAFF'
+]
+
+{ #category : 'api' }
+GodotZealTheme class >> typeInferencer [
+	^ GodotZealTypeInferencer default
 ]

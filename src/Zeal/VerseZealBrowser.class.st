@@ -57,10 +57,10 @@ VerseZealBrowser class >> open [
 	^ space
 ]
 
-{ #category : 'opening' }
+{ #category : 'api' }
 VerseZealBrowser class >> openFolder: aPathString [
 	| project |
-	project := ZealProject new scanFolder: aPathString asFileReference.
+	project := VerseZealProject new scanFolder: aPathString asFileReference.
 	^ self openProject: project
 ]
 
@@ -84,27 +84,27 @@ VerseZealBrowser class >> openProject: aZealProject [
 	^ browser
 ]
 
-{ #category : 'opening' }
+{ #category : 'api' }
 VerseZealBrowser class >> openSample [
 	"Open a browser with a sample in-memory project for testing."
 	| project mod1 mod2 |
-	project := ZealProject new name: 'SampleGame'; path: '/SampleGame'.
-	
-	mod1 := ZealModule new name: 'Core'; kind: #folder; 
+	project := VerseZealProject new name: 'SampleGame'; path: '/SampleGame'.
+
+	mod1 := ZealModule new name: 'Core'; kind: #folder;
 		usings: OrderedCollection new; definitions: OrderedCollection new.
 	mod1 definitions add: (ZealCompiler compile: '(defstruct vector2 [x:float 0.0] [y:float 0.0])').
 	mod1 definitions add: (ZealCompiler compile: '(defenum game-state main-menu playing paused game-over)').
 	mod1 definitions add: (ZealCompiler compile: '(defn calculate-score:public:int [base:int bonus:int] (+ base (* bonus 2)))').
 	mod1 definitions do: [:d | d parent: mod1].
 	mod1 parent: project.
-	
+
 	mod2 := ZealModule new name: 'Characters'; kind: #folder;
 		usings: OrderedCollection new; definitions: OrderedCollection new.
 	mod2 definitions add: (ZealCompiler compile: '(defclass character:concrete (entity) (var health:int 100) (var level:int 1) (defn take-damage:void [amount:int] (set health (Max 0 (- health amount)))) (defn is-alive:decides:void (> health 0)))').
 	mod2 definitions add: (ZealCompiler compile: '(defclass player:concrete (character) (var score:int 0) (defn add-score:void [points:int] (set score (+ score points))))').
 	mod2 definitions do: [:d | d parent: mod2].
 	mod2 parent: project.
-	
+
 	project modules add: mod1.
 	project modules add: mod2.
 	^ self openProject: project
@@ -1287,41 +1287,42 @@ VerseZealBrowser >> compileAll [
 	Smalltalk globals at: #ZealDebug put: 'Compiled ' , count printString , ' definitions'
 ]
 
-{ #category : 'actions' }
+{ #category : 'api' }
 VerseZealBrowser >> compileAndSave: anEditor forNode: aNode [
-	"Compile Zeal → sync node → persist to class and .verse file."
+	"Compile Zeal → sync node → persist to class and .verse file.
+	 The user's literal Zeal source is preserved in the cache (not re-derived from AST)."
 	| zealSource compiled compiledNodes isExpander oldZeal |
 	zealSource := anEditor editor text asString.
-	
+
 	[ compiled := ZealCompiler compile: zealSource ] on: Error do: [:e |
 		self flashError: anEditor. ^ self ].
-	
+
 	compiledNodes := (compiled isKindOf: Collection) ifTrue: [compiled] ifFalse: [{compiled}].
-	
+
 	"Verify verse output compiles"
 	[compiledNodes do: [:n | n compileToVerse]] on: Error do: [:e |
 		self flashError: anEditor. ^ self ].
-	
+
 	aNode rawSource: nil.
 	isExpander := aNode ~~ selectedNode.
-	
+
 	"Capture old zeal BEFORE syncing"
 	oldZeal := [String streamContents: [:s | aNode compileToZeal: s indent: 0]] on: Error do: [nil].
-	
+
 	"Sync node if single definition"
 	(compiledNodes size = 1 and: [isExpander not or: [(aNode isKindOf: ZealModule) not]]) ifTrue: [
 		self syncNode: aNode withCompiled: compiledNodes first ].
-	
-	"Persist — uses unified persistNode:"
-	self persistNode: aNode.
-	
+
+	"Persist — pass the user's literal source so the cache preserves exact formatting"
+	self persistNode: aNode zealSource: zealSource.
+
 	"If saving a method/field inside a class, also persist the owning class"
 	(aNode parent notNil and: [
 		(aNode parent isKindOf: ZealClass) or: [aNode parent isKindOf: ZealInterface]]) ifTrue: [
 		self persistNode: aNode parent ].
-	
+
 	self flashSuccess: anEditor.
-	
+
 	"Surgical update for expander saves"
 	(isExpander and: [zealEditor notNil]) ifTrue: [
 		(oldZeal notNil and: [zealEditor editor text asString includesSubstring: oldZeal]) ifTrue: [
@@ -1665,11 +1666,11 @@ VerseZealBrowser >> moveNode: aNode toModule: targetModule [
 		add: aNode; yourself) asArray
 ]
 
-{ #category : 'verse' }
+{ #category : 'api' }
 VerseZealBrowser >> newZealEditor: sourceText [
 	"Create a fully configured Zeal code editor using the styler system."
 	| editor styler |
-	styler := ZealTextStyler new project: project; browser: self.
+	styler := VerseZealTextStyler new project: project; browser: self.
 	editor := BrEditor new
 		aptitude: (BrGlamorousCodeEditorAptitude new);
 		text: sourceText asRopedText;
@@ -1770,40 +1771,56 @@ VerseZealBrowser >> persistMetadata: aNode to: genClass [
 		genClass class compile: ('zealValues ^ ', ((aNode respondsTo: #values) ifTrue: [aNode values asArray] ifFalse: [#()]) printString) classified: 'metadata' ]
 ]
 
-{ #category : 'verse' }
+{ #category : 'api' }
 VerseZealBrowser >> persistNode: aNode [
-	"Persist a node's complete state to class variables, zealSource, verseSource, and .verse file."
-	| genClass zealSrc verseSrc filePath lf |
+	"Persist without a source override — Zeal is regenerated from the AST."
+	^ self persistNode: aNode zealSource: nil
+]
+
+{ #category : 'api' }
+VerseZealBrowser >> persistNode: aNode zealSource: zealSourceOverride [
+	"Persist a node's complete state to class variables, zealSource, verseSource, and .verse file.
+	 If zealSourceOverride is non-nil, it is used verbatim for both the stored `zealSource`
+	 method and the `# @zeal ... # @end` cache header — this preserves the user's literal
+	 formatting (multi-bindings, spacing, etc). Otherwise the Zeal is regenerated via
+	 compileToZeal (which normalizes the AST)."
+	| genClass zealSrc verseSrc filePath lf fileContent |
 	genClass := self generatedClassFor: aNode.
 	genClass ifNil: [ ^ self ].
 	lf := String lf.
-	
-	zealSrc := [String streamContents: [:s | aNode compileToZeal: s indent: 0]] on: Error do: [''].
+
+	zealSrc := zealSourceOverride
+		ifNotNil: [ zealSourceOverride ]
+		ifNil: [ [String streamContents: [:s | aNode compileToZeal: s indent: 0]] on: Error do: [''] ].
 	verseSrc := [String streamContents: [:s | aNode compileToVerse: s indent: 0]] on: Error do: [''].
-	
+
 	"Store source methods"
-	genClass class compile: ('zealSource
-	^ ', zealSrc printString) classified: 'zeal'.
-	genClass class compile: ('verseSource
-	^ ', verseSrc printString) classified: 'zeal'.
-	
+	genClass class compile: ('zealSource	^ ', zealSrc printString) classified: 'zeal'.
+	genClass class compile: ('verseSource	^ ', verseSrc printString) classified: 'zeal'.
+
 	"Store metadata as class variables"
 	self persistMetadata: aNode to: genClass.
-	
-	"Write .verse file"
-	filePath := self verseFilePathForDefinition: aNode.
-	filePath ifNotNil: [
-		| usingPaths |
+
+	"Build file content: usings, optional Zeal cache comment, Verse source"
+	fileContent := String streamContents: [:ws |
+		| usingPaths cacheHeader |
 		usingPaths := (aNode respondsTo: #usings)
 			ifTrue: [aNode usings collect: [:u | (u respondsTo: #path) ifTrue: [u path] ifFalse: [u printString]]]
 			ifFalse: [#()].
+		usingPaths do: [:p | ws nextPutAll: 'using { '; nextPutAll: p; nextPutAll: ' }'; nextPutAll: lf].
+		usingPaths notEmpty ifTrue: [ws nextPutAll: lf].
+		((project isKindOf: VerseZealProject) and: [zealSrc notEmpty]) ifTrue: [
+			cacheHeader := project zealCommentBlockFor: zealSrc.
+			ws nextPutAll: cacheHeader ].
+		ws nextPutAll: verseSrc ].
+
+	"Write .verse file"
+	filePath := self verseFilePathForDefinition: aNode.
+	filePath ifNotNil: [
 		[filePath asFileReference ensureDelete.
-		 filePath asFileReference writeStreamDo: [:ws |
-			usingPaths do: [:p | ws nextPutAll: 'using { '; nextPutAll: p; nextPutAll: ' }'; nextPutAll: lf].
-			usingPaths notEmpty ifTrue: [ws nextPutAll: lf].
-			ws nextPutAll: verseSrc]]
+		 filePath asFileReference writeStreamDo: [:ws | ws nextPutAll: fileContent ]]
 			on: Error do: [:e | ] ].
-	
+
 	ZealCompiler currentResolver ifNotNil: [:r | r invalidateAll]
 ]
 
@@ -1902,22 +1919,22 @@ VerseZealBrowser >> searchModule: aModule forNode: aNode path: prefix found: fou
 			(d == aNode) ifTrue: [ foundBlock value: aModule ] ] ]
 ]
 
-{ #category : 'verse' }
+{ #category : 'api' }
 VerseZealBrowser >> selectNode: aNode [
-	| verseText zealText generatedClass headerRow |
+	| verseText zealText generatedClass headerRow zealEditor |
 	selectedNode := aNode.
-	
+
 	"Modules just expand in the tree"
 	(aNode isKindOf: ZealModule) ifTrue: [ ^ self ].
 	(aNode isKindOf: ZealTreeGroup) ifTrue: [ ^ self ].
-	
+
 	detailElement removeChildren.
-	
+
 	"Classes and interfaces get a GT-style inspector view"
 	((aNode isKindOf: ZealClass) or: [aNode isKindOf: ZealInterface]) ifTrue: [
 		detailElement addChild: (self buildClassDetail: aNode).
 		^ self ].
-	
+
 	"Everything else: header row with name + show in folder"
 	headerRow := BlElement new
 		layout: BlLinearLayout horizontal alignCenterLeft;
@@ -1927,32 +1944,32 @@ VerseZealBrowser >> selectNode: aNode [
 		text: (self labelFor: aNode)).
 	headerRow addChild: (self buildShowInFolderButton: aNode).
 	detailElement addChild: headerRow.
-	
+
 	generatedClass := self generatedClassFor: aNode.
 	detailElement addChild: (self buildModuleDropdown: aNode inContainer: detailElement).
 	detailElement addChild: (self buildUsingEditor: aNode).
-	
+
 	detailElement addChild: (BrLabel new
 		aptitude: (BrGlamorousLabelAptitude new foreground: ZealTheme specialFormColor; fontSize: 12);
 		text: 'Zeal (Ctrl+S to compile & save):';
 		margin: (BlInsets top: 12 left: 0 bottom: 4 right: 0)).
-	
+
 	zealText := self zealSourceFor: aNode generatedClass: generatedClass.
-	
+
 	zealEditor := self newZealEditor: zealText.
 	zealEditor background: (ZealTheme backgroundColor darker).
 	zealEditor margin: (BlInsets bottom: 8).
 	zealEditor padding: (BlInsets all: 8).
-	zealEditor addShortcut: (BlShortcutWithAction new 
+	zealEditor addShortcut: (BlShortcutWithAction new
 		combination: BlKeyCombination primaryS;
 		action: [ self compileAndSave: zealEditor forNode: aNode ]).
 	detailElement addChild: zealEditor.
-	
+
 	detailElement addChild: (BrLabel new
 		aptitude: (BrGlamorousLabelAptitude new foreground: ZealTheme commentColor; fontSize: 12);
 		text: 'Verse:';
 		margin: (BlInsets top: 4 left: 0 bottom: 4 right: 0)).
-	
+
 	verseText := generatedClass
 		ifNotNil: [ generatedClass verseSource ]
 		ifNil: [ [ aNode compileToVerse ] on: Error do: [:e | 'Error: ' , e messageText ] ].
@@ -1967,15 +1984,15 @@ VerseZealBrowser >> selectNode: aNode [
 		id: #verseOutput)
 ]
 
-{ #category : 'verse' }
+{ #category : 'api' }
 VerseZealBrowser >> setupCompletion: anEditor [
 	"Install themed code completion"
-	| strategy controller |
+	| strategy controller completionController |
 	strategy := ZealCompletionStrategy new project: project.
 	controller := GtCompletionController on: anEditor strategy: strategy.
 	controller install.
 	completionController := controller.
-	
+
 	"Theme the overlay popup (list is created lazily, gets overlay bg)"
 	(controller instVarNamed: 'overlay') ifNotNil: [:overlay |
 		overlay background: ZealTheme backgroundColor.
@@ -2253,21 +2270,30 @@ VerseZealBrowser >> wrapInDarkPage: anElement [
 		constraintsDo: [:c | c horizontal matchParent. c vertical matchParent ]
 ]
 
-{ #category : 'verse' }
+{ #category : 'api' }
 VerseZealBrowser >> writeNamespaceToFile: aNamespace path: filePath [
 	"Write all definitions in a namespace to the .verse file.
-	 Uses stored verse from generated classes when available."
-	| stream |
+	 Uses stored verse from generated classes when available. When the project
+	 is a VerseZealProject, each definition gets a `# @zeal ... # @end` comment
+	 header above its Verse so round-tripping is lossless."
+	| stream emitCache |
 	stream := String new writeStream.
+	emitCache := project isKindOf: VerseZealProject.
 	aNamespace usings do: [:u |
 		stream nextPutAll: 'using { '; nextPutAll: u path; nextPutAll: ' }'.
 		stream cr ].
 	aNamespace usings notEmpty ifTrue: [ stream cr ].
 	aNamespace definitions do: [:d |
-		| genClass storedVerse |
+		| genClass storedZeal storedVerse zealSrc |
 		genClass := self generatedClassFor: d.
+		storedZeal := genClass ifNotNil: [ [genClass zealSource] on: Error do: [nil] ].
 		storedVerse := genClass ifNotNil: [ [genClass verseSource] on: Error do: [nil] ].
-		storedVerse 
+		zealSrc := storedZeal
+			ifNotNil: [ storedZeal ]
+			ifNil: [ [String streamContents: [:s | d compileToZeal: s indent: 0]] on: Error do: [''] ].
+		(emitCache and: [zealSrc notEmpty]) ifTrue: [
+			stream nextPutAll: (project zealCommentBlockFor: zealSrc) ].
+		storedVerse
 			ifNotNil: [ stream nextPutAll: storedVerse ]
 			ifNil: [ d compileToVerse: stream indent: 0 ].
 		stream cr; cr ].

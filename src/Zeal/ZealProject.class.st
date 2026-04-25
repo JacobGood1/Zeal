@@ -449,7 +449,7 @@ ZealProject >> printOn: aStream [
 	aStream nextPutAll: ' modules)'
 ]
 
-{ #category : 'scanning' }
+{ #category : 'api' }
 ZealProject >> scanDirectory: aDir into: parentNode [
 	| verseFiles subDirs mod |
 	verseFiles := aDir children select: [:f | f isFile and: [ f extension = 'verse' ] ].

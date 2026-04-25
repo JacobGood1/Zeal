@@ -92,73 +92,17 @@ VerseZealTheme class >> cursorWidth [
 	^ 8
 ]
 
+{ #category : 'api' }
+VerseZealTheme class >> dialectTokenColorFor: aWord [
+	"Verse effect modifiers get the special-form color."
+	^ (#('transacts' 'decides' 'suspends' 'varies' 'converges' 'computes') includes: aWord)
+		ifTrue: [ self specialFormColor ]
+		ifFalse: [ nil ]
+]
+
 { #category : 'colors' }
 VerseZealTheme class >> foregroundColor [
 	^ Color fromHexString: 'CDD7DC'
-]
-
-{ #category : 'highlighting' }
-VerseZealTheme class >> highlightTokenAt: i in: aString text: text size: size [
-	"Highlight one token starting at i, return next position."
-	| ch start j word |
-	ch := aString at: i.
-	"Comments"
-	ch = $; ifTrue: [
-		start := i. j := i.
-		[ j <= size and: [ (aString at: j) ~= Character cr and: [ (aString at: j) ~= Character lf ] ] ] whileTrue: [ j := j + 1 ].
-		(text from: start to: j - 1) foreground: self commentColor.
-		^ j ].
-	"Strings"
-	ch = $" ifTrue: [
-		start := i. j := i + 1.
-		[ j <= size and: [ (aString at: j) ~= $" ] ] whileTrue: [ j := j + 1 ].
-		j <= size ifTrue: [ j := j + 1 ].
-		(text from: start to: j - 1) foreground: self stringColor.
-		^ j ].
-	"Parens"
-	(ch = $( or: [ ch = $) ]) ifTrue: [
-		(text from: i to: i) foreground: self parenColor. ^ i + 1 ].
-	"Brackets"
-	(ch = $[ or: [ ch = $] ]) ifTrue: [
-		(text from: i to: i) foreground: self bracketColor. ^ i + 1 ].
-	"Braces"
-	(ch = ${ or: [ ch = $} ]) ifTrue: [
-		(text from: i to: i) foreground: self braceColor. ^ i + 1 ].
-	"Numbers"
-	(ch isDigit or: [ ch = $- and: [ i + 1 <= size and: [ (aString at: i + 1) isDigit ] ] ]) ifTrue: [
-		start := i. j := i + 1.
-		[ j <= size and: [ (aString at: j) isDigit or: [ (aString at: j) = $. or: [ (aString at: j) = $x ] ] ] ] whileTrue: [ j := j + 1 ].
-		(text from: start to: j - 1) foreground: self numberColor.
-		^ j ].
-	"Keywords :name"
-	ch = $: ifTrue: [
-		start := i. j := i + 1.
-		[ j <= size and: [ (aString at: j) isLetter or: [ (aString at: j) = $- ] ] ] whileTrue: [ j := j + 1 ].
-		j > (start + 1)
-			ifTrue: [ (text from: start to: j - 1) foreground: self keywordColor ]
-			ifFalse: [ (text from: start to: start) foreground: self operatorColor ].
-		^ j ].
-	"Words: symbols, special forms, operators (@ is a word start in Verse)"
-	(ch isLetter or: [ ch = $_ or: [ ch = $@ or: [ ch = $? ] ] ]) ifTrue: [
-		start := i. j := i.
-		[ j <= size and: [ | c | c := aString at: j. c isLetter or: [ c isDigit or: [ '_-?!/@' includes: c ] ] ] ] whileTrue: [ j := j + 1 ].
-		word := aString copyFrom: start to: j - 1.
-		"Colon chain name:type:spec"
-		(j <= size and: [ (aString at: j) = $: ]) ifTrue: [
-			[ j <= size and: [ | c | c := aString at: j. c isLetter or: [ c isDigit or: [ '_-?!/@:' includes: c ] ] ] ] whileTrue: [ j := j + 1 ].
-			(text from: start to: j - 1) foreground: self colonChainColor. ^ j ].
-		(self specialForms includes: word)
-			ifTrue: [ (text from: start to: j - 1) foreground: self specialFormColor. ^ j ].
-		(self operators includes: word)
-			ifTrue: [ (text from: start to: j - 1) foreground: self operatorColor. ^ j ].
-		(text from: start to: j - 1) foreground: self symbolColor. ^ j ].
-	"Operator chars"
-	('+-*/<>=!' includes: ch) ifTrue: [
-		start := i. j := i.
-		[ j <= size and: [ '+-*/<>=!' includes: (aString at: j) ] ] whileTrue: [ j := j + 1 ].
-		(text from: start to: j - 1) foreground: self operatorColor. ^ j ].
-	"Skip"
-	^ i + 1
 ]
 
 { #category : 'colors' }
@@ -259,4 +203,9 @@ VerseZealTheme class >> styler [
 VerseZealTheme class >> symbolColor [
 	"Light lilac purple for symbols — #D4AAFF"
 	^ Color fromHexString: 'D4AAFF'
+]
+
+{ #category : 'api' }
+VerseZealTheme class >> typeInferencer [
+	^ VerseZealTypeInferencer default
 ]

@@ -73,6 +73,12 @@ ZealTheme class >> bracketColor [
 	^ Color fromHexString: '50FA7B'
 ]
 
+{ #category : 'api' }
+ZealTheme class >> classRefColor [
+	"Color for @name class references."
+	^ Color fromHexString: '6FBBF5'
+]
+
 { #category : 'colors' }
 ZealTheme class >> colonChainColor [
 	^ Color fromHexString: '88DCF6'
@@ -104,6 +110,15 @@ ZealTheme class >> definitionNameColor [
 	^ Color fromHexString: 'D4AAFF'
 ]
 
+{ #category : 'api' }
+ZealTheme class >> dialectTokenColorFor: aWord [
+	"Hook for per-dialect highlighting. Return a Color for words the dialect
+	 wants to color distinctly (effect modifiers, attribute macros, built-in
+	 types, etc.) or nil to fall through to the default symbol color.
+	 Subclasses override this; the base returns nil (no extras)."
+	^ nil
+]
+
 { #category : 'colors' }
 ZealTheme class >> foregroundColor [
 	^ Color fromHexString: 'CDD7DC'
@@ -126,14 +141,17 @@ ZealTheme class >> highlight: aString [
 	^ text
 ]
 
-{ #category : 'highlighting' }
+{ #category : 'api' }
 ZealTheme class >> highlightDefinitionNames: aString text: text [
-	"Color definition names and colon-chain name parts."
+	"Color definition names and colon-chain name parts.
+	 Pass 1 stops the definition-name span at the first `:` so the type and
+	 specifier portions of a colon-chain keep the colors set by the
+	 per-token tokenizer (typeColor, etc.)."
 	| defForms size i |
 	defForms := (self specialForms select: [ :f | f beginsWith: 'def' ]) asOrderedCollection.
 	defForms addAll: #('def' 'var').
 	size := aString size.
-	"Pass 1: color definition names after def-forms"
+	"Pass 1: color definition names after def-forms (name only, NOT the type)"
 	defForms do: [ :form |
 		| searchFrom |
 		searchFrom := 1.
@@ -143,17 +161,18 @@ ZealTheme class >> highlightDefinitionNames: aString text: text [
 			pos = 0 ifTrue: [ searchFrom := size + 1 ]
 			ifFalse: [
 				afterForm := pos + form size.
-				"Verify preceded by ( or whitespace AND followed by whitespace (word boundary)"
 				((pos = 1 or: [ '( ' includes: (aString at: pos - 1) ]) and: [
 					afterForm > size or: [ (aString at: afterForm) isSeparator ] ]) ifTrue: [
 					nameStart := afterForm.
 					[ nameStart <= size and: [ (aString at: nameStart) isSeparator ] ] whileTrue: [ nameStart := nameStart + 1 ].
 					nameEnd := nameStart.
-					[ nameEnd <= size and: [ | c | c := aString at: nameEnd. c isLetter or: [ c isDigit or: [ '_-?!:/@' includes: c ] ] ] ] whileTrue: [ nameEnd := nameEnd + 1 ].
+					"Stop at `:` so the type portion of name:type is preserved."
+					[ nameEnd <= size and: [ | c | c := aString at: nameEnd. c isLetter or: [ c isDigit or: [ '_-?!/@' includes: c ] ] ] ] whileTrue: [ nameEnd := nameEnd + 1 ].
 					nameEnd > nameStart ifTrue: [
 						(text from: nameStart to: nameEnd - 1) foreground: self definitionNameColor ] ].
 				searchFrom := afterForm ] ] ].
-	"Pass 2: color colon chains — variable name purple, colons white"
+	"Pass 2: color colon-chain name parts (name only, colons get white,
+	 type/specifier portions left alone for the tokenizer's typeColor)."
 	i := 1.
 	[ i <= size ] whileTrue: [
 		| ch |
@@ -165,17 +184,109 @@ ZealTheme class >> highlightDefinitionNames: aString text: text [
 			wordEnd := i - 1.
 			(i <= size and: [ (aString at: i) = $: and: [ i + 1 <= size and: [ | nc | nc := aString at: i + 1. nc isLetter or: [ nc = $@ ] ] ] ]) ifTrue: [
 				(text from: start to: wordEnd) foreground: self definitionNameColor.
-				"Color colons white within the chain"
+				"Walk through the chain, painting only the colons white."
 				[ i <= size and: [ | c | c := aString at: i. c isLetter or: [ c isDigit or: [ '_-?!/@:' includes: c ] ] ] ] whileTrue: [
 					(aString at: i) = $: ifTrue: [ (text from: i to: i) foreground: Color white ].
 					i := i + 1 ] ] ]
 		ifFalse: [ i := i + 1 ] ]
 ]
 
-{ #category : 'highlighting' }
+{ #category : 'api' }
 ZealTheme class >> highlightTokenAt: i in: aString text: text size: size [
-	"Default tokenizer — subclasses may override for dialect-specific tokens."
-	self subclassResponsibility
+	"Unified token tokenizer for every Zeal dialect."
+	| ch start j word dialectColor inferencer afterColon depth |
+	ch := aString at: i.
+
+	ch = $; ifTrue: [
+		start := i. j := i.
+		[ j <= size and: [ | c | c := aString at: j. c ~= Character cr and: [ c ~= Character lf ] ] ] whileTrue: [ j := j + 1 ].
+		(text from: start to: j - 1) foreground: self commentColor.
+		^ j ].
+
+	ch = $" ifTrue: [
+		start := i. j := i + 1.
+		[ j <= size and: [ (aString at: j) ~= $" ] ] whileTrue: [
+			(aString at: j) = $\ ifTrue: [ j := j + 1 ].
+			j := j + 1 ].
+		j <= size ifTrue: [ j := j + 1 ].
+		(text from: start to: j - 1) foreground: self stringColor.
+		^ j ].
+
+	('()' includes: ch) ifTrue: [
+		(text from: i to: i) foreground: self parenColor. ^ i + 1 ].
+	('[]' includes: ch) ifTrue: [
+		(text from: i to: i) foreground: self bracketColor. ^ i + 1 ].
+	('{}' includes: ch) ifTrue: [
+		(text from: i to: i) foreground: self braceColor. ^ i + 1 ].
+
+	(ch isDigit or: [ ch = $- and: [ i + 1 <= size and: [ (aString at: i + 1) isDigit ] ] ]) ifTrue: [
+		start := i. j := i + 1.
+		[ j <= size and: [ | c | c := aString at: j. c isDigit or: [ '.xabcdefABCDEF' includes: c ] ] ] whileTrue: [ j := j + 1 ].
+		(text from: start to: j - 1) foreground: self numberColor.
+		^ j ].
+
+	"Colon-prefixed: keyword literal or colon-chain type. Track bracket
+	 depth so `]` only counts as part of the type when matched by `[`."
+	ch = $: ifTrue: [
+		start := i. j := i + 1. depth := 0.
+		[ j <= size and: [ | c isTypeChar |
+			c := aString at: j.
+			isTypeChar := c isLetter
+				or: [ c isDigit
+				or: [ '_-' includes: c ] ].
+			isTypeChar
+				ifFalse: [
+					c = $[ ifTrue: [ true ]
+					ifFalse: [ c = $] and: [ depth > 0 ] ] ]
+				ifTrue: [ true ] ] ] whileTrue: [
+			(aString at: j) = $[ ifTrue: [ depth := depth + 1 ].
+			(aString at: j) = $] ifTrue: [ depth := depth - 1 ].
+			j := j + 1 ].
+		j > (start + 1) ifTrue: [
+			afterColon := aString copyFrom: start + 1 to: j - 1.
+			inferencer := self typeInferencer.
+			(inferencer notNil and: [ inferencer recognizesType: afterColon ])
+				ifTrue: [
+					(text from: start to: start) foreground: self operatorColor.
+					(text from: start + 1 to: j - 1) foreground: self typeColor ]
+				ifFalse: [ (text from: start to: j - 1) foreground: self keywordColor ] ]
+		ifFalse: [ (text from: start to: start) foreground: self operatorColor ].
+		^ j ].
+
+	ch = $@ ifTrue: [
+		start := i. j := i + 1.
+		[ j <= size and: [ | c | c := aString at: j. c isLetter or: [ c isDigit or: [ '_-/@' includes: c ] ] ] ] whileTrue: [ j := j + 1 ].
+		(text from: start to: j - 1) foreground: self classRefColor.
+		^ j ].
+
+	(ch isLetter or: [ ch = $_ or: [ ch = $? ] ]) ifTrue: [
+		start := i. j := i.
+		[ j <= size and: [ | c | c := aString at: j. c isLetter or: [ c isDigit or: [ '_-?!/' includes: c ] ] ] ] whileTrue: [ j := j + 1 ].
+		word := aString copyFrom: start to: j - 1.
+		(self specialForms includes: word) ifTrue: [
+			(text from: start to: j - 1) foreground: self specialFormColor.
+			^ j ].
+		(self operators includes: word) ifTrue: [
+			(text from: start to: j - 1) foreground: self operatorColor.
+			^ j ].
+		dialectColor := self dialectTokenColorFor: word.
+		dialectColor ifNotNil: [
+			(text from: start to: j - 1) foreground: dialectColor.
+			^ j ].
+		inferencer := self typeInferencer.
+		(inferencer notNil and: [ inferencer recognizesType: word ]) ifTrue: [
+			(text from: start to: j - 1) foreground: self typeColor.
+			^ j ].
+		(text from: start to: j - 1) foreground: self symbolColor.
+		^ j ].
+
+	('+-*/=<>!%&|^~' includes: ch) ifTrue: [
+		start := i. j := i.
+		[ j <= size and: [ '+-*/=<>!%&|^~' includes: (aString at: j) ] ] whileTrue: [ j := j + 1 ].
+		(text from: start to: j - 1) foreground: self operatorColor.
+		^ j ].
+
+	^ i + 1
 ]
 
 { #category : 'colors' }
@@ -282,4 +393,20 @@ ZealTheme class >> styler [
 ZealTheme class >> symbolColor [
 	"Light lilac purple for symbols — #D4AAFF"
 	^ Color fromHexString: 'D4AAFF'
+]
+
+{ #category : 'api' }
+ZealTheme class >> typeColor [
+	"Color for type names recognized by the dialect's type inferencer.
+	 Defaults to classRefColor (the @-class blue) so types and class refs
+	 visually group together."
+	^ self classRefColor
+]
+
+{ #category : 'api' }
+ZealTheme class >> typeInferencer [
+	"Each Zeal dialect provides its own inferencer (subclass of ZealTypeInferencer).
+	 Base returns a plain inferencer that only knows the primitive types — subclasses
+	 override to plug in dialect-specific known types."
+	^ ZealTypeInferencer default
 ]

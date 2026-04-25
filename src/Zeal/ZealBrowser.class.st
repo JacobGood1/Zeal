@@ -7,7 +7,10 @@ Class {
 		'detailElement',
 		'selectedNode',
 		'expandSelectionStack',
-		'keyChord'
+		'keyChord',
+		'suppressRehighlight',
+		'rehighlightProcess',
+		'completionController'
 	],
 	#category : 'Zeal',
 	#package : 'Zeal'
@@ -76,14 +79,28 @@ ZealBrowser >> buildSectionLabel: aString [
 		margin: (BlInsets top: 8 bottom: 4)
 ]
 
-{ #category : 'editor' }
+{ #category : 'api' }
 ZealBrowser >> configureZealEditor: anEditor [
-	"Set up shared features on any Zeal code editor."
+	"Set up shared features on any Zeal code editor.
+	 Ctrl+Shift+Up/Down → swap the s-expression element at cursor with its
+	 previous/next sibling. Cursor stays at the same offset within the moved form.
+	 Default BrEditor selection-extend bindings on those keys are removed first."
 	self setupParinfer: anEditor.
 	self setupKeyChords: anEditor.
 	self setupArrowKeys: anEditor.
 	self setupFormHighlight: anEditor.
 	self setupLambdaAutoReplace: anEditor.
+
+	"Strip any default shortcut on Ctrl+Shift+ArrowUp / ArrowDown (selection-extend
+	 by line/paragraph). Match by combination string regardless of token order."
+	anEditor shortcuts copy do: [:s |
+		| name |
+		name := s combination asString asLowercase.
+		((name includesSubstring: 'control') or: [ name includesSubstring: 'ctrl' ]) ifTrue: [
+			(name includesSubstring: 'shift') ifTrue: [
+				((name includesSubstring: 'arrowup') or: [ name includesSubstring: 'arrowdown' ])
+					ifTrue: [ anEditor removeShortcut: s ] ] ] ].
+
 	anEditor addShortcut: (BlShortcutWithAction new
 		combination: (BlKeyCombination builder control shift arrowUp build);
 		action: [ self swapForm: anEditor up: true ]).
