@@ -7,12 +7,12 @@ Class {
 
 { #category : 'generated' }
 ZealScanner >> emptySymbolTokenId [
-	^ 29
+	^ 31
 ]
 
 { #category : 'generated' }
 ZealScanner >> errorTokenId [
-	^ 30
+	^ 32
 ]
 
 { #category : 'generated' }
@@ -27,10 +27,10 @@ ZealScanner >> scan1 [
 
 { #category : 'generated' }
 ZealScanner >> scan10 [
-	self recordMatch: #(10).
+	self recordMatch: #(11).
 	self step.
 	currentCharacter == $/
-		ifTrue: [ [ self recordMatch: #(10).
+		ifTrue: [ [ self recordMatch: #(11).
 			self step.
 			('!#&' includes: currentCharacter)
 				or: [ (currentCharacter between: $* and: $+)
@@ -41,7 +41,7 @@ ZealScanner >> scan10 [
 			^ self reportLastMatch ].
 	currentCharacter == $: ifTrue: [ ^ self scan11 ].
 	currentCharacter isDigit
-		ifTrue: [ [ self recordMatch: #(10 11).
+		ifTrue: [ [ self recordMatch: #(11 12).
 			self step.
 			currentCharacter == $/ ifTrue: [ ^ self scan10 ].
 			currentCharacter isDigit ] whileTrue.
@@ -50,7 +50,7 @@ ZealScanner >> scan10 [
 						or: [ (currentCharacter between: $- and: $.)
 								or: [ (currentCharacter between: $< and: $Z)
 										or: [ currentCharacter == $_ or: [ currentCharacter between: $a and: $z ] ] ] ] ])
-				ifTrue: [ [ self recordMatch: #(10).
+				ifTrue: [ [ self recordMatch: #(11).
 					self step.
 					('!#&' includes: currentCharacter)
 						or: [ (currentCharacter between: $* and: $+)
@@ -64,7 +64,7 @@ ZealScanner >> scan10 [
 				or: [ (currentCharacter between: $- and: $.)
 						or: [ (currentCharacter between: $< and: $Z)
 								or: [ currentCharacter == $_ or: [ currentCharacter between: $a and: $z ] ] ] ] ])
-		ifTrue: [ [ self recordMatch: #(10 11).
+		ifTrue: [ [ self recordMatch: #(11 12).
 			self step.
 			currentCharacter == $/ ifTrue: [ ^ self scan10 ].
 			('!#&' includes: currentCharacter)
@@ -81,7 +81,7 @@ ZealScanner >> scan11 [
 	self step.
 	((currentCharacter between: $A and: $Z)
 		or: [ currentCharacter == $_ or: [ currentCharacter between: $a and: $z ] ])
-		ifTrue: [ [ self recordMatch: #(11).
+		ifTrue: [ [ self recordMatch: #(12).
 			self step.
 			currentCharacter == $/ ifTrue: [ ^ self scan12 ].
 			currentCharacter == $-
@@ -97,7 +97,7 @@ ZealScanner >> scan12 [
 	self step.
 	currentCharacter == $: ifTrue: [ ^ self scan11 ].
 	currentCharacter isDigit
-		ifTrue: [ [ self recordMatch: #(11).
+		ifTrue: [ [ self recordMatch: #(12).
 			self step.
 			currentCharacter == $/ ifTrue: [ ^ self scan12 ].
 			currentCharacter isDigit ] whileTrue.
@@ -107,7 +107,7 @@ ZealScanner >> scan12 [
 				or: [ (currentCharacter between: $- and: $.)
 						or: [ (currentCharacter between: $< and: $Z)
 								or: [ currentCharacter == $_ or: [ currentCharacter between: $a and: $z ] ] ] ] ])
-		ifTrue: [ [ self recordMatch: #(11).
+		ifTrue: [ [ self recordMatch: #(12).
 			self step.
 			currentCharacter == $/ ifTrue: [ ^ self scan12 ].
 			('!#&' includes: currentCharacter)
@@ -159,15 +159,33 @@ ZealScanner >> scan2 [
 
 { #category : 'generated' }
 ZealScanner >> scan3 [
-	self recordMatch: #(10).
+	self recordMatch: #(11).
 	self step.
+	currentCharacter == $>
+		ifTrue: [ self recordMatch: #(11).
+			self step.
+			currentCharacter == $[ ifTrue: [ ^ self recordAndReportMatch: #(10) ].
+			(('!#&' includes: currentCharacter)
+				or: [ (currentCharacter between: $* and: $+)
+						or: [ (currentCharacter between: $- and: $9)
+								or: [ (currentCharacter between: $< and: $Z)
+										or: [ currentCharacter == $_ or: [ currentCharacter between: $a and: $z ] ] ] ] ])
+				ifTrue: [ [ self recordMatch: #(11).
+					self step.
+					('!#&' includes: currentCharacter)
+						or: [ (currentCharacter between: $* and: $+)
+								or: [ (currentCharacter between: $- and: $9)
+										or: [ (currentCharacter between: $< and: $Z)
+												or: [ currentCharacter == $_ or: [ currentCharacter between: $a and: $z ] ] ] ] ] ]
+						whileTrue ].
+			^ self reportLastMatch ].
 	currentCharacter isDigit ifTrue: [ ^ self scan4 ].
 	(('!#&' includes: currentCharacter)
 		or: [ (currentCharacter between: $* and: $+)
 				or: [ (currentCharacter between: $- and: $/)
 						or: [ (currentCharacter between: $< and: $Z)
 								or: [ currentCharacter == $_ or: [ currentCharacter between: $a and: $z ] ] ] ] ])
-		ifTrue: [ [ self recordMatch: #(10).
+		ifTrue: [ [ self recordMatch: #(11).
 			self step.
 			('!#&' includes: currentCharacter)
 				or: [ (currentCharacter between: $* and: $+)
@@ -180,7 +198,7 @@ ZealScanner >> scan3 [
 
 { #category : 'generated' }
 ZealScanner >> scan4 [
-	[ self recordMatch: #(4 10).
+	[ self recordMatch: #(4 11).
 	self step.
 	currentCharacter == $. ifTrue: [ ^ self scan5 ].
 	currentCharacter isDigit ] whileTrue.
@@ -189,7 +207,7 @@ ZealScanner >> scan4 [
 				or: [ (currentCharacter between: $- and: $/)
 						or: [ (currentCharacter between: $< and: $Z)
 								or: [ currentCharacter == $_ or: [ currentCharacter between: $a and: $z ] ] ] ] ])
-		ifTrue: [ [ self recordMatch: #(10).
+		ifTrue: [ [ self recordMatch: #(11).
 			self step.
 			('!#&' includes: currentCharacter)
 				or: [ (currentCharacter between: $* and: $+)
@@ -202,7 +220,7 @@ ZealScanner >> scan4 [
 
 { #category : 'generated' }
 ZealScanner >> scan5 [
-	self recordMatch: #(10).
+	self recordMatch: #(11).
 	self step.
 	currentCharacter isDigit ifTrue: [ ^ self scan6 ].
 	(('!#&' includes: currentCharacter)
@@ -210,7 +228,7 @@ ZealScanner >> scan5 [
 				or: [ (currentCharacter between: $- and: $/)
 						or: [ (currentCharacter between: $< and: $Z)
 								or: [ currentCharacter == $_ or: [ currentCharacter between: $a and: $z ] ] ] ] ])
-		ifTrue: [ [ self recordMatch: #(10).
+		ifTrue: [ [ self recordMatch: #(11).
 			self step.
 			('!#&' includes: currentCharacter)
 				or: [ (currentCharacter between: $* and: $+)
@@ -223,15 +241,15 @@ ZealScanner >> scan5 [
 
 { #category : 'generated' }
 ZealScanner >> scan6 [
-	[ self recordMatch: #(3 10).
+	[ self recordMatch: #(3 11).
 	self step.
 	currentCharacter isDigit ] whileTrue.
 	('Ee' includes: currentCharacter)
-		ifTrue: [ self recordMatch: #(10).
+		ifTrue: [ self recordMatch: #(11).
 			self step.
 			currentCharacter isDigit ifTrue: [ ^ self scan7 ].
 			('+-' includes: currentCharacter)
-				ifTrue: [ self recordMatch: #(10).
+				ifTrue: [ self recordMatch: #(11).
 					self step.
 					currentCharacter isDigit ifTrue: [ ^ self scan7 ].
 					(('!#&' includes: currentCharacter)
@@ -239,7 +257,7 @@ ZealScanner >> scan6 [
 								or: [ (currentCharacter between: $- and: $/)
 										or: [ (currentCharacter between: $< and: $Z)
 												or: [ currentCharacter == $_ or: [ currentCharacter between: $a and: $z ] ] ] ] ])
-						ifTrue: [ [ self recordMatch: #(10).
+						ifTrue: [ [ self recordMatch: #(11).
 							self step.
 							('!#&' includes: currentCharacter)
 								or: [ (currentCharacter between: $* and: $+)
@@ -252,7 +270,7 @@ ZealScanner >> scan6 [
 				or: [ (currentCharacter between: $. and: $/)
 						or: [ (currentCharacter between: $< and: $Z)
 								or: [ currentCharacter == $_ or: [ currentCharacter between: $a and: $z ] ] ] ])
-				ifTrue: [ [ self recordMatch: #(10).
+				ifTrue: [ [ self recordMatch: #(11).
 					self step.
 					('!#&' includes: currentCharacter)
 						or: [ (currentCharacter between: $* and: $+)
@@ -266,7 +284,7 @@ ZealScanner >> scan6 [
 				or: [ (currentCharacter between: $- and: $/)
 						or: [ (currentCharacter between: $< and: $Z)
 								or: [ currentCharacter == $_ or: [ currentCharacter between: $a and: $z ] ] ] ] ])
-		ifTrue: [ [ self recordMatch: #(10).
+		ifTrue: [ [ self recordMatch: #(11).
 			self step.
 			('!#&' includes: currentCharacter)
 				or: [ (currentCharacter between: $* and: $+)
@@ -279,7 +297,7 @@ ZealScanner >> scan6 [
 
 { #category : 'generated' }
 ZealScanner >> scan7 [
-	[ self recordMatch: #(3 10).
+	[ self recordMatch: #(3 11).
 	self step.
 	currentCharacter isDigit ] whileTrue.
 	(('!#&' includes: currentCharacter)
@@ -287,7 +305,7 @@ ZealScanner >> scan7 [
 				or: [ (currentCharacter between: $- and: $/)
 						or: [ (currentCharacter between: $< and: $Z)
 								or: [ currentCharacter == $_ or: [ currentCharacter between: $a and: $z ] ] ] ] ])
-		ifTrue: [ [ self recordMatch: #(10).
+		ifTrue: [ [ self recordMatch: #(11).
 			self step.
 			('!#&' includes: currentCharacter)
 				or: [ (currentCharacter between: $* and: $+)
@@ -342,20 +360,20 @@ ZealScanner >> scanForToken [
 	self step.
 	currentCharacter == $" ifTrue: [ ^ self scan1 ].
 	currentCharacter == $' ifTrue: [ ^ self scanForTokenX6 ].
-	currentCharacter == $( ifTrue: [ ^ self recordAndReportMatch: #(13) ].
-	currentCharacter == $) ifTrue: [ ^ self recordAndReportMatch: #(14) ].
+	currentCharacter == $( ifTrue: [ ^ self recordAndReportMatch: #(14) ].
+	currentCharacter == $) ifTrue: [ ^ self recordAndReportMatch: #(15) ].
 	currentCharacter == $- ifTrue: [ ^ self scan3 ].
 	currentCharacter == $0 ifTrue: [ ^ self scanForTokenX2 ].
 	currentCharacter == $: ifTrue: [ ^ self scanForTokenX4 ].
 	currentCharacter == $; ifTrue: [ ^ self scanForTokenX5 ].
-	currentCharacter == $[ ifTrue: [ ^ self recordAndReportMatch: #(15) ].
-	currentCharacter == $] ifTrue: [ ^ self recordAndReportMatch: #(16) ].
+	currentCharacter == $[ ifTrue: [ ^ self recordAndReportMatch: #(16) ].
+	currentCharacter == $] ifTrue: [ ^ self recordAndReportMatch: #(17) ].
 	^ self scanForTokenX8
 ]
 
 { #category : 'generated' }
 ZealScanner >> scanForTokenX1 [
-	[ self recordMatch: #(10).
+	[ self recordMatch: #(11).
 	self step.
 	currentCharacter == $/ ifTrue: [ ^ self scan10 ].
 	currentCharacter == $: ifTrue: [ ^ self scan13 ].
@@ -367,7 +385,7 @@ ZealScanner >> scanForTokenX1 [
 	(('!#&' includes: currentCharacter)
 		or: [ (currentCharacter between: $* and: $+)
 				or: [ currentCharacter == $. or: [ currentCharacter between: $< and: $@ ] ] ])
-		ifTrue: [ [ self recordMatch: #(10).
+		ifTrue: [ [ self recordMatch: #(11).
 			self step.
 			('!#&' includes: currentCharacter)
 				or: [ (currentCharacter between: $* and: $+)
@@ -400,7 +418,7 @@ ZealScanner >> scanForTokenX2 [
 
 { #category : 'generated' }
 ZealScanner >> scanForTokenX3 [
-	[ self recordMatch: #(10).
+	[ self recordMatch: #(11).
 	self step.
 	('!#&' includes: currentCharacter)
 		or: [ (currentCharacter between: $* and: $+)
@@ -415,7 +433,7 @@ ZealScanner >> scanForTokenX4 [
 	self step.
 	((currentCharacter between: $A and: $Z)
 		or: [ currentCharacter == $_ or: [ currentCharacter between: $a and: $z ] ])
-		ifTrue: [ [ self recordMatch: #(12).
+		ifTrue: [ [ self recordMatch: #(13).
 			self step.
 			currentCharacter == $-
 				or: [ (currentCharacter between: $0 and: $9)
@@ -457,8 +475,8 @@ ZealScanner >> scanForTokenX7 [
 
 { #category : 'generated' }
 ZealScanner >> scanForTokenX8 [
-	currentCharacter == ${ ifTrue: [ ^ self recordAndReportMatch: #(17) ].
-	currentCharacter == $} ifTrue: [ ^ self recordAndReportMatch: #(18) ].
+	currentCharacter == ${ ifTrue: [ ^ self recordAndReportMatch: #(18) ].
+	currentCharacter == $} ifTrue: [ ^ self recordAndReportMatch: #(19) ].
 	currentCharacter isDigit ifTrue: [ ^ self scan9 ].
 	(currentCharacter isSeparator or: [ currentCharacter == Character pageUp ])
 		ifTrue: [ ^ self scanForTokenX7 ].

@@ -54,6 +54,12 @@ GodotZealCodeGenerator >> bindLocal: aName [
 	localScope last add: aName asString
 ]
 
+{ #category : 'identifiers' }
+GodotZealCodeGenerator >> caseStyleFor: aString [
+	"GDScript convention is snake_case for function and variable names."
+	^ self toSnakeCase: aString
+]
+
 { #category : 'fusion' }
 GodotZealCodeGenerator >> classifyXform: aNode [
 	"Classify a transducer factory call into a fusion-friendly descriptor.
@@ -1999,6 +2005,12 @@ GodotZealCodeGenerator >> generateWhen: aListNode [
 	self dedent
 ]
 
+{ #category : 'identifiers' }
+GodotZealCodeGenerator >> identifierFor: aZealName [
+	"Munge Lisp-style chars then apply Godot's snake_case convention."
+	^ self caseStyleFor: (self mungeForIdentifier: aZealName)
+]
+
 { #category : 'emitting' }
 GodotZealCodeGenerator >> indent [
 	indentLevel := indentLevel + 1
@@ -2050,6 +2062,13 @@ GodotZealCodeGenerator >> isTransducerFactory: aNode [
 	^ (ZealCodeGenerator transducerFormSelectors includesKey: headStr)
 		and: [ "Only the xform-returning arities (no collection as last arg)"
 			   aNode expressions size <= 3 "most factories are 1-2 args" ]
+]
+
+{ #category : 'identifiers' }
+GodotZealCodeGenerator >> mungeForIdentifier: aZealName [
+	"Mirrors ZealCodeGenerator>>#mungeForIdentifier:. Duplicated here because
+	 GodotZealCodeGenerator is rooted at Object rather than ZealCodeGenerator."
+	^ aZealName reject: [ :ch | #($? $!) includes: ch ]
 ]
 
 { #category : 'emitting' }

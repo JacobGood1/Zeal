@@ -27,43 +27,6 @@ AngelZealCompiler class >> compileFileFromSources: zealForms [
 ]
 
 { #category : 'api' }
-AngelZealCompiler class >> compileFileFromSources: zealForms file: aFilePathOrNil [
-	"Compile each form, threading line numbers into the metadata so each
-	 section's `zeal-lines` / `target-lines` reflect their location in the
-	 final file. aFilePathOrNil, when non-nil, is added as the `file` meta
-	 entry so the section is self-locating."
-	| stream lineCounter |
-	stream := WriteStream on: String new.
-	lineCounter := 1.
-	zealForms do: [:zealSrc |
-		| meta target headerEndLine zealStartLine zealEndLine targetStartLine targetEndLine sectionString sectionLines |
-		meta := self extractMetadataFor: zealSrc.
-		aFilePathOrNil ifNotNil: [ meta at: #file put: aFilePathOrNil ].
-
-		"Pre-compute the section so we know its target-line span."
-		target := [ self compileToAngelScript: zealSrc ]
-			on: Error do: [ :e | '// Compile error: ' , e messageText ].
-
-		"Compute line ranges. Header is: 1 marker line + N metadata lines + M zeal lines + 1 end line."
-		zealStartLine := lineCounter
-			+ 1   "marker line"
-			+ ((self orderedMetaKeys: meta) size).
-		zealEndLine := zealStartLine + zealSrc lines size - 1.
-		headerEndLine := zealEndLine + 1.   "@end line"
-		targetStartLine := headerEndLine + 1.
-		targetEndLine := targetStartLine + target lines size - 1.
-
-		meta at: #zealLines put: (self formatLineRange: zealStartLine to: zealEndLine).
-		meta at: #targetLines put: (self formatLineRange: targetStartLine to: targetEndLine).
-
-		sectionString := (self zealHeaderFor: zealSrc metadata: meta) , target , String lf , String lf.
-		stream nextPutAll: sectionString.
-		sectionLines := sectionString lines size.
-		lineCounter := lineCounter + sectionLines ].
-	^ stream contents
-]
-
-{ #category : 'api' }
 AngelZealCompiler class >> compileSection: zealSource [
 	"Compile one Zeal definition to a target-language section: rich metadata
 	 + `// @zeal` Zeal-source header + compiled AngelScript. Returns the full
@@ -214,13 +177,6 @@ AngelZealCompiler class >> convertFile: targetFileContent [
 	| chunks |
 	chunks := self splitTopLevelDefs: targetFileContent.
 	^ chunks collect: [ :c | self convertASChunkToZeal: c ]
-]
-
-{ #category : 'api' }
-AngelZealCompiler class >> formatLineRange: fromLine to: toLine [
-	"`5-7` style range string used in zeal-lines / target-lines metadata."
-	fromLine = toLine ifTrue: [ ^ fromLine printString ].
-	^ fromLine printString , '-' , toLine printString
 ]
 
 { #category : 'api' }

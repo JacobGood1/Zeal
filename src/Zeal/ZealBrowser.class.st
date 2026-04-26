@@ -1443,14 +1443,27 @@ ZealBrowser >> openFile: aFileRef expandName: aNameOrNil [
 
 { #category : 'cards' }
 ZealBrowser >> paramsLabelFor: aDefnList [
-	"Return a parenthesized parameter list as a string for the header label."
-	| exprs paramVec |
+	"Return a curry chain of the function's signature using the real Unicode
+	 arrow `→` (U+2192): `p1:T1 → p2:T2 → ... → retType`. The leading λ and
+	 the function name are added by signatureFor: — this only emits the chain."
+	| exprs paramVec params nameNode retType segments arrow |
 	exprs := aDefnList expressions.
 	paramVec := exprs detect: [ :e | e isKindOf: ZealVectorNode ] ifNone: [ nil ].
-	paramVec ifNil: [ ^ '()' ].
-	^ '(' ,
-		(', ' join: (paramVec expressions collect: [ :p | p value value ])) ,
-		')'
+	params := paramVec
+		ifNotNil: [ paramVec expressions collect: [ :p | p value value ] ]
+		ifNil: [ #() ].
+
+	nameNode := exprs size >= 2 ifTrue: [ exprs second ] ifFalse: [ nil ].
+	retType := nil.
+	(nameNode notNil and: [ nameNode isKindOf: ZealColonChainNode ]) ifTrue: [
+		retType := (ZealColonChainResolver resolve: nameNode value value) at: #type ].
+	retType ifNil: [ retType := 'void' ].
+
+	segments := OrderedCollection new.
+	params do: [ :p | segments add: p ].
+	segments add: retType.
+	arrow := String with: (Character value: 16r2192).
+	^ (' ' , arrow , ' ') join: segments
 ]
 
 { #category : 'tree' }
@@ -1629,6 +1642,9 @@ ZealBrowser >> removeLine: zealEditor [
 
 { #category : 'cards' }
 ZealBrowser >> removeMethodAt: idx in: cardRec [
+	"Drop a method from a class card, re-emit the parent class source, then
+	 persist to disk via saveAllCards so the @zeal block + target code for
+	 that method are gone from the file."
 	| methods |
 	methods := cardRec at: #methodSources ifAbsent: [ ^ self ].
 	(cardRec at: #subCards ifAbsent: [ #() ]) doWithIndex: [ :sub :i |
@@ -1636,6 +1652,7 @@ ZealBrowser >> removeMethodAt: idx in: cardRec [
 	(idx >= 1 and: [ idx <= methods size ]) ifFalse: [ ^ self ].
 	methods removeAt: idx.
 	cardRec at: #source put: (self rebuildClassSourceFor: cardRec).
+	self saveAllCards.
 	self fillClassCardContent: (cardRec at: #contentHolder)
 		card: cardRec
 		forFile: (cardRec at: #file)
@@ -1643,11 +1660,14 @@ ZealBrowser >> removeMethodAt: idx in: cardRec [
 
 { #category : 'cards' }
 ZealBrowser >> removeSlotAt: idx in: cardRec [
+	"Drop a slot from a class card, re-emit the parent class source, then
+	 persist to disk."
 	| slots |
 	slots := cardRec at: #slotSources ifAbsent: [ ^ self ].
 	(idx >= 1 and: [ idx <= slots size ]) ifFalse: [ ^ self ].
 	slots removeAt: idx.
 	cardRec at: #source put: (self rebuildClassSourceFor: cardRec).
+	self saveAllCards.
 	self fillClassCardContent: (cardRec at: #contentHolder)
 		card: cardRec
 		forFile: (cardRec at: #file)
@@ -1700,24 +1720,27 @@ ZealBrowser >> resolveWord: word [
 ZealBrowser >> saveAllCards [
 	"Re-emit the file from cards' current Zeal sources via the dialect's
 	 compileFileFromSources:file:, then surgically refresh just this file's
-	 node in projectTree (full rebuild only when the surgical splice can't
-	 find the file's parent folder in the tree)."
+	 node in projectTree. When `cards` is empty the file is rewritten as
+	 empty so deleting the last card actually clears it from disk."
 	| sources fileContent |
 	currentFile ifNil: [ ^ self ].
-	(cards isNil or: [ cards isEmpty ]) ifTrue: [ ^ self ].
+	sources := cards isNil
+		ifTrue: [ #() ]
+		ifFalse: [ cards collect: [ :rec |
+			| ed |
+			ed := rec at: #editor ifAbsent: [ nil ].
+			ed isNil
+				ifTrue: [ rec at: #source ]
+				ifFalse: [ ed editor text asString ] ] ].
 
-	sources := cards collect: [ :rec |
-		| ed |
-		ed := rec at: #editor ifAbsent: [ nil ].
-		ed isNil
-			ifTrue: [ rec at: #source ]
-			ifFalse: [ ed editor text asString ] ].
-
-	fileContent := self dialectCompiler compileFileFromSources: sources file: currentFile fullName.
+	fileContent := sources isEmpty
+		ifTrue: [ '' ]
+		ifFalse: [ self dialectCompiler compileFileFromSources: sources file: currentFile fullName ].
 
 	[ currentFile writeStreamDo: [ :ws | ws nextPutAll: fileContent ] ]
 		on: Error do: [ :e |
-			cards do: [ :rec | (rec at: #editor ifAbsent: [ nil ]) ifNotNil: [ :ed | self flashError: ed ] ].
+			cards ifNotNil: [
+				cards do: [ :rec | (rec at: #editor ifAbsent: [ nil ]) ifNotNil: [ :ed | self flashError: ed ] ] ].
 			^ self ].
 
 	self refreshFileNodeFor: currentFile
@@ -2025,9 +2048,10 @@ ZealBrowser >> shrinkSelection: zealEditor [
 
 { #category : 'cards' }
 ZealBrowser >> signatureFor: zealFormSource [
-	"Build a one-line header for a top-level definition. Recognizes def/var/defn/
-	 defclass/defstruct/etc. Returns the raw first line for unknown forms."
-	| trimmed firstLine ast top head exprs name |
+	"Build a one-line header for a top-level definition. Functions render as
+	 `λ name   p1:T1 → p2:T2 → ... → retType` (lambda first, then name,
+	 then the curry chain). Data forms keep the prefix-keyword style."
+	| trimmed firstLine ast top head exprs name lambda |
 	trimmed := zealFormSource trimBoth.
 	firstLine := (trimmed lines ifEmpty: [ #('') ]) first.
 	ast := [ ZealParser parse: trimmed ] on: Error do: [ :e | nil ].
@@ -2042,10 +2066,14 @@ ZealBrowser >> signatureFor: zealFormSource [
 	name := exprs size >= 2
 		ifTrue: [
 			((exprs second isKindOf: ZealSymbolNode) or: [ exprs second isKindOf: ZealColonChainNode ])
-				ifTrue: [ exprs second value value ]
+				ifTrue: [
+					(exprs second isKindOf: ZealColonChainNode)
+						ifTrue: [ (ZealColonChainResolver resolve: exprs second value value) at: #name ]
+						ifFalse: [ exprs second value value ] ]
 				ifFalse: [ '' ] ]
 		ifFalse: [ '' ].
-	head = 'defn' ifTrue: [ ^ 'fn  ' , name , (self paramsLabelFor: top) ].
+	lambda := String with: (Character value: 16r03BB).
+	head = 'defn' ifTrue: [ ^ lambda , ' ' , name , '   ' , (self paramsLabelFor: top) ].
 	head = 'defclass' ifTrue: [ ^ 'class  ' , name ].
 	head = 'defstruct' ifTrue: [ ^ 'struct  ' , name ].
 	head = 'defenum' ifTrue: [ ^ 'enum  ' , name ].

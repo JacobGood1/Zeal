@@ -680,6 +680,52 @@ ZealCompiler class >> compile: aString [
 	^ self buildFromAST: ast
 ]
 
+{ #category : 'compiling' }
+ZealCompiler class >> compileFileFromSources: zealForms file: aFilePathOrNil [
+	"Compile each form, threading line numbers into the metadata so each
+	 section's `block-lines` (full @zeal…@end), `zeal-lines` (source slice),
+	 and `target-lines` (compiled code) are all known. Forms are sorted into
+	 a canonical order before emission: vars/consts, then datatypes/classes,
+	 then functions, alphabetical within each group. aFilePathOrNil, when
+	 non-nil, is added as the `file` meta entry so the section is self-locating."
+	| stream lineCounter sortedForms |
+	stream := WriteStream on: String new.
+	lineCounter := 1.
+	sortedForms := self sortDefinitions: zealForms.
+	sortedForms do: [:zealSrc |
+		| meta target zealStartLine zealEndLine headerEndLine targetStartLine targetEndLine sectionString sectionLines blockStartLine |
+		meta := self extractMetadataFor: zealSrc.
+		aFilePathOrNil ifNotNil: [ meta at: #file put: aFilePathOrNil ].
+
+		target := [ self compileToTarget: zealSrc ]
+			on: Error do: [ :e | self zealCommentPrefix , 'Compile error: ' , e messageText ].
+
+		"Reserve all three line-range keys so orderedMetaKeys: gives the right header size
+		 before we know the actual ranges. We'll overwrite with real values right after."
+		meta at: #blockLines put: ''.
+		meta at: #zealLines put: ''.
+		meta at: #targetLines put: ''.
+
+		blockStartLine := lineCounter.
+		zealStartLine := lineCounter
+			+ 1   "marker line"
+			+ ((self orderedMetaKeys: meta) size).
+		zealEndLine := zealStartLine + zealSrc lines size - 1.
+		headerEndLine := zealEndLine + 1.   "@end line"
+		targetStartLine := headerEndLine + 1.
+		targetEndLine := targetStartLine + target lines size - 1.
+
+		meta at: #blockLines put: (self formatLineRange: blockStartLine to: headerEndLine).
+		meta at: #zealLines put: (self formatLineRange: zealStartLine to: zealEndLine).
+		meta at: #targetLines put: (self formatLineRange: targetStartLine to: targetEndLine).
+
+		sectionString := (self zealHeaderFor: zealSrc metadata: meta) , target , String lf , String lf.
+		stream nextPutAll: sectionString.
+		sectionLines := sectionString lines size.
+		lineCounter := lineCounter + sectionLines ].
+	^ stream contents
+]
+
 { #category : 'compiler' }
 ZealCompiler class >> compileToVerse: aString [
 	"Parse Zeal source, build objects, compile to Verse string."
@@ -706,6 +752,23 @@ ZealCompiler class >> currentResolver [ ^ currentResolver
 
 { #category : 'accessing' }
 ZealCompiler class >> currentResolver: aResolver [ currentResolver := aResolver
+]
+
+{ #category : 'compiling' }
+ZealCompiler class >> definitionGroupOrderFor: zealSrc [
+	"Sort key for compileFileFromSources: emission order. Lower is earlier:
+	   1 — variables/constants  (def, var)
+	   2 — datatypes/classes     (defclass, defstruct, defenum, definterface, defnamespace)
+	   3 — functions             (defn)
+	   4 — anything else (kept stable at the end)"
+	| meta head |
+	meta := self extractMetadataFor: zealSrc.
+	head := meta at: #kind ifAbsent: [ ^ 4 ].
+	(#('def' 'var') includes: head) ifTrue: [ ^ 1 ].
+	(#('defclass' 'defstruct' 'defenum' 'definterface' 'defnamespace') includes: head)
+		ifTrue: [ ^ 2 ].
+	head = 'defn' ifTrue: [ ^ 3 ].
+	^ 4
 ]
 
 { #category : 'errors' }
@@ -758,6 +821,13 @@ ZealCompiler class >> extractMetadataFor: zealSource [
 		ifTrue: [ meta at: #parent put: returns ].
 
 	^ meta
+]
+
+{ #category : 'zeal-headers' }
+ZealCompiler class >> formatLineRange: fromLine to: toLine [
+	"`5-7` style range string used in zeal-lines / target-lines metadata."
+	fromLine = toLine ifTrue: [ ^ fromLine printString ].
+	^ fromLine printString , '-' , toLine printString
 ]
 
 { #category : 'compiling' }
@@ -870,11 +940,10 @@ ZealCompiler class >> operators [
 
 { #category : 'zeal-headers' }
 ZealCompiler class >> orderedMetaKeys: aMetaDict [
-	"Return the metadata keys that will actually be emitted, in canonical
-	 order. Subclasses can override to add their own keys; the default order
-	 covers everything `extractMetadataFor:` produces plus the line-range
-	 keys stamped by `compileSection:`."
-	^ #(#kind #name #returns #params #parent #zealLines #targetLines #file)
+	"Canonical emission order for metadata keys. block-lines spans the full
+	 `<marker>…<end>` comment block; zeal-lines is just the source slice
+	 inside it; target-lines is the compiled code that follows."
+	^ #(#kind #name #returns #params #parent #blockLines #zealLines #targetLines #file)
 		select: [ :k | aMetaDict includesKey: k ]
 ]
 
@@ -1010,6 +1079,23 @@ ZealCompiler class >> resolveNameNode: aNode [
 		at: #specifiers put: #();
 		at: #annotations put: #();
 		yourself
+]
+
+{ #category : 'compiling' }
+ZealCompiler class >> sortDefinitions: zealForms [
+	"Return zealForms sorted first by group (vars/consts → datatypes → functions)
+	 then alphabetically by definition name. Stable for forms that fall in the
+	 default catch-all group (no recognized kind)."
+	^ zealForms asSortedCollection: [ :a :b |
+		| ga gb na nb |
+		ga := self definitionGroupOrderFor: a.
+		gb := self definitionGroupOrderFor: b.
+		ga = gb
+			ifTrue: [
+				na := ((self extractMetadataFor: a) at: #name ifAbsent: [ '' ]) asString.
+				nb := ((self extractMetadataFor: b) at: #name ifAbsent: [ '' ]) asString.
+				na <= nb ]
+			ifFalse: [ ga <= gb ] ]
 ]
 
 { #category : 'compiler' }

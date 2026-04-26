@@ -75,3 +75,8 @@ TZealProgramNodeVisitor >> visitSymbol: aSymbol [
 TZealProgramNodeVisitor >> visitVector: aVector [
 	^ self visitProgram: aVector
 ]
+
+{ #category : 'generated' }
+TZealProgramNodeVisitor >> visitVectorLiteral: aVectorLiteral [
+	^ self visitProgram: aVectorLiteral
+]

@@ -29,6 +29,50 @@ ZealHeaderExamples >> assert: aBoolean label: label [
 	^ self error: label , ' — expected true but got false'
 ]
 
+{ #category : 'examples-roundtrip' }
+ZealHeaderExamples >> blockAndTargetRangesAreContiguous [
+	"For any section: target-lines starts exactly one line after block-lines
+	 ends. Together the two ranges cover everything that needs deleting if
+	 the user removes a card."
+	<gtExample>
+	| forms output sections sect bRange tRange bEnd tStart |
+	forms := { '(defn add:int [x:int y:int] (+ x y))' }.
+	output := ZealCompiler compileFileFromSources: forms file: nil.
+	sections := ZealCompiler parseSections: output.
+	sect := sections first.
+	bRange := (sect at: #metadata) at: #'block-lines'.
+	tRange := (sect at: #metadata) at: #'target-lines'.
+	bEnd := ($- split: bRange) last asNumber.
+	tStart := ($- split: tRange) first asNumber.
+	self assert: tStart equals: bEnd + 1
+		label: 'target-lines starts immediately after block-lines ends'.
+	^ sect
+]
+
+{ #category : 'examples-roundtrip' }
+ZealHeaderExamples >> blockLinesCoversFullCommentBlock [
+	"compileFileFromSources: stamps a `block-lines` key whose range covers
+	 from the marker line through the @end line. parseSections: surfaces it
+	 in the metadata dict so removal tools know the exact span to delete."
+	<gtExample>
+	| forms output sections sect blockRange parts startLine endLine lines |
+	forms := { '(def speed:float 600.0)' }.
+	output := ZealCompiler compileFileFromSources: forms file: '/test.as'.
+	sections := ZealCompiler parseSections: output.
+	sect := sections first.
+	blockRange := (sect at: #metadata) at: #'block-lines'.
+	self assert: blockRange notNil label: 'block-lines metadata is set'.
+	self assert: (blockRange includes: $-) label: 'block-lines is a range'.
+	parts := $- split: blockRange.
+	startLine := parts first asNumber.
+	endLine := parts last asNumber.
+	self assert: startLine equals: 1 label: 'block starts at line 1'.
+	lines := output lines.
+	self assert: ((lines at: endLine) trimRight) equals: ZealCompiler zealHeaderEnd
+		label: 'block-lines end points at the @end marker'.
+	^ sect
+]
+
 { #category : 'examples-emit' }
 ZealHeaderExamples >> emitHeaderOrdersMetaCanonically [
 	"orderedMetaKeys: drives a stable order — kind, name, returns, params, parent,

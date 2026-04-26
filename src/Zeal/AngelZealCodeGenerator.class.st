@@ -38,6 +38,23 @@ AngelZealCodeGenerator >> emitDefBinding: nameNode value: valueNode [
 		self visitExpression: valueNode ]
 ]
 
+{ #category : 'transducers' }
+AngelZealCodeGenerator >> emitFnCallSourceFor: fnNode arg: argName [
+	"Emit a one-arg call into the stream. Names go through the base
+	 `identifierFor:` so Lisp-style `?`/`!` are dropped and the dialect's
+	 case is applied. Special-case `not` as the AngelScript `!` prefix."
+	| name |
+	(fnNode isKindOf: ZealSymbolNode) ifFalse: [
+		self visitExpression: fnNode.
+		self emit: '('. self emit: argName. self emit: ')'.
+		^ self ].
+	name := fnNode value value.
+	name = 'not' ifTrue: [
+		self emit: '(!'. self emit: argName. self emit: ')'. ^ self ].
+	self emit: (self identifierFor: name).
+	self emit: '('. self emit: argName. self emit: ')'
+]
+
 { #category : 'api' }
 AngelZealCodeGenerator >> emitIfChain: args first: isFirst [
 	"Recursively emit if / else if / else chain."
@@ -72,6 +89,23 @@ AngelZealCodeGenerator >> emitParam: aParamNode [
 	typeStr ifNil: [ self emit: 'auto ' ].
 	self emit: (self toPascalCase: name).
 	self addLocal: (self toPascalCase: name)
+]
+
+{ #category : 'transducers' }
+AngelZealCodeGenerator >> emitReducerStepFor: reducerNode acc: accName elem: elemName [
+	"Emit `<acc> <op> <elem>` for arithmetic reducers, otherwise
+	 `<reducerName>(<acc>, <elem>)` via the base identifier helper."
+	| name |
+	(reducerNode isKindOf: ZealSymbolNode) ifFalse: [
+		self visitExpression: reducerNode.
+		self emit: '('. self emit: accName. self emit: ', '. self emit: elemName. self emit: ')'.
+		^ self ].
+	name := reducerNode value value.
+	(self isOperator: name) ifTrue: [
+		self emit: accName. self emit: ' '. self emit: name. self emit: ' '. self emit: elemName.
+		^ self ].
+	self emit: (self identifierFor: name).
+	self emit: '('. self emit: accName. self emit: ', '. self emit: elemName. self emit: ')'
 ]
 
 { #category : 'api' }
@@ -196,6 +230,136 @@ AngelZealCodeGenerator >> emitReturnWhen: aListNode [
 	self nl. self emit: '}'
 ]
 
+{ #category : 'transducers' }
+AngelZealCodeGenerator >> emitStage: stageNode elemVar: elemName takenVar: takenName droppedVar: droppedName [
+	"Inline one transducer stage's effect on the current element, or terminate
+	 the loop. Stages can mutate `<elemName>`, `continue;` (skip), or `break;`
+	 (terminate)."
+	| head exprs fnNode |
+	head := self stageHead: stageNode.
+	exprs := stageNode expressions.
+	fnNode := exprs size >= 2 ifTrue: [ exprs second ] ifFalse: [ nil ].
+
+	head = 'map' ifTrue: [
+		self nl. self emit: elemName. self emit: ' = '.
+		self emitFnCallSourceFor: fnNode arg: elemName. stream nextPut: $;.
+		^ self ].
+
+	head = 'filter' ifTrue: [
+		self nl. self emit: 'if (!('.
+		self emitFnCallSourceFor: fnNode arg: elemName.
+		self emit: ')) continue;'.
+		^ self ].
+
+	head = 'remove' ifTrue: [
+		self nl. self emit: 'if ('.
+		self emitFnCallSourceFor: fnNode arg: elemName.
+		self emit: ') continue;'.
+		^ self ].
+
+	head = 'take' ifTrue: [
+		self nl. self emit: 'if ('. self emit: takenName. self emit: ' >= '.
+		self visitExpression: fnNode. self emit: ') break;'.
+		self nl. self emit: '++'. self emit: takenName. stream nextPut: $;.
+		^ self ].
+
+	head = 'drop' ifTrue: [
+		self nl. self emit: 'if ('. self emit: droppedName. self emit: ' < '.
+		self visitExpression: fnNode. self emit: ') { ++'.
+		self emit: droppedName. self emit: '; continue; }'.
+		^ self ].
+
+	head = 'take-while' ifTrue: [
+		self nl. self emit: 'if (!('.
+		self emitFnCallSourceFor: fnNode arg: elemName.
+		self emit: ')) break;'.
+		^ self ].
+
+	head = 'drop-while' ifTrue: [
+		"Once the predicate is false, we stop dropping forever — needs a flag.
+		 Use `<droppedName>` as a 0/1 latch (0 = still dropping)."
+		self nl. self emit: 'if ('. self emit: droppedName. self emit: ' == 0) {'.
+		self indent.
+		self nl. self emit: 'if ('. self emitFnCallSourceFor: fnNode arg: elemName.
+		self emit: ') continue;'.
+		self nl. self emit: droppedName. self emit: ' = 1;'.
+		self dedent.
+		self nl. self emit: '}'.
+		^ self ].
+
+	self nl. self emit: '/* unknown stage: '. self emit: head. self emit: ' */'
+]
+
+{ #category : 'transducers' }
+AngelZealCodeGenerator >> emitTransduce: aListNode returning: returnAcc [
+	"Shared emitter. When `returnAcc` is true, a `return Acc;` is appended
+	 inside the outer block after the loop — used when the transduce form
+	 sits in return position of a defn."
+	| exprs xformNode reducerNode initNode collNode stages accType elemName takenName droppedName needsTaken needsDropped collTemp |
+	exprs := aListNode expressions allButFirst.
+	exprs size = 4 ifFalse: [ ^ self emit: '/* transduce: needs (xform reducer init coll) */' ].
+	xformNode := exprs at: 1.
+	reducerNode := exprs at: 2.
+	initNode := exprs at: 3.
+	collNode := exprs at: 4.
+	stages := self flattenTransduceXform: xformNode.
+
+	accType := self inferLiteralType: initNode default: 'auto'.
+	elemName := 'Elem'.
+	takenName := '__Taken'.
+	droppedName := '__Dropped'.
+	needsTaken := stages anySatisfy: [ :s | (self stageHead: s) = 'take' ].
+	needsDropped := stages anySatisfy: [ :s |
+		| h | h := self stageHead: s.
+		h = 'drop' or: [ h = 'drop-while' ] ].
+
+	self emit: '{'. self pushScope. self indent.
+
+	self nl.
+	self emit: accType. self emit: ' Acc = '.
+	self visitExpression: initNode.
+	stream nextPut: $;.
+	self addLocal: 'Acc'.
+
+	needsTaken ifTrue: [
+		self nl. self emit: 'int '. self emit: takenName. self emit: ' = 0;' ].
+	needsDropped ifTrue: [
+		self nl. self emit: 'int '. self emit: droppedName. self emit: ' = 0;' ].
+
+	(collNode isKindOf: ZealVectorNode)
+		ifTrue: [
+			collTemp := '__Coll'.
+			self nl.
+			self emit: 'TArray<'. self emit: accType. self emit: '> '. self emit: collTemp. self emit: ' = '.
+			self visitExpression: collNode.
+			stream nextPut: $; ]
+		ifFalse: [ collTemp := nil ].
+
+	self nl.
+	self emit: 'for ('. self emit: accType. self emit: ' '. self emit: elemName. self emit: ' : '.
+	collTemp
+		ifNotNil: [ self emit: collTemp ]
+		ifNil: [ self visitExpression: collNode ].
+	self emit: ') {'.
+	self pushScope. self indent.
+
+	stages do: [ :stage |
+		self emitStage: stage elemVar: elemName takenVar: takenName droppedVar: droppedName ].
+
+	self nl. self emit: 'Acc = '.
+	self emitReducerStepFor: reducerNode acc: 'Acc' elem: elemName.
+	stream nextPut: $;.
+
+	self dedent. self nl. self emit: '}'.
+	self popScope.
+
+	returnAcc ifTrue: [
+		self nl. self emit: 'return Acc;' ].
+
+	self dedent. self nl. self emit: '}'.
+	self popScope
+]
+
 { #category : 'api' }
 AngelZealCodeGenerator >> emitVarBinding: nameNode value: valueNode [
 	"Emit one `Type Name = value` line. Type is taken from a colon-chain on the
@@ -222,6 +386,21 @@ AngelZealCodeGenerator >> emitVarBinding: nameNode value: valueNode [
 	self addLocal: pascalName
 ]
 
+{ #category : 'transducers' }
+AngelZealCodeGenerator >> flattenTransduceXform: xformNode [
+	"If the xform is a (comp s1 s2 s3 …), return its substages flat in
+	 data-flow order. Otherwise return a single-element array containing
+	 the xform itself."
+	| exprs head |
+	(xformNode isKindOf: ZealListNode) ifFalse: [ ^ Array with: xformNode ].
+	exprs := xformNode expressions.
+	exprs isEmpty ifTrue: [ ^ Array with: xformNode ].
+	head := exprs first.
+	((head isKindOf: ZealSymbolNode) and: [ head value value = 'comp' ])
+		ifFalse: [ ^ Array with: xformNode ].
+	^ exprs allButFirst gather: [ :s | self flattenTransduceXform: s ]
+]
+
 { #category : 'api' }
 AngelZealCodeGenerator >> generate: aZealProgramNode [
 	"Top-level entry: emit each top-level form followed by a blank line."
@@ -244,6 +423,13 @@ AngelZealCodeGenerator >> generateAs: aListNode [
 	self emit: '>('.
 	self visitExpression: args first.
 	self emit: ')'
+]
+
+{ #category : 'transducers' }
+AngelZealCodeGenerator >> generateComp: aListNode [
+	"Standalone (comp …) outside a transduce — like factory stages, only
+	 meaningful inside a transduce pipeline."
+	self emit: '/* comp: only valid inside (transduce ...) */'
 ]
 
 { #category : 'api' }
@@ -581,6 +767,15 @@ AngelZealCodeGenerator >> generateSet: aListNode [
 	secondNode ifNotNil: [ self visitExpression: secondNode ]
 ]
 
+{ #category : 'transducers' }
+AngelZealCodeGenerator >> generateTransduce: aListNode [
+	"(transduce xform reducer init coll) — Option B monomorphized codegen.
+	 Walks the xform (single stage or `(comp …)`) and emits one for-loop with
+	 each stage inlined as transformation/skip/break. Statement-position
+	 emission — the accumulator is computed but never returned."
+	self emitTransduce: aListNode returning: false
+]
+
 { #category : 'api' }
 AngelZealCodeGenerator >> generateVar: aListNode [
 	"(var name value) — single binding, with optional :type
@@ -626,6 +821,26 @@ AngelZealCodeGenerator >> generateWhile: aListNode [
 	args allButFirst do: [ :e | self nl. self visitStatement: e ].
 	self dedent.
 	self nl. self emit: '}'
+]
+
+{ #category : 'transducers' }
+AngelZealCodeGenerator >> generateXformFactory: aListNode [
+	"Standalone transducer-factory call (`(map fn)` etc.) outside a `(transduce …)`
+	 has no meaningful emission in Option-B monomorphic codegen — the stage
+	 only exists at compile time as part of a transduce pipeline. Emit a
+	 marker comment so the user notices misuse."
+	| head |
+	head := aListNode expressions first value value.
+	self emit: '/* '; emit: head; emit: ': only valid inside (transduce ...) */'
+]
+
+{ #category : 'transducers' }
+AngelZealCodeGenerator >> inferLiteralType: aNode default: defaultStr [
+	"Best-effort literal type inference for transducer accumulator types."
+	(aNode isKindOf: ZealIntegerLiteralNode) ifTrue: [ ^ 'int' ].
+	(aNode isKindOf: ZealFloatLiteralNode) ifTrue: [ ^ 'float' ].
+	(aNode isKindOf: ZealStringLiteralNode) ifTrue: [ ^ 'FString' ].
+	^ defaultStr
 ]
 
 { #category : 'api' }
@@ -738,8 +953,10 @@ AngelZealCodeGenerator >> resolveType: aTypeString [
 
 { #category : 'special-forms' }
 AngelZealCodeGenerator >> specialForms [
-	"AngelZeal's syntactic keywords + the universal base (which contributes
-	 source-raw and any future cross-dialect forms)."
+	"AngelZeal's syntactic keywords + the universal base + transducer entries.
+	 Transducer-factory forms (`map`, `filter`, etc.) only have meaning inside
+	 a `(transduce …)` or `(into …)`; if they appear standalone they emit a
+	 placeholder comment."
 	| dict |
 	dict := self baseSpecialForms copy.
 	dict
@@ -757,8 +974,26 @@ AngelZealCodeGenerator >> specialForms [
 		at: 'let' put: #generateLet:;
 		at: 'do' put: #generateDo:;
 		at: 'return' put: #generateReturn:;
-		at: 'as' put: #generateAs:.
+		at: 'as' put: #generateAs:;
+		at: 'transduce' put: #generateTransduce:;
+		at: 'comp' put: #generateComp:;
+		at: 'map' put: #generateXformFactory:;
+		at: 'filter' put: #generateXformFactory:;
+		at: 'remove' put: #generateXformFactory:;
+		at: 'take' put: #generateXformFactory:;
+		at: 'drop' put: #generateXformFactory:;
+		at: 'take-while' put: #generateXformFactory:;
+		at: 'drop-while' put: #generateXformFactory:.
 	^ dict
+]
+
+{ #category : 'transducers' }
+AngelZealCodeGenerator >> stageHead: stageNode [
+	"The leading symbol of a transducer-factory call, e.g. 'map' for (map fn)."
+	(stageNode isKindOf: ZealListNode) ifFalse: [ ^ '' ].
+	stageNode expressions isEmpty ifTrue: [ ^ '' ].
+	(stageNode expressions first isKindOf: ZealSymbolNode) ifFalse: [ ^ '' ].
+	^ stageNode expressions first value value
 ]
 
 { #category : 'special-forms' }
@@ -864,14 +1099,19 @@ AngelZealCodeGenerator >> visitMap: aNode [
 AngelZealCodeGenerator >> visitReturnPosition: aNode [
 	"Emit aNode as the producer of a function's return value. Recurses into
 	 if/when/do/let so each branch's leaf becomes `return X;`. For statement-
-	 only forms (set/var/return/source-raw) emits as plain statements. Plain
+	 only forms (set/var/return/source-raw) emits as plain statements. For
+	 transduce, emits the block + appends `return Acc;` inside it. Plain
 	 expressions get wrapped in `return X;`."
+	| isList head |
 	(self isReturnControlForm: aNode)
 		ifTrue: [ ^ self emitReturnControl: aNode ].
-	((aNode isKindOf: ZealListNode) and: [ aNode expressions notEmpty
-		and: [ (aNode expressions first isKindOf: ZealSymbolNode)
-		and: [ #('return' 'set' 'var' 'def' 'source-raw') includes: aNode expressions first value value ] ] ])
-		ifTrue: [ ^ self visitStatement: aNode ].
+	isList := (aNode isKindOf: ZealListNode) and: [ aNode expressions notEmpty
+		and: [ aNode expressions first isKindOf: ZealSymbolNode ] ].
+	isList ifTrue: [
+		head := aNode expressions first value value.
+		head = 'transduce' ifTrue: [ ^ self emitTransduce: aNode returning: true ].
+		(#('return' 'set' 'var' 'def' 'source-raw') includes: head)
+			ifTrue: [ ^ self visitStatement: aNode ] ].
 	self emit: 'return '.
 	self visitExpression: aNode.
 	stream nextPut: $;

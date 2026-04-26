@@ -35,7 +35,7 @@ AngelZealBrowser >> dialectDefinitionNodeClass [
 
 { #category : 'dialect-hooks' }
 AngelZealBrowser >> dialectFileNodeClass [
-	^ AngelZealFileNode
+	^ ZealFileNode
 ]
 
 { #category : 'dialect-hooks' }

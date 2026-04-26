@@ -82,6 +82,13 @@ ZealCodeGenerator >> baseStatementForms [
 	^ #('source-raw')
 ]
 
+{ #category : 'identifiers' }
+ZealCodeGenerator >> caseStyleFor: aString [
+	"Hook: which case to apply to munged identifier text. Default PascalCase;
+	 Godot-style dialects override to `^ self toSnakeCase: aString`."
+	^ self toPascalCase: aString
+]
+
 { #category : 'emitting' }
 ZealCodeGenerator >> dedent [
 	indentLevel := indentLevel - 1
@@ -120,6 +127,15 @@ ZealCodeGenerator >> generateSourceRaw: aListNode [
 	self emit: s
 ]
 
+{ #category : 'identifiers' }
+ZealCodeGenerator >> identifierFor: aZealName [
+	"Convert a Zeal name into a target-language identifier: drop Lisp-style
+	 `?`/`!` chars via `mungeForIdentifier:`, then apply the dialect's case
+	 style. Default applies PascalCase; dialects override `caseStyleFor:` to
+	 use snake_case or another convention."
+	^ self caseStyleFor: (self mungeForIdentifier: aZealName)
+]
+
 { #category : 'emitting' }
 ZealCodeGenerator >> indent [
 	indentLevel := indentLevel + 1
@@ -132,6 +148,16 @@ ZealCodeGenerator >> initialize [
 	indentLevel := 0
 ]
 
+{ #category : 'identifiers' }
+ZealCodeGenerator >> mungeForIdentifier: aZealName [
+	"Strip characters that have semantic meaning in Zeal/Lisp-style names but
+	 aren't valid in C-family target identifiers. Predicate `?` and mutator `!`
+	 suffixes are dropped (`even?` → `even`, `swap!` → `swap`). Hyphens stay —
+	 the case-conversion step (toPascalCase: / toSnakeCase:) consumes them as
+	 word boundaries."
+	^ aZealName reject: [ :ch | #($? $!) includes: ch ]
+]
+
 { #category : 'accessing' }
 ZealCodeGenerator >> output [
 	^ stream contents
@@ -142,6 +168,30 @@ ZealCodeGenerator >> specialForms [
 	"Default: just the base universal forms. Dialect subclasses override to
 	 add their own keywords (typically copying baseSpecialForms first)."
 	^ self baseSpecialForms
+]
+
+{ #category : 'identifiers' }
+ZealCodeGenerator >> toPascalCase: aString [
+	"kebab-case → PascalCase. Capitalize first letter and after hyphens.
+	 Each dialect inherits this; subclasses with stricter casing rules can
+	 override."
+	^ String streamContents: [ :s |
+		| capitalize |
+		capitalize := true.
+		aString do: [ :ch |
+			ch = $-
+				ifTrue: [ capitalize := true ]
+				ifFalse: [
+					capitalize
+						ifTrue: [ s nextPut: ch asUppercase. capitalize := false ]
+						ifFalse: [ s nextPut: ch ] ] ] ]
+]
+
+{ #category : 'identifiers' }
+ZealCodeGenerator >> toSnakeCase: aString [
+	"kebab-case → snake_case. Hyphens become underscores; nothing else changes.
+	 Available on the base for any dialect whose target prefers snake_case."
+	^ aString copyReplaceAll: '-' with: '_'
 ]
 
 { #category : 'api' }

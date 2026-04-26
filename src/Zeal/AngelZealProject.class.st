@@ -10,14 +10,13 @@ Class {
 	#package : 'Zeal'
 }
 
-{ #category : 'api' }
+{ #category : 'building' }
 AngelZealProject >> buildTree [
-	"Walk the project rootFolder and produce an AngelZealFolderNode tree mirroring
-	 the filesystem. Each .as file becomes an AngelZealFileNode whose children
-	 are AngelZealDefinitionNodes (one per `// @zeal` section). Definitions can
-	 be reconstructed entirely from the file's metadata + Zeal source."
+	"Walk the project rootFolder and produce a ZealFolderNode tree mirroring
+	 the filesystem. Each .as file becomes a ZealFileNode whose children are
+	 dialect definition nodes (one per `// @zeal` section)."
 	| root |
-	root := AngelZealFolderNode new fileRef: rootFolder.
+	root := ZealFolderNode new fileRef: rootFolder.
 	self populateFolderNode: root from: rootFolder.
 	^ root
 ]
@@ -74,11 +73,10 @@ AngelZealProject >> path: aString [
 	path := aString
 ]
 
-{ #category : 'api' }
+{ #category : 'building' }
 AngelZealProject >> populateFileNode: aFileNode [
 	"Read aFileNode's underlying file, parse @zeal sections, and add one
-	 AngelZealDefinitionNode per section. Files without headers get a single
-	 placeholder node holding the raw target code."
+	 dialect definition node per section."
 	| content sections |
 	content := [ aFileNode fileRef contents ] on: Error do: [ :e | '' ].
 	sections := AngelZealCompiler parseSections: content.
@@ -89,27 +87,25 @@ AngelZealProject >> populateFileNode: aFileNode [
 			targetCode: (section at: #targetCode);
 			metadata: (section at: #metadata);
 			yourself.
-		"Fall back to nameOfForm: if metadata didn't carry a name."
 		defNode name ifNil: [
 			defNode name: (self nameOfForm: defNode zealSource) ].
 		aFileNode addChild: defNode ]
 ]
 
-{ #category : 'api' }
+{ #category : 'building' }
 AngelZealProject >> populateFolderNode: aFolderNode from: aDir [
-	"Recurse into aDir, adding subfolders and .as files (as nodes) under
-	 aFolderNode. Each .as file gets its definitions populated as children."
+	"Recurse into aDir, adding subfolders and .as files under aFolderNode."
 	| entries |
 	entries := self childrenOf: aDir.
 	entries do: [ :entry |
 		entry isDirectory ifTrue: [
 			| sub |
-			sub := AngelZealFolderNode new fileRef: entry.
+			sub := ZealFolderNode new fileRef: entry.
 			aFolderNode addChild: sub.
 			self populateFolderNode: sub from: entry ]
 		ifFalse: [
 			| fileNode |
-			fileNode := AngelZealFileNode new fileRef: entry.
+			fileNode := ZealFileNode new fileRef: entry.
 			aFolderNode addChild: fileNode.
 			self populateFileNode: fileNode ] ]
 ]
