@@ -718,6 +718,48 @@ ZealCompiler class >> error: msg source: src [
 	^ ZealCompileError new message: msg; source: src
 ]
 
+{ #category : 'zeal-headers' }
+ZealCompiler class >> extractMetadataFor: zealSource [
+	"Inspect zealSource (a top-level Zeal form) and return a Dictionary of
+	 metadata: kind, name, returns, params (and parent for class/struct).
+	 Best-effort; missing fields stay absent."
+	| ast top exprs head nameNode meta name returns paramsList |
+	meta := Dictionary new.
+	ast := [ ZealParser parse: zealSource ] on: Error do: [ :e | nil ].
+	(ast notNil and: [ ast expressions notEmpty ]) ifFalse: [ ^ meta ].
+	top := ast expressions first.
+	(top isKindOf: ZealListNode) ifFalse: [ ^ meta ].
+	exprs := top expressions.
+	exprs isEmpty ifTrue: [ ^ meta ].
+	(exprs first isKindOf: ZealSymbolNode) ifFalse: [ ^ meta ].
+	head := exprs first value value.
+	meta at: #kind put: head.
+
+	exprs size >= 2 ifTrue: [
+		nameNode := exprs second.
+		(nameNode isKindOf: ZealColonChainNode)
+			ifTrue: [
+				| resolved |
+				resolved := ZealColonChainResolver resolve: nameNode value value.
+				name := resolved at: #name.
+				returns := resolved at: #type ]
+			ifFalse: [
+				((nameNode isKindOf: ZealSymbolNode) and: [ nameNode value value isString ])
+					ifTrue: [ name := nameNode value value ] ] ].
+	name ifNotNil: [ meta at: #name put: name ].
+	returns ifNotNil: [ meta at: #returns put: returns ].
+
+	(head = 'defn' and: [ exprs size >= 3 and: [ exprs third isKindOf: ZealVectorNode ] ]) ifTrue: [
+		paramsList := exprs third expressions collect: [ :p | p value value ].
+		meta at: #params put: (', ' join: paramsList) ].
+
+	((head = 'defclass' or: [ head = 'defstruct' ])
+		and: [ nameNode isKindOf: ZealColonChainNode ])
+		ifTrue: [ meta at: #parent put: returns ].
+
+	^ meta
+]
+
 { #category : 'compiling' }
 ZealCompiler class >> fromVerse: aString [
 	| preprocessed parsed |
@@ -809,9 +851,31 @@ ZealCompiler class >> isIndexableType: aType [
 	^ false
 ]
 
+{ #category : 'zeal-headers' }
+ZealCompiler class >> metaKeyName: aSymbol [
+	"camelCase symbol → kebab-case string for metadata serialization."
+	| s |
+	s := aSymbol asString.
+	^ String streamContents: [:out |
+		s do: [:ch |
+			(ch isLetter and: [ ch isUppercase ])
+				ifTrue: [ out nextPut: $-. out nextPut: ch asLowercase ]
+				ifFalse: [ out nextPut: ch ] ] ]
+]
+
 { #category : 'building' }
 ZealCompiler class >> operators [
 	^ ZealTheme operators , #('and' 'or' 'not' '?')
+]
+
+{ #category : 'zeal-headers' }
+ZealCompiler class >> orderedMetaKeys: aMetaDict [
+	"Return the metadata keys that will actually be emitted, in canonical
+	 order. Subclasses can override to add their own keys; the default order
+	 covers everything `extractMetadataFor:` produces plus the line-range
+	 keys stamped by `compileSection:`."
+	^ #(#kind #name #returns #params #parent #zealLines #targetLines #file)
+		select: [ :k | aMetaDict includesKey: k ]
 ]
 
 { #category : 'building' }
@@ -839,6 +903,77 @@ ZealCompiler class >> parseBindingVectorNode: aVectorNode [
 { #category : 'compiling' }
 ZealCompiler class >> parseOnly: aString [
 	^ ZealParser parse: aString
+]
+
+{ #category : 'zeal-headers' }
+ZealCompiler class >> parseSections: targetFileContent [
+	"Walk a target-language file by line, grouping `<marker> ... <end>`
+	 headers with the target code that follows. Each section dict has:
+	   #zealSource — verbatim Zeal source (header-stripped)
+	   #targetCode — target-language code that follows the header
+	   #lineStart  — 1-based line of the section's marker
+	   #lineEnd    — 1-based line of the section's last target line
+	   #zealLineStart, #zealLineEnd     — 1-based Zeal-source range in the file
+	   #targetLineStart, #targetLineEnd — 1-based target-code range in the file
+	   #metadata   — Dictionary of any `<metaPrefix>key: value` entries"
+	| lines size sections i headerStart zealLines targetLines meta zealStart zealEnd targetStart targetEnd |
+	lines := targetFileContent lines.
+	size := lines size.
+	sections := OrderedCollection new.
+	i := 1.
+	[ i <= size ] whileTrue: [
+		((lines at: i) trimRight = self zealHeaderMarker)
+			ifTrue: [
+				headerStart := i.
+				zealLines := OrderedCollection new.
+				meta := Dictionary new.
+				zealStart := nil. zealEnd := nil.
+				i := i + 1.
+				[ i <= size and: [ (lines at: i) trimRight ~= self zealHeaderEnd ] ] whileTrue: [
+					| line |
+					line := lines at: i.
+					(line beginsWith: self zealMetaPrefix)
+						ifTrue: [
+							| body colon key val |
+							body := line copyFrom: self zealMetaPrefix size + 1 to: line size.
+							colon := body indexOf: $:.
+							colon > 0 ifTrue: [
+								key := (body copyFrom: 1 to: colon - 1) trimBoth asSymbol.
+								val := (body copyFrom: colon + 1 to: body size) trimBoth.
+								meta at: key put: val ] ]
+						ifFalse: [
+							| stripped |
+							stripped := (line beginsWith: self zealCommentPrefix)
+								ifTrue: [ line copyFrom: self zealCommentPrefix size + 1 to: line size ]
+								ifFalse: [
+									(line trimRight = (self zealCommentPrefix trimRight)) ifTrue: [ '' ] ifFalse: [ line ] ].
+							zealStart ifNil: [ zealStart := i ].
+							zealEnd := i.
+							zealLines add: stripped ].
+					i := i + 1 ].
+				i := i + 1.
+				targetLines := OrderedCollection new.
+				targetStart := nil. targetEnd := nil.
+				[ i <= size and: [ (lines at: i) trimRight ~= self zealHeaderMarker ] ] whileTrue: [
+					targetStart ifNil: [ targetStart := i ].
+					targetEnd := i.
+					targetLines add: (lines at: i).
+					i := i + 1 ].
+				[ targetLines notEmpty and: [ targetLines last trimBoth isEmpty ] ]
+					whileTrue: [ targetLines removeLast. targetEnd := targetEnd - 1 ].
+				sections add: (Dictionary new
+					at: #zealSource put: (String lf join: zealLines);
+					at: #targetCode put: (String lf join: targetLines);
+					at: #lineStart put: headerStart;
+					at: #lineEnd put: i - 1;
+					at: #zealLineStart put: (zealStart ifNil: [ headerStart + 1 ]);
+					at: #zealLineEnd put: (zealEnd ifNil: [ headerStart + 1 ]);
+					at: #targetLineStart put: (targetStart ifNil: [ i ]);
+					at: #targetLineEnd put: (targetEnd ifNil: [ i ]);
+					at: #metadata put: meta;
+					yourself) ]
+			ifFalse: [ i := i + 1 ] ].
+	^ sections
 ]
 
 { #category : 'validation' }
@@ -920,4 +1055,65 @@ ZealCompiler class >> usageFor: formName [
 		at: 'module' put: '(module name ...)';
 		yourself.
 	^ usages at: formName ifAbsent: [ formName ]
+]
+
+{ #category : 'zeal-headers' }
+ZealCompiler class >> zealCommentPrefix [
+	"Per-line prefix used inside an @zeal block for verbatim Zeal source lines."
+	^ '// '
+]
+
+{ #category : 'zeal-headers' }
+ZealCompiler class >> zealHeaderEnd [
+	"Closing line of an embedded @zeal block."
+	^ '// @end'
+]
+
+{ #category : 'zeal-headers' }
+ZealCompiler class >> zealHeaderFor: zealSource [
+	"Build a `<marker> ... <end>` comment block embedding zealSource verbatim,
+	 one source line per `<commentPrefix>`-prefixed line. No metadata."
+	| stream lf |
+	stream := WriteStream on: String new.
+	lf := String lf.
+	stream nextPutAll: self zealHeaderMarker; nextPutAll: lf.
+	zealSource lines do: [:line |
+		stream nextPutAll: self zealCommentPrefix; nextPutAll: line; nextPutAll: lf ].
+	stream nextPutAll: self zealHeaderEnd; nextPutAll: lf.
+	^ stream contents
+]
+
+{ #category : 'zeal-headers' }
+ZealCompiler class >> zealHeaderFor: zealSource metadata: aMetaDict [
+	"Build a `<marker> ... <end>` block carrying both metadata and the verbatim
+	 Zeal source. Each metadata entry is a `<metaPrefix>key: value` line; the
+	 source follows on `<commentPrefix>`-prefixed lines."
+	| stream lf |
+	stream := WriteStream on: String new.
+	lf := String lf.
+	stream nextPutAll: self zealHeaderMarker; nextPutAll: lf.
+	(self orderedMetaKeys: aMetaDict) do: [ :k |
+		| val |
+		val := aMetaDict at: k.
+		stream nextPutAll: self zealMetaPrefix.
+		stream nextPutAll: (self metaKeyName: k); nextPutAll: ': '.
+		stream nextPutAll: (val isString ifTrue: [ val ] ifFalse: [ val printString ]).
+		stream nextPutAll: lf ].
+	zealSource lines do: [:line |
+		stream nextPutAll: self zealCommentPrefix; nextPutAll: line; nextPutAll: lf ].
+	stream nextPutAll: self zealHeaderEnd; nextPutAll: lf.
+	^ stream contents
+]
+
+{ #category : 'zeal-headers' }
+ZealCompiler class >> zealHeaderMarker [
+	"Opening line of an embedded @zeal block in target source. Defaults to the
+	 C-style `//`-comment marker; dialects whose comments use `#` override."
+	^ '// @zeal'
+]
+
+{ #category : 'zeal-headers' }
+ZealCompiler class >> zealMetaPrefix [
+	"Per-line prefix for metadata key:value entries inside an @zeal block."
+	^ '// @meta '
 ]

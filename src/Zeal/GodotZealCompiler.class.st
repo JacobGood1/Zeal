@@ -962,3 +962,24 @@ GodotZealCompiler class >> substitutedSymbolString: sym bindings: aDict [
 			^ argSym , (sym copyFrom: paramName size + 1 to: sym size) ] ].
 	^ sym
 ]
+
+{ #category : 'zeal-headers' }
+GodotZealCompiler class >> zealCommentPrefix [
+	^ '# '
+]
+
+{ #category : 'zeal-headers' }
+GodotZealCompiler class >> zealHeaderEnd [
+	^ '# @end'
+]
+
+{ #category : 'zeal-headers' }
+GodotZealCompiler class >> zealHeaderMarker [
+	"GDScript uses `#` for comments, not `//`."
+	^ '# @zeal'
+]
+
+{ #category : 'zeal-headers' }
+GodotZealCompiler class >> zealMetaPrefix [
+	^ '# @meta '
+]
