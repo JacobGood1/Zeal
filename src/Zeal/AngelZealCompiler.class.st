@@ -81,9 +81,17 @@ AngelZealCompiler class >> compileToAngelScript: aString [
 	^ AngelZealCodeGenerator new generate: (ZealParser parse: aString)
 ]
 
-{ #category : 'api' }
+{ #category : 'compiling' }
+AngelZealCompiler class >> compileToTarget: zealSource [
+	"Dialect-neutral selector that base ZealBrowser dispatches to. Aliased
+	 to the AngelScript-specific entry point so naming stays clear at the
+	 compiler level."
+	^ self compileToAngelScript: zealSource
+]
+
+{ #category : 'conversion' }
 AngelZealCompiler class >> convertASChunkToZeal: aChunk [
-	"Best-effort AS chunk → Zeal source. Falls back to (angel-raw ...) when
+	"Best-effort AS chunk → Zeal source. Falls back to (source-raw ...) when
 	 the shape isn't recognized."
 	| chunk |
 	chunk := aChunk trimBoth.
@@ -95,20 +103,19 @@ AngelZealCompiler class >> convertASChunkToZeal: aChunk [
 		converted ifNotNil: [ ^ converted ] ].
 	((chunk includes: $() and: [ (chunk includes: ${) and: [ chunk endsWith: '}' ] ]) ifTrue: [
 		^ self convertASFunctionToZeal: chunk ].
-	^ '(angel-raw ' , (self zealStringLiteralFor: chunk) , ')'
+	^ '(source-raw ' , (self zealStringLiteralFor: chunk) , ')'
 ]
 
-{ #category : 'api' }
+{ #category : 'conversion' }
 AngelZealCompiler class >> convertASClassToZeal: aChunk [
-	"class/struct → defclass/defstruct. Class name is kebab-cased to match
-	 Verse-Zeal style (`(defclass player:AActor ...)`); parent type stays
-	 PascalCase since it's a type reference."
+	"class/struct → defclass/defstruct. Class name is kebab-cased; parent
+	 type stays PascalCase since it's a type reference."
 	| s headWord rest braceStart name parent body memberSources zealMembers stream header |
 	s := aChunk trimBoth.
 	headWord := (s beginsWith: 'class ') ifTrue: [ 'class' ] ifFalse: [ 'struct' ].
 	rest := (s copyFrom: headWord size + 2 to: s size) trimBoth.
 	braceStart := rest indexOf: ${ ifAbsent: [ 0 ].
-	braceStart = 0 ifTrue: [ ^ '(angel-raw ' , (self zealStringLiteralFor: aChunk) , ')' ].
+	braceStart = 0 ifTrue: [ ^ '(source-raw ' , (self zealStringLiteralFor: aChunk) , ')' ].
 	header := (rest copyFrom: 1 to: braceStart - 1) trimBoth.
 	(header includes: $:)
 		ifTrue: [
@@ -135,9 +142,9 @@ AngelZealCompiler class >> convertASClassToZeal: aChunk [
 	^ stream contents
 ]
 
-{ #category : 'api' }
+{ #category : 'conversion' }
 AngelZealCompiler class >> convertASFunctionToZeal: aChunk [
-	"Function chunk → (defn name:retType [params] (angel-raw body)).
+	"Function chunk → (defn name:retType [params] (source-raw body)).
 	 Function and parameter names are kebab-cased; types kept verbatim."
 	| s parenStart parenEnd braceStart braceEnd headPart paramsPart bodyPart tokens typeName name params zealParams |
 	s := aChunk trimBoth.
@@ -147,12 +154,12 @@ AngelZealCompiler class >> convertASFunctionToZeal: aChunk [
 	braceEnd := s size.
 	((parenStart > 0 and: [ parenEnd > parenStart ])
 		and: [ (braceStart > parenEnd) and: [ s last = $} ] ])
-		ifFalse: [ ^ '(angel-raw ' , (self zealStringLiteralFor: aChunk) , ')' ].
+		ifFalse: [ ^ '(source-raw ' , (self zealStringLiteralFor: aChunk) , ')' ].
 	headPart := (s copyFrom: 1 to: parenStart - 1) trimBoth.
 	paramsPart := (s copyFrom: parenStart + 1 to: parenEnd - 1) trimBoth.
 	bodyPart := (s copyFrom: braceStart + 1 to: braceEnd - 1) trimBoth.
 	tokens := (headPart substrings: ' ') reject: [ :t | t isEmpty ].
-	tokens size < 2 ifTrue: [ ^ '(angel-raw ' , (self zealStringLiteralFor: aChunk) , ')' ].
+	tokens size < 2 ifTrue: [ ^ '(source-raw ' , (self zealStringLiteralFor: aChunk) , ')' ].
 	name := self pascalToKebab: tokens last.
 	typeName := ' ' join: (tokens copyFrom: 1 to: tokens size - 1).
 	params := self splitTopParams: paramsPart.
@@ -167,7 +174,7 @@ AngelZealCompiler class >> convertASFunctionToZeal: aChunk [
 			ifFalse: [ p ] ].
 	^ '(defn ' , name , ':' , typeName , ' ['
 		, (' ' join: zealParams) , ']' , String lf
-		, '    (angel-raw ' , (self zealStringLiteralFor: bodyPart) , '))'
+		, '    (source-raw ' , (self zealStringLiteralFor: bodyPart) , '))'
 ]
 
 { #category : 'api' }

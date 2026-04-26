@@ -37,6 +37,16 @@ GodotZealCodeGenerator class >> preprocess: aString [
 	^ aString copyReplaceAll: (Character value: 16r03BB) asString with: 'fn'
 ]
 
+{ #category : 'special-forms' }
+GodotZealCodeGenerator >> baseSpecialForms [
+	"Universal special forms shared across every Zeal dialect. Mirrors
+	 ZealCodeGenerator>>#baseSpecialForms — duplicated here because
+	 GodotZealCodeGenerator is rooted at Object rather than ZealCodeGenerator."
+	^ Dictionary new
+		at: 'source-raw' put: #generateSourceRaw:;
+		yourself
+]
+
 { #category : 'scope' }
 GodotZealCodeGenerator >> bindLocal: aName [
 	"Add a name to the topmost scope frame."
@@ -1871,6 +1881,19 @@ GodotZealCodeGenerator >> generateSlashCall: aListNode [
 	self emit: ')'
 ]
 
+{ #category : 'special-forms' }
+GodotZealCodeGenerator >> generateSourceRaw: aListNode [
+	"source-raw special form: emits the inner string literal verbatim."
+	| arg s |
+	aListNode expressions size < 2 ifTrue: [ ^ self ].
+	arg := aListNode expressions second.
+	s := arg value value.
+	(s size >= 2 and: [ s first = $" and: [ s last = $" ] ]) ifTrue: [
+		s := s copyFrom: 2 to: s size - 1 ].
+	s := (s copyReplaceAll: '\"' with: (String with: $")) copyReplaceAll: '\\' with: '\'.
+	self emit: s
+]
+
 { #category : 'transducers-reducers' }
 GodotZealCodeGenerator >> generateSum: aListNode [
 	^ self emitReducer: 'sum' from: aListNode
@@ -2112,11 +2135,13 @@ GodotZealCodeGenerator >> setRegistry: aRegistry [
 	registry := aRegistry
 ]
 
-{ #category : 'generation' }
+{ #category : 'special-forms' }
 GodotZealCodeGenerator >> specialForms [
-	"Dialect-local special forms + transducer protocol + threading macro."
+	"GodotZeal's local special forms + transducer protocol + threading macro,
+	 composed on top of the universal base."
 	| dict |
-	dict := Dictionary new
+	dict := self baseSpecialForms copy.
+	dict
 		at: 'def' put: #generateDef:;
 		at: 'var' put: #generateVar:;
 		at: 'set' put: #generateSet:;
@@ -2137,8 +2162,7 @@ GodotZealCodeGenerator >> specialForms [
 		at: 'do' put: #generateDo:;
 		at: 'return' put: #generateReturn:;
 		at: 'as' put: #generateAs:;
-		at: '->' put: #generateThreadFirst:;
-		yourself.
+		at: '->' put: #generateThreadFirst:.
 	ZealCodeGenerator transducerFormSelectors keysAndValuesDo: [ :name :sel |
 		dict at: name put: sel ].
 	^ dict

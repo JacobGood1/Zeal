@@ -15,6 +15,21 @@ Class {
 	#package : 'Zeal'
 }
 
+{ #category : 'instance creation' }
+AngelZealDefinitionNode class >> fromSection: aSectionDict [
+	"Build a definition node from a parseSections: result dict (keys:
+	 #zealSource #targetCode #metadata)."
+	| node md name |
+	node := self new.
+	node zealSource: (aSectionDict at: #zealSource ifAbsent: [ '' ]).
+	node targetCode: (aSectionDict at: #targetCode ifAbsent: [ '' ]).
+	md := (aSectionDict at: #metadata ifAbsent: [ Dictionary new ]) copy.
+	node metadata: md.
+	name := md at: #name ifAbsent: [ nil ].
+	name ifNotNil: [ node name: name ].
+	^ node
+]
+
 { #category : 'api' }
 AngelZealDefinitionNode >> file [
 	"FileReference of the .as file containing this definition (walks up
@@ -28,10 +43,15 @@ AngelZealDefinitionNode >> file [
 { #category : 'gt-views' }
 AngelZealDefinitionNode >> gtAngelScriptFor: aView [
 	<gtView>
-	^ aView textEditor
+	| editor font |
+	editor := aView textEditor
 		title: 'AngelScript';
 		priority: 20;
-		text: [ targetCode ifNil: [ '' ] ]
+		styler: AngelScriptStyler new;
+		text: [ targetCode ifNil: [ '' ] ].
+	font := ZealBrowser codeFontName.
+	font ifNotNil: [ editor fontName: font ].
+	^ editor
 ]
 
 { #category : 'gt-views' }
@@ -55,11 +75,15 @@ AngelZealDefinitionNode >> gtRawFor: aView [
 { #category : 'gt-views' }
 AngelZealDefinitionNode >> gtZealSourceFor: aView [
 	<gtView>
-	^ aView textEditor
+	| editor font |
+	editor := aView textEditor
 		title: 'Zeal';
 		priority: 10;
 		styler: (ZealTextStyler new);
-		text: [ zealSource ifNil: [ '' ] ]
+		text: [ zealSource ifNil: [ '' ] ].
+	font := ZealBrowser codeFontName.
+	font ifNotNil: [ editor fontName: font ].
+	^ editor
 ]
 
 { #category : 'api' }

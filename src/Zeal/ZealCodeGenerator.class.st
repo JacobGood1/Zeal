@@ -64,6 +64,24 @@ ZealCodeGenerator class >> transducerFormSelectors [
 		yourself
 ]
 
+{ #category : 'special-forms' }
+ZealCodeGenerator >> baseSpecialForms [
+	"Universal special forms shared across every Zeal dialect. Subclasses
+	 build their full specialForms dict by adding their dialect-specific
+	 entries on top of (or copying) what this returns.
+	 `source-raw` is the escape hatch for inlining target-language code."
+	^ Dictionary new
+		at: 'source-raw' put: #generateSourceRaw:;
+		yourself
+]
+
+{ #category : 'special-forms' }
+ZealCodeGenerator >> baseStatementForms [
+	"Universal forms that appear at statement position rather than expression
+	 position. Subclasses concatenate this with their dialect-specific list."
+	^ #('source-raw')
+]
+
 { #category : 'emitting' }
 ZealCodeGenerator >> dedent [
 	indentLevel := indentLevel - 1
@@ -86,6 +104,22 @@ ZealCodeGenerator >> generate: aZealProgramNode [
 	^ self output
 ]
 
+{ #category : 'special-forms' }
+ZealCodeGenerator >> generateSourceRaw: aListNode [
+	"source-raw special form: emits the inner string literal verbatim into
+	 the target output. Shared across every Zeal dialect — it's the universal
+	 escape hatch for inlining target-language code that has no natural Zeal
+	 surface syntax."
+	| arg s |
+	aListNode expressions size < 2 ifTrue: [ ^ self ].
+	arg := aListNode expressions second.
+	s := arg value value.
+	(s size >= 2 and: [ s first = $" and: [ s last = $" ] ]) ifTrue: [
+		s := s copyFrom: 2 to: s size - 1 ].
+	s := (s copyReplaceAll: '\"' with: (String with: $")) copyReplaceAll: '\\' with: '\'.
+	self emit: s
+]
+
 { #category : 'emitting' }
 ZealCodeGenerator >> indent [
 	indentLevel := indentLevel + 1
@@ -101,6 +135,13 @@ ZealCodeGenerator >> initialize [
 { #category : 'accessing' }
 ZealCodeGenerator >> output [
 	^ stream contents
+]
+
+{ #category : 'special-forms' }
+ZealCodeGenerator >> specialForms [
+	"Default: just the base universal forms. Dialect subclasses override to
+	 add their own keywords (typically copying baseSpecialForms first)."
+	^ self baseSpecialForms
 ]
 
 { #category : 'api' }

@@ -232,19 +232,6 @@ AngelZealCodeGenerator >> generate: aZealProgramNode [
 ]
 
 { #category : 'api' }
-AngelZealCodeGenerator >> generateAngelRaw: aListNode [
-	"angel-raw special form: emits the inner string literal verbatim."
-	| arg s |
-	aListNode expressions size < 2 ifTrue: [ ^ self ].
-	arg := aListNode expressions second.
-	s := arg value value.
-	(s size >= 2 and: [ s first = $" and: [ s last = $" ] ]) ifTrue: [
-		s := s copyFrom: 2 to: s size - 1 ].
-	s := (s copyReplaceAll: '\"' with: (String with: $")) copyReplaceAll: '\\' with: '\'.
-	self emit: s
-]
-
-{ #category : 'api' }
 AngelZealCodeGenerator >> generateAs: aListNode [
 	"(as expr type) -> cast<Type>(expr)"
 	| args typeStr |
@@ -503,10 +490,12 @@ AngelZealCodeGenerator >> generateIf: aListNode [
 	self emitIfChain: args first: true
 ]
 
-{ #category : 'api' }
+{ #category : 'special-forms' }
 AngelZealCodeGenerator >> generateLet: aListNode [
 	"(let [n1 v1 n2 v2 ...] body...) -> { Type N1 = v1; Type N2 = v2; body... }
-	 Emits a block scope so the bindings don't leak."
+	 Emits a block scope so the bindings don't leak. Guards and multi-group
+	 cond-let semantics are handled upstream by the base ZealDesugarer; this
+	 codegen sees only plain sequential bindings."
 	| args binding body bindings |
 	args := aListNode expressions allButFirst.
 	binding := args first.
@@ -747,10 +736,13 @@ AngelZealCodeGenerator >> resolveType: aTypeString [
 	^ aTypeString
 ]
 
-{ #category : 'api' }
+{ #category : 'special-forms' }
 AngelZealCodeGenerator >> specialForms [
-	"AngelZeal's syntactic keywords."
-	^ Dictionary new
+	"AngelZeal's syntactic keywords + the universal base (which contributes
+	 source-raw and any future cross-dialect forms)."
+	| dict |
+	dict := self baseSpecialForms copy.
+	dict
 		at: 'def' put: #generateDef:;
 		at: 'var' put: #generateVar:;
 		at: 'set' put: #generateSet:;
@@ -765,14 +757,14 @@ AngelZealCodeGenerator >> specialForms [
 		at: 'let' put: #generateLet:;
 		at: 'do' put: #generateDo:;
 		at: 'return' put: #generateReturn:;
-		at: 'as' put: #generateAs:;
-		at: 'angel-raw' put: #generateAngelRaw:;
-		yourself
+		at: 'as' put: #generateAs:.
+	^ dict
 ]
 
-{ #category : 'api' }
+{ #category : 'special-forms' }
 AngelZealCodeGenerator >> statementForms [
-	^ #('if' 'when' 'for' 'while' 'do' 'let' 'defn' 'defclass' 'defstruct' 'defnamespace' 'angel-raw')
+	"AngelZeal-specific statement-position forms + the universal base."
+	^ self baseStatementForms , #('if' 'when' 'for' 'while' 'do' 'let' 'defn' 'defclass' 'defstruct' 'defnamespace')
 ]
 
 { #category : 'api' }
@@ -868,17 +860,17 @@ AngelZealCodeGenerator >> visitMap: aNode [
 	self emit: ')'
 ]
 
-{ #category : 'api' }
+{ #category : 'return-handling' }
 AngelZealCodeGenerator >> visitReturnPosition: aNode [
 	"Emit aNode as the producer of a function's return value. Recurses into
-	 if/when/do/let so each branch's leaf becomes `return X;`. For statement-only
-	 forms (set/var/return/angel-raw) emits as plain statements. Plain expressions
-	 get wrapped in `return X;`."
+	 if/when/do/let so each branch's leaf becomes `return X;`. For statement-
+	 only forms (set/var/return/source-raw) emits as plain statements. Plain
+	 expressions get wrapped in `return X;`."
 	(self isReturnControlForm: aNode)
 		ifTrue: [ ^ self emitReturnControl: aNode ].
 	((aNode isKindOf: ZealListNode) and: [ aNode expressions notEmpty
 		and: [ (aNode expressions first isKindOf: ZealSymbolNode)
-		and: [ #('return' 'set' 'var' 'def' 'angel-raw') includes: aNode expressions first value value ] ] ])
+		and: [ #('return' 'set' 'var' 'def' 'source-raw') includes: aNode expressions first value value ] ] ])
 		ifTrue: [ ^ self visitStatement: aNode ].
 	self emit: 'return '.
 	self visitExpression: aNode.

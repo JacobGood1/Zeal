@@ -333,19 +333,33 @@ VerseZealCodeGenerator >> parseBindingVector: aVectorNode bindings: bindings pre
 					ifFalse: [ predicates add: item. i := i + 1 ] ] ]
 ]
 
-{ #category : 'generation' }
+{ #category : 'special-forms' }
 VerseZealCodeGenerator >> specialForms [
-	^ Dictionary new
-		at: 'def' put: #generateDef:; at: 'var' put: #generateVar:; at: 'set' put: #generateSet:;
-		at: 'defn' put: #generateDefn:; at: 'defstruct' put: #generateDefstruct:;
-		at: 'defenum' put: #generateDefenum:; at: 'defclass' put: #generateDefclass:;
-		at: 'definterface' put: #generateDefinterface:; at: 'if' put: #generateIf:;
-		at: 'let' put: #generateLet:; at: 'for' put: #generateFor:;
-		at: 'loop' put: #generateLoop:; at: 'block' put: #generateBlock:;
-		at: 'defer' put: #generateDefer:; at: 'case' put: #generateCase:;
-		at: 'module' put: #generateModule:; at: 'using' put: #generateUsing:;
-		at: 'do' put: #generateDo:; at: 'break' put: #generateBreak:;
-		at: 'return' put: #generateReturn:; yourself
+	"VerseZeal's syntactic keywords composed onto the universal base."
+	| dict |
+	dict := self baseSpecialForms copy.
+	dict
+		at: 'def' put: #generateDef:;
+		at: 'var' put: #generateVar:;
+		at: 'set' put: #generateSet:;
+		at: 'defn' put: #generateDefn:;
+		at: 'defstruct' put: #generateDefstruct:;
+		at: 'defenum' put: #generateDefenum:;
+		at: 'defclass' put: #generateDefclass:;
+		at: 'definterface' put: #generateDefinterface:;
+		at: 'if' put: #generateIf:;
+		at: 'let' put: #generateLet:;
+		at: 'for' put: #generateFor:;
+		at: 'loop' put: #generateLoop:;
+		at: 'block' put: #generateBlock:;
+		at: 'defer' put: #generateDefer:;
+		at: 'case' put: #generateCase:;
+		at: 'module' put: #generateModule:;
+		at: 'using' put: #generateUsing:;
+		at: 'do' put: #generateDo:;
+		at: 'break' put: #generateBreak:;
+		at: 'return' put: #generateReturn:.
+	^ dict
 ]
 
 { #category : 'generation' }
