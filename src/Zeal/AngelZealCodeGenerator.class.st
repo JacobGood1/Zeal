@@ -16,6 +16,29 @@ AngelZealCodeGenerator >> addLocal: aName [
 ]
 
 { #category : 'api' }
+AngelZealCodeGenerator >> emitDefBinding: nameNode value: valueNode [
+	"Emit one `const Type Name = value` line."
+	| name typeStr inferred |
+	typeStr := nil.
+	(nameNode isKindOf: ZealColonChainNode) ifTrue: [
+		| resolved |
+		resolved := self resolveColonChain: nameNode value value.
+		name := resolved at: #name.
+		typeStr := self resolveType: (resolved at: #type) ]
+	ifFalse: [ name := nameNode value value ].
+	(typeStr isNil and: [ valueNode notNil ]) ifTrue: [
+		inferred := self typeInferencer ifNotNil: [ :inf | inf inferTypeFor: valueNode ].
+		inferred ifNotNil: [ typeStr := self resolveType: inferred ] ].
+	self emit: 'const '.
+	typeStr ifNotNil: [ self emit: typeStr. self emit: ' ' ].
+	typeStr ifNil: [ self emit: 'auto ' ].
+	self emit: (self toPascalCase: name).
+	valueNode ifNotNil: [
+		self emit: ' = '.
+		self visitExpression: valueNode ]
+]
+
+{ #category : 'api' }
 AngelZealCodeGenerator >> emitIfChain: args first: isFirst [
 	"Recursively emit if / else if / else chain."
 	args isEmpty ifTrue: [ ^ self ].
@@ -52,12 +75,173 @@ AngelZealCodeGenerator >> emitParam: aParamNode [
 ]
 
 { #category : 'api' }
+AngelZealCodeGenerator >> emitReturnControl: aListNode [
+	"Emit a control form (if/when/do/let) as a statement, but with each branch's
+	 last expression in return position."
+	| head |
+	head := aListNode expressions first value value.
+	head = 'if' ifTrue: [ ^ self emitReturnIf: aListNode ].
+	head = 'when' ifTrue: [ ^ self emitReturnWhen: aListNode ].
+	head = 'do' ifTrue: [ ^ self emitReturnDo: aListNode ].
+	head = 'let' ifTrue: [ ^ self emitReturnLet: aListNode ].
+	"Fallback — shouldn't happen if isReturnControlForm: gated correctly."
+	self visitStatement: aListNode
+]
+
+{ #category : 'api' }
+AngelZealCodeGenerator >> emitReturnDo: aListNode [
+	"(do e1 e2 ... eN) in return position — first N-1 are statements, last
+	 goes in return position. Wrapped in a block scope to mirror generateDo:."
+	| body |
+	body := aListNode expressions allButFirst.
+	self emit: '{'.
+	self indent.
+	body doWithIndex: [ :e :idx |
+		self nl.
+		idx = body size
+			ifTrue: [ self visitReturnPosition: e ]
+			ifFalse: [ self visitStatement: e ] ].
+	self dedent.
+	self nl. self emit: '}'
+]
+
+{ #category : 'api' }
+AngelZealCodeGenerator >> emitReturnIf: aListNode [
+	"(if c1 t1 c2 t2 ... else) — emit if/else-if/else with each branch body
+	 in return position."
+	| args |
+	args := aListNode expressions allButFirst.
+	self emitReturnIfChain: args first: true
+]
+
+{ #category : 'api' }
+AngelZealCodeGenerator >> emitReturnIfChain: args first: isFirst [
+	"Like emitIfChain:first: but each then/else body emitted in return position."
+	args isEmpty ifTrue: [ ^ self ].
+	args size = 1 ifTrue: [
+		self emit: ' else {'.
+		self indent. self nl. self visitReturnPosition: args first. self dedent.
+		self nl. self emit: '}'.
+		^ self ].
+	isFirst ifFalse: [ self emit: ' else if (' ] ifTrue: [ self emit: 'if (' ].
+	self visitExpression: args first.
+	self emit: ') {'.
+	self indent. self nl. self visitReturnPosition: args second. self dedent.
+	self nl. self emit: '}'.
+	args size > 2 ifTrue: [
+		self emitReturnIfChain: (args copyFrom: 3 to: args size) first: false ]
+]
+
+{ #category : 'api' }
+AngelZealCodeGenerator >> emitReturnLet: aListNode [
+	"(let [bindings] body...) in return position — bindings emitted as `var`s,
+	 last body expr in return position."
+	| args binding body bindings |
+	args := aListNode expressions allButFirst.
+	binding := args first.
+	body := args allButFirst.
+	(binding isKindOf: ZealVectorNode) ifFalse: [
+		self emit: '/* let: first arg must be a vector */'. ^ self ].
+	bindings := binding expressions.
+	self emit: '{'.
+	self pushScope.
+	self indent.
+	1 to: bindings size by: 2 do: [ :i |
+		| nameNode valNode name typeStr pascal |
+		nameNode := bindings at: i.
+		valNode := i + 1 <= bindings size ifTrue: [ bindings at: i + 1 ] ifFalse: [ nil ].
+		typeStr := nil.
+		(nameNode isKindOf: ZealColonChainNode)
+			ifTrue: [
+				| resolved |
+				resolved := self resolveColonChain: nameNode value value.
+				name := resolved at: #name.
+				typeStr := self resolveType: (resolved at: #type) ]
+			ifFalse: [ name := nameNode value value ].
+		pascal := self toPascalCase: name.
+		self nl.
+		typeStr ifNotNil: [ self emit: typeStr. self emit: ' ' ] ifNil: [ self emit: 'auto ' ].
+		self emit: pascal.
+		valNode ifNotNil: [ self emit: ' = '. self visitExpression: valNode ].
+		stream nextPut: $;.
+		self addLocal: pascal ].
+	body doWithIndex: [ :e :idx |
+		self nl.
+		idx = body size
+			ifTrue: [ self visitReturnPosition: e ]
+			ifFalse: [ self visitStatement: e ] ].
+	self dedent.
+	self nl. self emit: '}'.
+	self popScope
+]
+
+{ #category : 'api' }
+AngelZealCodeGenerator >> emitReturnWhen: aListNode [
+	"(when cond body...) — only the last body expr is in return position;
+	 earlier bodies are statements. If the condition fails the function
+	 implicitly returns the default value (caller's problem)."
+	| args body |
+	args := aListNode expressions allButFirst.
+	self emit: 'if ('.
+	self visitExpression: args first.
+	self emit: ') {'.
+	self indent.
+	body := args allButFirst.
+	body doWithIndex: [ :e :idx |
+		self nl.
+		idx = body size
+			ifTrue: [ self visitReturnPosition: e ]
+			ifFalse: [ self visitStatement: e ] ].
+	self dedent.
+	self nl. self emit: '}'
+]
+
+{ #category : 'api' }
+AngelZealCodeGenerator >> emitVarBinding: nameNode value: valueNode [
+	"Emit one `Type Name = value` line. Type is taken from a colon-chain on the
+	 name, or inferred via the dialect's typeInferencer when absent.
+	 Registers the resulting Pascal-cased name in the current scope."
+	| name typeStr pascalName inferred |
+	typeStr := nil.
+	(nameNode isKindOf: ZealColonChainNode) ifTrue: [
+		| resolved |
+		resolved := self resolveColonChain: nameNode value value.
+		name := resolved at: #name.
+		typeStr := self resolveType: (resolved at: #type) ]
+	ifFalse: [ name := nameNode value value ].
+	(typeStr isNil and: [ valueNode notNil ]) ifTrue: [
+		inferred := self typeInferencer ifNotNil: [ :inf | inf inferTypeFor: valueNode ].
+		inferred ifNotNil: [ typeStr := self resolveType: inferred ] ].
+	pascalName := self toPascalCase: name.
+	typeStr ifNotNil: [ self emit: typeStr. self emit: ' ' ].
+	typeStr ifNil: [ self emit: 'auto ' ].
+	self emit: pascalName.
+	valueNode ifNotNil: [
+		self emit: ' = '.
+		self visitExpression: valueNode ].
+	self addLocal: pascalName
+]
+
+{ #category : 'api' }
 AngelZealCodeGenerator >> generate: aZealProgramNode [
 	"Top-level entry: emit each top-level form followed by a blank line."
 	aZealProgramNode expressions
 		do: [ :expr | self visitTopLevel: expr ]
 		separatedBy: [ self nl. self nl ].
 	^ self output
+]
+
+{ #category : 'api' }
+AngelZealCodeGenerator >> generateAngelRaw: aListNode [
+	"angel-raw special form: emits the inner string literal verbatim."
+	| arg s |
+	aListNode expressions size < 2 ifTrue: [ ^ self ].
+	arg := aListNode expressions second.
+	s := arg value value.
+	(s size >= 2 and: [ s first = $" and: [ s last = $" ] ]) ifTrue: [
+		s := s copyFrom: 2 to: s size - 1 ].
+	s := (s copyReplaceAll: '\"' with: (String with: $")) copyReplaceAll: '\\' with: '\'.
+	self emit: s
 ]
 
 { #category : 'api' }
@@ -77,26 +261,20 @@ AngelZealCodeGenerator >> generateAs: aListNode [
 
 { #category : 'api' }
 AngelZealCodeGenerator >> generateDef: aListNode [
-	"(def name:type value) -> const Type Name = value
-	 (def name value) -> auto Name = value (type inferred)"
-	| exprs nameNode valueNode name typeStr |
-	exprs := aListNode expressions.
-	nameNode := exprs second.
-	valueNode := exprs size >= 3 ifTrue: [ exprs third ] ifFalse: [ nil ].
-	typeStr := nil.
-	(nameNode isKindOf: ZealColonChainNode) ifTrue: [
-		| resolved |
-		resolved := self resolveColonChain: nameNode value value.
-		name := resolved at: #name.
-		typeStr := self resolveType: (resolved at: #type) ]
-	ifFalse: [ name := nameNode value value ].
-	self emit: 'const '.
-	typeStr ifNotNil: [ self emit: typeStr. self emit: ' ' ].
-	typeStr ifNil: [ self emit: 'auto ' ].
-	self emit: (self toPascalCase: name).
-	valueNode ifNotNil: [
-		self emit: ' = '.
-		self visitExpression: valueNode ]
+	"(def name [:type] value) -> const Type Name = value
+	 (def n1 v1 n2 v2 …) -> const T1 N1 = V1; const T2 N2 = V2; …
+	 Type is taken from a colon-chain on the name, or inferred via the
+	 dialect's typeInferencer when absent."
+	| exprs pairs |
+	exprs := aListNode expressions allButFirst.
+	exprs isEmpty ifTrue: [ ^ self ].
+	pairs := OrderedCollection new.
+	1 to: exprs size by: 2 do: [ :i |
+		pairs add: ((exprs at: i)
+			-> (i + 1 <= exprs size ifTrue: [ exprs at: i + 1 ] ifFalse: [ nil ])) ].
+	pairs doWithIndex: [ :pair :idx |
+		idx > 1 ifTrue: [ stream nextPut: $;. self nl ].
+		self emitDefBinding: pair key value: pair value ]
 ]
 
 { #category : 'api' }
@@ -129,8 +307,9 @@ AngelZealCodeGenerator >> generateDefclass: aListNode [
 
 { #category : 'api' }
 AngelZealCodeGenerator >> generateDefn: aListNode [
-	"(defn name:retType [p1:t1 p2:t2 ...] body...) -> retType Name(t1 P1, t2 P2) { body }
-	 Last body expression is auto-returned if retType is non-void."
+	"(defn name:retType [params] body...) -> retType Name(...) { body }
+	 With non-void retType, the last body expr is emitted in return position
+	 — recursing into if/when/do/let so each branch leaf gets `return`."
 	| exprs nameNode retType name params bodyExprs pascalName implicitReturn |
 	exprs := aListNode expressions.
 	nameNode := exprs second.
@@ -172,18 +351,33 @@ AngelZealCodeGenerator >> generateDefn: aListNode [
 	self indent.
 	bodyExprs doWithIndex: [ :expr :idx |
 		self nl.
-		(implicitReturn
-			and: [ idx = bodyExprs size
-			and: [ (self isStatementShaped: expr) not ] ])
-			ifTrue: [
-				self emit: 'return '.
-				self visitExpression: expr.
-				stream nextPut: $; ]
+		(implicitReturn and: [ idx = bodyExprs size ])
+			ifTrue: [ self visitReturnPosition: expr ]
 			ifFalse: [ self visitStatement: expr ] ].
 	self dedent.
 	self nl.
 	self emit: '}'.
 	self popScope
+]
+
+{ #category : 'api' }
+AngelZealCodeGenerator >> generateDefnamespace: aListNode [
+	"(defnamespace name body...) -> namespace Name { body... }
+	 With no body, emits an empty namespace block."
+	| exprs nameNode body name |
+	exprs := aListNode expressions.
+	nameNode := exprs second.
+	(nameNode isKindOf: ZealColonChainNode)
+		ifTrue: [ name := (self resolveColonChain: nameNode value value) at: #name ]
+		ifFalse: [ name := nameNode value value ].
+	body := exprs allButFirst allButFirst.
+	self emit: 'namespace '.
+	self emit: (self toPascalCase: name).
+	self emit: ' {'.
+	self indent.
+	body do: [ :e | self nl. self visitStatement: e ].
+	self dedent.
+	self nl. self emit: '}'
 ]
 
 { #category : 'api' }
@@ -400,28 +594,20 @@ AngelZealCodeGenerator >> generateSet: aListNode [
 
 { #category : 'api' }
 AngelZealCodeGenerator >> generateVar: aListNode [
-	"(var name:type value) -> Type Name = value
-	 (var name value) -> auto Name = value
-	 Registers Name in the current scope so later references resolve as locals."
-	| exprs nameNode valueNode name typeStr pascalName |
-	exprs := aListNode expressions.
-	nameNode := exprs second.
-	valueNode := exprs size >= 3 ifTrue: [ exprs third ] ifFalse: [ nil ].
-	typeStr := nil.
-	(nameNode isKindOf: ZealColonChainNode) ifTrue: [
-		| resolved |
-		resolved := self resolveColonChain: nameNode value value.
-		name := resolved at: #name.
-		typeStr := self resolveType: (resolved at: #type) ]
-	ifFalse: [ name := nameNode value value ].
-	pascalName := self toPascalCase: name.
-	typeStr ifNotNil: [ self emit: typeStr. self emit: ' ' ].
-	typeStr ifNil: [ self emit: 'auto ' ].
-	self emit: pascalName.
-	valueNode ifNotNil: [
-		self emit: ' = '.
-		self visitExpression: valueNode ].
-	self addLocal: pascalName
+	"(var name value) — single binding, with optional :type
+	 (var n1 v1 n2 v2 ...) — multi-binding; emits one declaration per pair
+	   separated by `;` so each becomes its own AngelScript local."
+	| exprs pairs |
+	exprs := aListNode expressions allButFirst.
+	exprs isEmpty ifTrue: [ ^ self ].
+	"Even number → list of (name, value) pairs. Odd → last one's a bare name (no init)."
+	pairs := OrderedCollection new.
+	1 to: exprs size by: 2 do: [ :i |
+		pairs add: ((exprs at: i)
+			-> (i + 1 <= exprs size ifTrue: [ exprs at: i + 1 ] ifFalse: [ nil ])) ].
+	pairs doWithIndex: [ :pair :idx |
+		idx > 1 ifTrue: [ stream nextPut: $;. self nl ].
+		self emitVarBinding: pair key value: pair value ]
 ]
 
 { #category : 'api' }
@@ -468,6 +654,16 @@ AngelZealCodeGenerator >> isLocal: aName [
 { #category : 'api' }
 AngelZealCodeGenerator >> isOperator: aString [
 	^ self operatorSet includes: aString
+]
+
+{ #category : 'api' }
+AngelZealCodeGenerator >> isReturnControlForm: aNode [
+	"True if aNode is an if/when/do/let — control structures whose last leaf
+	 should be wrapped in `return` when in return position."
+	(aNode isKindOf: ZealListNode) ifFalse: [ ^ false ].
+	aNode expressions isEmpty ifTrue: [ ^ false ].
+	(aNode expressions first isKindOf: ZealSymbolNode) ifFalse: [ ^ false ].
+	^ #('if' 'when' 'do' 'let') includes: aNode expressions first value value
 ]
 
 { #category : 'api' }
@@ -553,8 +749,7 @@ AngelZealCodeGenerator >> resolveType: aTypeString [
 
 { #category : 'api' }
 AngelZealCodeGenerator >> specialForms [
-	"AngelScript-facing special forms. Keys are the Zeal head tokens; values
-	 are selectors on this class."
+	"AngelZeal's syntactic keywords."
 	^ Dictionary new
 		at: 'def' put: #generateDef:;
 		at: 'var' put: #generateVar:;
@@ -562,6 +757,7 @@ AngelZealCodeGenerator >> specialForms [
 		at: 'defn' put: #generateDefn:;
 		at: 'defclass' put: #generateDefclass:;
 		at: 'defstruct' put: #generateDefstruct:;
+		at: 'defnamespace' put: #generateDefnamespace:;
 		at: 'if' put: #generateIf:;
 		at: 'when' put: #generateWhen:;
 		at: 'for' put: #generateFor:;
@@ -570,16 +766,13 @@ AngelZealCodeGenerator >> specialForms [
 		at: 'do' put: #generateDo:;
 		at: 'return' put: #generateReturn:;
 		at: 'as' put: #generateAs:;
+		at: 'angel-raw' put: #generateAngelRaw:;
 		yourself
 ]
 
 { #category : 'api' }
 AngelZealCodeGenerator >> statementForms [
-	"Special-form head tokens whose direct emission is statement-shaped —
-	 they produce their own trailing structure and should NOT be wrapped with ;
-	 when they appear at statement position. Everything else (calls, operators,
-	 literals) is expression-shaped and gets a ; when used as a statement."
-	^ #('if' 'when' 'for' 'while' 'do' 'let' 'defn' 'defclass' 'defstruct')
+	^ #('if' 'when' 'for' 'while' 'do' 'let' 'defn' 'defclass' 'defstruct' 'defnamespace' 'angel-raw')
 ]
 
 { #category : 'api' }
@@ -595,6 +788,11 @@ AngelZealCodeGenerator >> toPascalCase: aString [
 					capitalize
 						ifTrue: [ s nextPut: ch asUppercase. capitalize := false ]
 						ifFalse: [ s nextPut: ch ] ] ] ]
+]
+
+{ #category : 'api' }
+AngelZealCodeGenerator >> typeInferencer [
+	^ AngelZealTypeInferencer default
 ]
 
 { #category : 'api' }
@@ -668,6 +866,23 @@ AngelZealCodeGenerator >> visitMap: aNode [
 		self emit: ' => '.
 		(i + 1 <= exprs size) ifTrue: [ self visitExpression: (exprs at: i + 1) ] ].
 	self emit: ')'
+]
+
+{ #category : 'api' }
+AngelZealCodeGenerator >> visitReturnPosition: aNode [
+	"Emit aNode as the producer of a function's return value. Recurses into
+	 if/when/do/let so each branch's leaf becomes `return X;`. For statement-only
+	 forms (set/var/return/angel-raw) emits as plain statements. Plain expressions
+	 get wrapped in `return X;`."
+	(self isReturnControlForm: aNode)
+		ifTrue: [ ^ self emitReturnControl: aNode ].
+	((aNode isKindOf: ZealListNode) and: [ aNode expressions notEmpty
+		and: [ (aNode expressions first isKindOf: ZealSymbolNode)
+		and: [ #('return' 'set' 'var' 'def' 'angel-raw') includes: aNode expressions first value value ] ] ])
+		ifTrue: [ ^ self visitStatement: aNode ].
+	self emit: 'return '.
+	self visitExpression: aNode.
+	stream nextPut: $;
 ]
 
 { #category : 'api' }

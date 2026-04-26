@@ -161,6 +161,15 @@ ZealBrowser >> deindentLine: zealEditor [
 		apply
 ]
 
+{ #category : 'api' }
+ZealBrowser >> displayNameForFile: aFileRef [
+	"Tree-row label for a file reference. Folders use their basename; files
+	 hide their extension so a *.as / *.zeal file shows as just `Plain`.
+	 Shared across every Zeal dialect's file-tree browser."
+	aFileRef isDirectory ifTrue: [ ^ aFileRef basename ].
+	^ aFileRef basenameWithoutExtension
+]
+
 { #category : 'editor' }
 ZealBrowser >> duplicateLine: zealEditor [
 	"Duplicate the current line below"

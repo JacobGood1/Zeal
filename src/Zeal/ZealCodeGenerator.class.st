@@ -103,6 +103,14 @@ ZealCodeGenerator >> output [
 	^ stream contents
 ]
 
+{ #category : 'api' }
+ZealCodeGenerator >> typeInferencer [
+	"Each dialect's codegen returns its dialect's ZealTypeInferencer here.
+	 Used by var/def/let/etc. to infer a type when none is annotated.
+	 Base returns the primitive-only inferencer; subclasses override."
+	^ ZealTypeInferencer default
+]
+
 { #category : 'visiting' }
 ZealCodeGenerator >> visitExpression: aNode [
 	(aNode isKindOf: ZealListNode) ifTrue: [ ^ self visitList: aNode ].
