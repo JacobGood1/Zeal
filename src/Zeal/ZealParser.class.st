@@ -7,7 +7,7 @@ Class {
 
 { #category : 'generated-accessing' }
 ZealParser class >> cacheId [
-	^'2026-04-04T20:25:55.607-04:00'
+	^'2026-04-26T12:12:14.935-04:00'
 ]
 
 { #category : 'generated' }
@@ -27,6 +27,7 @@ ZealParser class >> definitionComment [
 <range> : [0-9]+ \.\. [0-9]+ ;
 <colonChain> : [a-zA-Z_] [a-zA-Z0-9_\-]* (\: \[\] [a-zA-Z_] [a-zA-Z0-9_\-\?]* | \: [a-zA-Z_@\?] [a-zA-Z0-9_\-\?]*)+ ;
 <symbol> : [a-zA-Z_!\+\-\*\/\=\<\>\&\.\?\@\#] [a-zA-Z0-9_!\+\-\*\/\=\<\>\&\.\?\@\#\-]* ;
+<path> : [a-zA-Z_] [a-zA-Z0-9_\-]* (\/ ([a-zA-Z_!\+\-\*\=\<\>\&\.\?\@\#] [a-zA-Z0-9_!\+\-\*\=\<\>\&\.\?\@\#\-]* | \: [a-zA-Z_] [a-zA-Z0-9_\-]* | [0-9]+))+ ;
 <keyword> : \: [a-zA-Z_] [a-zA-Z0-9_\-]* ;
 <leftParen> : \( ;
 <rightParen> : \) ;
@@ -43,44 +44,46 @@ Vector : <leftBracket> 'leftBracket' Expressions <rightBracket> 'rightBracket' {
 Map : <leftBrace> 'leftBrace' MapPairs <rightBrace> 'rightBrace' {{}} ;
 MapPairs : | MapPairs MapPair 'pair' ;
 MapPair : Expression 'key' Expression 'value' {{}} ;
-Atom 
-  : <float> 'value' {{FloatLiteral}} 
-  | <integer> 'value' {{IntegerLiteral}} 
-  | <hex> 'value' {{HexLiteral}}
-  | <string> 'value' {{StringLiteral}} 
-  | <charLiteral> 'value' {{CharLiteral}}
-  | <range> 'value' {{RangeLiteral}}
-  | <colonChain> 'value' {{ColonChain}} 
-  | <symbol> 'value' {{Symbol}} 
-  | <keyword> 'value' {{Keyword}} 
-  ;"
+
+Atom   : <float> 'value' {{FloatLiteral}}
+       | <integer> 'value' {{IntegerLiteral}}
+       | <hex> 'value' {{HexLiteral}}
+       | <string> 'value' {{StringLiteral}}
+       | <charLiteral> 'value' {{CharLiteral}}
+       | <range> 'value' {{RangeLiteral}}
+       | <colonChain> 'value' {{ColonChain}}
+       | <path> 'value' {{Symbol}}
+       | <symbol> 'value' {{Symbol}}
+       | <keyword> 'value' {{Keyword}}
+       ;"
 ]
 
 { #category : 'generated' }
 ZealParser class >> reduceTable [
 ^#(
-	#(20 0 #reduceActionForExpressions1: 768001 false) 
-	#(19 1 #reduceActionForProgram1: 738305 false) 
-	#(27 1 #reduceActionForAtom1: 1200129 false) 
-	#(27 1 #reduceActionForAtom2: 1200130 false) 
-	#(27 1 #reduceActionForAtom3: 1200131 false) 
-	#(27 1 #reduceActionForAtom4: 1200132 false) 
-	#(27 1 #reduceActionForAtom5: 1200133 false) 
-	#(27 1 #reduceActionForAtom6: 1200134 false) 
-	#(27 1 #reduceActionForAtom7: 1200135 false) 
-	#(27 1 #reduceActionForAtom8: 1200136 false) 
-	#(27 1 #reduceActionForAtom9: 1200137 false) 
-	#(25 0 #reduceActionForExpressions1: 1105921 false) 
-	#(20 2 #reduceActionForExpressions2: 768002 false) 
-	#(21 1 #liftFirstValue: 823298 false) 
-	#(21 1 #liftFirstValue: 823299 false) 
-	#(21 1 #liftFirstValue: 823300 false) 
-	#(21 1 #liftFirstValue: 823297 false) 
-	#(22 3 #reduceActionForList1: 866305 false) 
-	#(23 3 #reduceActionForVector1: 944129 false) 
-	#(24 3 #reduceActionForMap1: 1032193 false) 
-	#(25 2 #reduceActionForExpressions2: 1105922 false) 
-	#(26 2 #reduceActionForMapPair1: 1145857 false)
+	#(21 0 #reduceActionForExpressions1: 928769 false) 
+	#(20 1 #reduceActionForProgram1: 899073 false) 
+	#(28 1 #reduceActionForAtom1: 1361921 false) 
+	#(28 1 #reduceActionForAtom2: 1361922 false) 
+	#(28 1 #reduceActionForAtom3: 1361923 false) 
+	#(28 1 #reduceActionForAtom4: 1361924 false) 
+	#(28 1 #reduceActionForAtom5: 1361925 false) 
+	#(28 1 #reduceActionForAtom6: 1361926 false) 
+	#(28 1 #reduceActionForAtom7: 1361927 false) 
+	#(28 1 #reduceActionForAtom9: 1361929 false) 
+	#(28 1 #reduceActionForAtom9: 1361928 false) 
+	#(28 1 #reduceActionForAtom10: 1361930 false) 
+	#(26 0 #reduceActionForExpressions1: 1266689 false) 
+	#(21 2 #reduceActionForExpressions2: 928770 false) 
+	#(22 1 #liftFirstValue: 984066 false) 
+	#(22 1 #liftFirstValue: 984067 false) 
+	#(22 1 #liftFirstValue: 984068 false) 
+	#(22 1 #liftFirstValue: 984065 false) 
+	#(23 3 #reduceActionForList1: 1027073 false) 
+	#(24 3 #reduceActionForVector1: 1104897 false) 
+	#(25 3 #reduceActionForMap1: 1192961 false) 
+	#(26 2 #reduceActionForExpressions2: 1266690 false) 
+	#(27 2 #reduceActionForMapPair1: 1306625 false)
 	).
 ]
 
@@ -96,47 +99,56 @@ ZealParser class >> startingStateForProgram [
 
 { #category : 'generated' }
 ZealParser class >> symbolNames [
-	^ #('<whitespace>' '<comment>' '<float>' '<integer>' '<hex>' '<string>' '<charLiteral>' '<range>' '<colonChain>' '<symbol>' '<keyword>' '<leftParen>' '<rightParen>' '<leftBracket>' '<rightBracket>' '<leftBrace>' '<rightBrace>' 'B e g i n' 'Program' 'Expressions' 'Expression' 'List' 'Vector' 'Map' 'MapPairs' 'MapPair' 'Atom' 'E O F' 'error')
+	^ #('<whitespace>' '<comment>' '<float>' '<integer>' '<hex>' '<string>' '<charLiteral>' '<range>' '<colonChain>' '<symbol>' '<path>' '<keyword>' '<leftParen>' '<rightParen>' '<leftBracket>' '<rightBracket>' '<leftBrace>' '<rightBrace>' 'B e g i n' 'Program' 'Expressions' 'Expression' 'List' 'Vector' 'Map' 'MapPairs' 'MapPair' 'Atom' 'E O F' 'error')
 ]
 
 { #category : 'generated' }
 ZealParser class >> symbolTypes [
-	^ #(#SmaCCToken #SmaCCToken #SmaCCToken #SmaCCToken #SmaCCToken #SmaCCToken #SmaCCToken #SmaCCToken #SmaCCToken #SmaCCToken #SmaCCToken #SmaCCToken #SmaCCToken #SmaCCToken #SmaCCToken #SmaCCToken #SmaCCToken #ZealProgramNode #ZealProgramNode #OrderedCollection #ZealProgramNode #ZealListNode #ZealVectorNode #ZealMapNode #OrderedCollection #ZealMapPairNode #ZealProgramNode #SmaCCToken #SmaCCErrorNode)
+	^ #(#SmaCCToken #SmaCCToken #SmaCCToken #SmaCCToken #SmaCCToken #SmaCCToken #SmaCCToken #SmaCCToken #SmaCCToken #SmaCCToken #SmaCCToken #SmaCCToken #SmaCCToken #SmaCCToken #SmaCCToken #SmaCCToken #SmaCCToken #SmaCCToken #ZealProgramNode #ZealProgramNode #OrderedCollection #ZealProgramNode #ZealListNode #ZealVectorNode #ZealMapNode #OrderedCollection #ZealMapPairNode #ZealProgramNode #SmaCCToken #SmaCCErrorNode)
 ]
 
 { #category : 'generated' }
 ZealParser class >> transitionTable [
 ^#(
-#[1 0 6 0 3 0 6 0 4 0 6 0 5 0 6 0 6 0 6 0 7 0 6 0 8 0 6 0 9 0 6 0 10 0 6 0 11 0 6 0 12 0 6 0 14 0 6 0 16 0 9 0 19 0 13 0 20 0 6 0 28] 
-#[0 0 0 0 28] 
-#[1 0 17 0 3 0 21 0 4 0 25 0 5 0 29 0 6 0 33 0 7 0 37 0 8 0 41 0 9 0 45 0 10 0 49 0 11 0 53 0 12 0 57 0 14 0 61 0 16 0 65 0 21 0 65 0 22 0 65 0 23 0 65 0 24 0 65 0 27 0 10 0 28] 
-#[0 0 14 0 3 0 4 0 5 0 6 0 7 0 8 0 9 0 10 0 11 0 12 0 13 0 14 0 15 0 16 0 17 0 28] 
-#[0 0 18 0 3 0 4 0 5 0 6 0 7 0 8 0 9 0 10 0 11 0 12 0 13 0 14 0 15 0 16 0 17 0 28] 
-#[0 0 22 0 3 0 4 0 5 0 6 0 7 0 8 0 9 0 10 0 11 0 12 0 13 0 14 0 15 0 16 0 17 0 28] 
-#[0 0 26 0 3 0 4 0 5 0 6 0 7 0 8 0 9 0 10 0 11 0 12 0 13 0 14 0 15 0 16 0 17 0 28] 
-#[0 0 30 0 3 0 4 0 5 0 6 0 7 0 8 0 9 0 10 0 11 0 12 0 13 0 14 0 15 0 16 0 17 0 28] 
-#[0 0 34 0 3 0 4 0 5 0 6 0 7 0 8 0 9 0 10 0 11 0 12 0 13 0 14 0 15 0 16 0 17 0 28] 
-#[0 0 38 0 3 0 4 0 5 0 6 0 7 0 8 0 9 0 10 0 11 0 12 0 13 0 14 0 15 0 16 0 17 0 28] 
-#[0 0 42 0 3 0 4 0 5 0 6 0 7 0 8 0 9 0 10 0 11 0 12 0 13 0 14 0 15 0 16 0 17 0 28] 
-#[0 0 46 0 3 0 4 0 5 0 6 0 7 0 8 0 9 0 10 0 11 0 12 0 13 0 14 0 15 0 16 0 17 0 28] 
-#[1 0 6 0 3 0 6 0 4 0 6 0 5 0 6 0 6 0 6 0 7 0 6 0 8 0 6 0 9 0 6 0 10 0 6 0 11 0 6 0 12 0 6 0 13 0 6 0 14 0 6 0 16 0 85 0 20] 
-#[1 0 6 0 3 0 6 0 4 0 6 0 5 0 6 0 6 0 6 0 7 0 6 0 8 0 6 0 9 0 6 0 10 0 6 0 11 0 6 0 12 0 6 0 14 0 6 0 15 0 6 0 16 0 89 0 20] 
-#[1 0 50 0 3 0 50 0 4 0 50 0 5 0 50 0 6 0 50 0 7 0 50 0 8 0 50 0 9 0 50 0 10 0 50 0 11 0 50 0 12 0 50 0 14 0 50 0 16 0 50 0 17 0 93 0 25] 
-#[0 0 54 0 3 0 4 0 5 0 6 0 7 0 8 0 9 0 10 0 11 0 12 0 13 0 14 0 15 0 16 0 28] 
-#[0 0 58 0 3 0 4 0 5 0 6 0 7 0 8 0 9 0 10 0 11 0 12 0 13 0 14 0 15 0 16 0 17 0 28] 
-#[0 0 62 0 3 0 4 0 5 0 6 0 7 0 8 0 9 0 10 0 11 0 12 0 13 0 14 0 15 0 16 0 17 0 28] 
-#[0 0 66 0 3 0 4 0 5 0 6 0 7 0 8 0 9 0 10 0 11 0 12 0 13 0 14 0 15 0 16 0 17 0 28] 
-#[0 0 70 0 3 0 4 0 5 0 6 0 7 0 8 0 9 0 10 0 11 0 12 0 13 0 14 0 15 0 16 0 17 0 28] 
-#[1 0 17 0 3 0 21 0 4 0 25 0 5 0 29 0 6 0 33 0 7 0 37 0 8 0 41 0 9 0 45 0 10 0 49 0 11 0 53 0 12 0 97 0 13 0 57 0 14 0 61 0 16 0 65 0 21 0 65 0 22 0 65 0 23 0 65 0 24 0 65 0 27] 
-#[1 0 17 0 3 0 21 0 4 0 25 0 5 0 29 0 6 0 33 0 7 0 37 0 8 0 41 0 9 0 45 0 10 0 49 0 11 0 53 0 12 0 57 0 14 0 101 0 15 0 61 0 16 0 65 0 21 0 65 0 22 0 65 0 23 0 65 0 24 0 65 0 27] 
-#[1 0 17 0 3 0 21 0 4 0 25 0 5 0 29 0 6 0 33 0 7 0 37 0 8 0 41 0 9 0 45 0 10 0 49 0 11 0 53 0 12 0 57 0 14 0 61 0 16 0 105 0 17 0 109 0 21 0 109 0 22 0 109 0 23 0 109 0 24 0 113 0 26 0 109 0 27] 
-#[0 0 74 0 3 0 4 0 5 0 6 0 7 0 8 0 9 0 10 0 11 0 12 0 13 0 14 0 15 0 16 0 17 0 28] 
-#[0 0 78 0 3 0 4 0 5 0 6 0 7 0 8 0 9 0 10 0 11 0 12 0 13 0 14 0 15 0 16 0 17 0 28] 
-#[0 0 82 0 3 0 4 0 5 0 6 0 7 0 8 0 9 0 10 0 11 0 12 0 13 0 14 0 15 0 16 0 17 0 28] 
-#[1 0 17 0 3 0 21 0 4 0 25 0 5 0 29 0 6 0 33 0 7 0 37 0 8 0 41 0 9 0 45 0 10 0 49 0 11 0 53 0 12 0 57 0 14 0 61 0 16 0 117 0 21 0 117 0 22 0 117 0 23 0 117 0 24 0 117 0 27] 
-#[0 0 86 0 3 0 4 0 5 0 6 0 7 0 8 0 9 0 10 0 11 0 12 0 14 0 16 0 17] 
-#[0 0 90 0 3 0 4 0 5 0 6 0 7 0 8 0 9 0 10 0 11 0 12 0 14 0 16 0 17]
+#[1 0 6 0 3 0 6 0 4 0 6 0 5 0 6 0 6 0 6 0 7 0 6 0 8 0 6 0 9 0 6 0 10 0 6 0 11 0 6 0 12 0 6 0 13 0 6 0 15 0 6 0 17 0 9 0 20 0 13 0 21 0 6 0 29] 
+#[0 0 0 0 29] 
+#[1 0 17 0 3 0 21 0 4 0 25 0 5 0 29 0 6 0 33 0 7 0 37 0 8 0 41 0 9 0 45 0 10 0 49 0 11 0 53 0 12 0 57 0 13 0 61 0 15 0 65 0 17 0 69 0 22 0 69 0 23 0 69 0 24 0 69 0 25 0 69 0 28 0 10 0 29] 
+#[0 0 14 0 3 0 4 0 5 0 6 0 7 0 8 0 9 0 10 0 11 0 12 0 13 0 14 0 15 0 16 0 17 0 18 0 29] 
+#[0 0 18 0 3 0 4 0 5 0 6 0 7 0 8 0 9 0 10 0 11 0 12 0 13 0 14 0 15 0 16 0 17 0 18 0 29] 
+#[0 0 22 0 3 0 4 0 5 0 6 0 7 0 8 0 9 0 10 0 11 0 12 0 13 0 14 0 15 0 16 0 17 0 18 0 29] 
+#[0 0 26 0 3 0 4 0 5 0 6 0 7 0 8 0 9 0 10 0 11 0 12 0 13 0 14 0 15 0 16 0 17 0 18 0 29] 
+#[0 0 30 0 3 0 4 0 5 0 6 0 7 0 8 0 9 0 10 0 11 0 12 0 13 0 14 0 15 0 16 0 17 0 18 0 29] 
+#[0 0 34 0 3 0 4 0 5 0 6 0 7 0 8 0 9 0 10 0 11 0 12 0 13 0 14 0 15 0 16 0 17 0 18 0 29] 
+#[0 0 38 0 3 0 4 0 5 0 6 0 7 0 8 0 9 0 10 0 11 0 12 0 13 0 14 0 15 0 16 0 17 0 18 0 29] 
+#[0 0 42 0 3 0 4 0 5 0 6 0 7 0 8 0 9 0 10 0 11 0 12 0 13 0 14 0 15 0 16 0 17 0 18 0 29] 
+#[0 0 46 0 3 0 4 0 5 0 6 0 7 0 8 0 9 0 10 0 11 0 12 0 13 0 14 0 15 0 16 0 17 0 18 0 29] 
+#[0 0 50 0 3 0 4 0 5 0 6 0 7 0 8 0 9 0 10 0 11 0 12 0 13 0 14 0 15 0 16 0 17 0 18 0 29] 
+#[1 0 6 0 3 0 6 0 4 0 6 0 5 0 6 0 6 0 6 0 7 0 6 0 8 0 6 0 9 0 6 0 10 0 6 0 11 0 6 0 12 0 6 0 13 0 6 0 14 0 6 0 15 0 6 0 17 0 89 0 21] 
+#[1 0 6 0 3 0 6 0 4 0 6 0 5 0 6 0 6 0 6 0 7 0 6 0 8 0 6 0 9 0 6 0 10 0 6 0 11 0 6 0 12 0 6 0 13 0 6 0 15 0 6 0 16 0 6 0 17 0 93 0 21] 
+#[1 0 54 0 3 0 54 0 4 0 54 0 5 0 54 0 6 0 54 0 7 0 54 0 8 0 54 0 9 0 54 0 10 0 54 0 11 0 54 0 12 0 54 0 13 0 54 0 15 0 54 0 17 0 54 0 18 0 97 0 26] 
+#[0 0 58 0 3 0 4 0 5 0 6 0 7 0 8 0 9 0 10 0 11 0 12 0 13 0 14 0 15 0 16 0 17 0 29] 
+#[0 0 62 0 3 0 4 0 5 0 6 0 7 0 8 0 9 0 10 0 11 0 12 0 13 0 14 0 15 0 16 0 17 0 18 0 29] 
+#[0 0 66 0 3 0 4 0 5 0 6 0 7 0 8 0 9 0 10 0 11 0 12 0 13 0 14 0 15 0 16 0 17 0 18 0 29] 
+#[0 0 70 0 3 0 4 0 5 0 6 0 7 0 8 0 9 0 10 0 11 0 12 0 13 0 14 0 15 0 16 0 17 0 18 0 29] 
+#[0 0 74 0 3 0 4 0 5 0 6 0 7 0 8 0 9 0 10 0 11 0 12 0 13 0 14 0 15 0 16 0 17 0 18 0 29] 
+#[1 0 17 0 3 0 21 0 4 0 25 0 5 0 29 0 6 0 33 0 7 0 37 0 8 0 41 0 9 0 45 0 10 0 49 0 11 0 53 0 12 0 57 0 13 0 101 0 14 0 61 0 15 0 65 0 17 0 69 0 22 0 69 0 23 0 69 0 24 0 69 0 25 0 69 0 28] 
+#[1 0 17 0 3 0 21 0 4 0 25 0 5 0 29 0 6 0 33 0 7 0 37 0 8 0 41 0 9 0 45 0 10 0 49 0 11 0 53 0 12 0 57 0 13 0 61 0 15 0 105 0 16 0 65 0 17 0 69 0 22 0 69 0 23 0 69 0 24 0 69 0 25 0 69 0 28] 
+#[1 0 17 0 3 0 21 0 4 0 25 0 5 0 29 0 6 0 33 0 7 0 37 0 8 0 41 0 9 0 45 0 10 0 49 0 11 0 53 0 12 0 57 0 13 0 61 0 15 0 65 0 17 0 109 0 18 0 113 0 22 0 113 0 23 0 113 0 24 0 113 0 25 0 117 0 27 0 113 0 28] 
+#[0 0 78 0 3 0 4 0 5 0 6 0 7 0 8 0 9 0 10 0 11 0 12 0 13 0 14 0 15 0 16 0 17 0 18 0 29] 
+#[0 0 82 0 3 0 4 0 5 0 6 0 7 0 8 0 9 0 10 0 11 0 12 0 13 0 14 0 15 0 16 0 17 0 18 0 29] 
+#[0 0 86 0 3 0 4 0 5 0 6 0 7 0 8 0 9 0 10 0 11 0 12 0 13 0 14 0 15 0 16 0 17 0 18 0 29] 
+#[1 0 17 0 3 0 21 0 4 0 25 0 5 0 29 0 6 0 33 0 7 0 37 0 8 0 41 0 9 0 45 0 10 0 49 0 11 0 53 0 12 0 57 0 13 0 61 0 15 0 65 0 17 0 121 0 22 0 121 0 23 0 121 0 24 0 121 0 25 0 121 0 28] 
+#[0 0 90 0 3 0 4 0 5 0 6 0 7 0 8 0 9 0 10 0 11 0 12 0 13 0 15 0 17 0 18] 
+#[0 0 94 0 3 0 4 0 5 0 6 0 7 0 8 0 9 0 10 0 11 0 12 0 13 0 15 0 17 0 18]
 	).
+]
+
+{ #category : 'generated-reduction actions' }
+ZealParser >> reduceActionForAtom10: nodes [
+	| result |
+	result := ZealKeywordNode new.
+	result value: (nodes at: 1).
+	^ result
 ]
 
 { #category : 'generated-reduction actions' }
@@ -196,17 +208,9 @@ ZealParser >> reduceActionForAtom7: nodes [
 ]
 
 { #category : 'generated-reduction actions' }
-ZealParser >> reduceActionForAtom8: nodes [
-	| result |
-	result := ZealSymbolNode new.
-	result value: (nodes at: 1).
-	^ result
-]
-
-{ #category : 'generated-reduction actions' }
 ZealParser >> reduceActionForAtom9: nodes [
 	| result |
-	result := ZealKeywordNode new.
+	result := ZealSymbolNode new.
 	result value: (nodes at: 1).
 	^ result
 ]
